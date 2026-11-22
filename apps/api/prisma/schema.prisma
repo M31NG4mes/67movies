@@ -1,0 +1,386 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum MediaType {
+  MOVIE
+  SERIES
+}
+
+enum SourceType {
+  HLS
+  DASH
+  MP4
+  EXTERNAL
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+// =========================================================================
+// 1. Пользователи и безопасные сессии
+// =========================================================================
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String        // Scrypt salted hash (никогда не хранится в открытом виде)
+  name         String
+  role         Role          @default(USER)
+  isActive     Boolean       @default(true)
+  profiles          Profile[]
+  sessions          Session[]
+  settings          UserSettings?
+  ratings           MovieRating[]
+  collections       Collection[]
+  sentRequests      Friendship[]    @relation("FriendshipRequester")
+  receivedRequests  Friendship[]    @relation("FriendshipAddressee")
+  messagesSent      DirectMessage[] @relation("MessagesSent")
+  messagesReceived  DirectMessage[] @relation("MessagesReceived")
+  createdAt         DateTime        @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String    @unique // SHA-256 хеш refresh-токена
+  deviceName       String?
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Profile {
+  id            String          @id @default(uuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  avatarUrl     String?         @db.Text
+  bannerUrl     String?         @db.Text
+  isKidsMode    Boolean         @default(false)
+  language      String          @default("ru")
+  pinHash       String?
+  favorites     Favorite[]
+  watchHistory  WatchHistory[]
+  watchProgress WatchProgress[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([userId])
+  @@map("profiles")
+}
+
+model UserSettings {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme            String   @default("dark")       // dark | oled
+  accentColor      String   @default("#8065FF")    // 67movies purple
+  language         String   @default("ru")
+  autoplayNext     Boolean  @default(true)
+  defaultQuality   String   @default("1080p")      // auto | 4K | 1080p | 720p
+  subtitlesEnabled Boolean  @default(false)
+  subtitleLanguage String   @default("ru")
+  reducedMotion    Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+
+  @@map("user_settings")
+}
+
+// =========================================================================
+// 2. Каталог: Фильмы, Сериалы, Сезоны, Эпизоды и Источники
+// =========================================================================
+
+model Movie {
+  id              String          @id @default(uuid())
+  tmdbId          Int             @unique
+  imdbId          String?         @unique
+  kinopoiskId     Int?            @unique
+  title           String
+  originalTitle   String?
+  tagline         String?
+  overview        String?         @db.Text
+  posterPath      String?
+  backdropPath    String?
+  releaseYear     Int?
+  durationMinutes Int?
+  voteAverage     Float           @default(0.0)
+  ageRating       String?
+  genres          Json            @default("[]")
+  sources         Source[]
+  favorites       Favorite[]
+  watchHistory    WatchHistory[]
+  watchProgress   WatchProgress[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([releaseYear])
+  @@index([voteAverage])
+  @@map("movies")
+}
+
+model Series {
+  id            String          @id @default(uuid())
+  tmdbId        Int             @unique
+  imdbId        String?         @unique
+  kinopoiskId   Int?            @unique
+  title         String
+  originalTitle String?
+  tagline       String?
+  overview      String?         @db.Text
+  posterPath    String?
+  backdropPath  String?
+  firstAirYear  Int?
+  voteAverage   Float           @default(0.0)
+  ageRating     String?
+  genres        Json            @default("[]")
+  seasons       Season[]
+  sources       Source[]
+  favorites     Favorite[]
+  watchHistory  WatchHistory[]
+  watchProgress WatchProgress[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([firstAirYear])
+  @@index([voteAverage])
+  @@map("series")
+}
+
+model Season {
+  id           String    @id @default(uuid())
+  seriesId     String
+  series       Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  seasonNumber Int
+  name         String
+  overview     String?   @db.Text
+  posterPath   String?
+  episodeCount Int       @default(0)
+  episodes     Episode[]
+  createdAt    DateTime  @default(now())
+
+  @@unique([seriesId, seasonNumber])
+  @@map("seasons")
+}
+
+model Episode {
+  id              String   @id @default(uuid())
+  seasonId        String
+  season          Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  episodeNumber   Int
+  name            String
+  overview        String?  @db.Text
+  stillPath       String?
+  durationMinutes Int?
+  airDate         String?
+  sources         Source[]
+  createdAt       DateTime @default(now())
+
+  @@unique([seasonId, episodeNumber])
+  @@map("episodes")
+}
+
+model Source {
+  id          String     @id @default(uuid())
+  name        String
+  type        SourceType @default(HLS)
+  url         String
+  quality     String     @default("1080p")
+  language    String     @default("ru")
+  voiceActing String?
+  subtitles   Json       @default("[]")
+  isActive    Boolean    @default(true)
+  priority    Int        @default(10)
+  movieId     String?
+  movie       Movie?     @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  seriesId    String?
+  series      Series?    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episodeId   String?
+  episode     Episode?   @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([movieId])
+  @@index([seriesId, episodeId])
+  @@map("sources")
+}
+
+// =========================================================================
+// 3. Избранное, История просмотра и Синхронизация прогресса
+// =========================================================================
+
+model Favorite {
+  id         String    @id @default(uuid())
+  profileId  String
+  profile    Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  mediaType  MediaType
+  tmdbId     Int
+  movieId    String?
+  movie      Movie?    @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  seriesId   String?
+  series     Series?   @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  title      String
+  posterPath String?
+  createdAt  DateTime  @default(now())
+
+  @@unique([profileId, mediaType, tmdbId])
+  @@index([profileId, createdAt])
+  @@map("favorites")
+}
+
+model WatchHistory {
+  id            String    @id @default(uuid())
+  profileId     String
+  profile       Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  mediaType     MediaType
+  tmdbId        Int
+  movieId       String?
+  movie         Movie?    @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  seriesId      String?
+  series        Series?   @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  seasonNumber  Int?
+  episodeNumber Int?
+  title         String
+  posterPath    String?
+  watchedAt     DateTime  @default(now())
+
+  @@index([profileId, watchedAt])
+  @@map("watch_history")
+}
+
+model WatchProgress {
+  id            String    @id @default(uuid())
+  profileId     String
+  profile       Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  mediaType     MediaType
+  tmdbId        Int
+  movieId       String?
+  movie         Movie?    @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  seriesId      String?
+  series        Series?   @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  seasonNumber  Int       @default(0)
+  episodeNumber Int       @default(0)
+  title         String?
+  posterPath    String?
+  currentTime   Float     @default(0.0)
+  duration      Float     @default(0.0)
+  percentage    Float     @default(0.0)
+  isCompleted   Boolean   @default(false)
+  deviceId      String?
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([profileId, mediaType, tmdbId, seasonNumber, episodeNumber])
+  @@index([profileId, updatedAt])
+  @@map("watch_progress")
+}
+
+// =========================================================================
+// 4. Социальные функции: Друзья, Любимые фильмы и Оценки в профиле
+// =========================================================================
+
+model Friendship {
+  id          String           @id @default(uuid())
+  requesterId String
+  requester   User             @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addresseeId String
+  addressee   User             @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@map("friendships")
+}
+
+model MovieRating {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaType  MediaType @default(MOVIE)
+  tmdbId     Int
+  title      String
+  posterPath String?
+  rating     Int       // 1..10
+  review     String?   @db.Text
+  isFavorite Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([userId, mediaType, tmdbId])
+  @@index([userId, rating])
+  @@map("movie_ratings")
+}
+
+model Collection {
+  id          String           @id @default(uuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?          @db.Text
+  isPublic    Boolean          @default(true)
+  items       CollectionItem[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId])
+  @@map("collections")
+}
+
+model CollectionItem {
+  id           String     @id @default(uuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  mediaType    MediaType  @default(MOVIE)
+  tmdbId       Int
+  title        String
+  posterPath   String?
+  addedAt      DateTime   @default(now())
+
+  @@unique([collectionId, mediaType, tmdbId])
+  @@map("collection_items")
+}
+
+model DirectMessage {
+  id              String     @id @default(uuid())
+  senderId        String
+  receiverId      String
+  content         String     @default("") @db.Text
+  movieTmdbId     Int?
+  movieMediaType  MediaType?
+  movieTitle      String?
+  moviePosterPath String?
+  isRead          Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+
+  sender          User       @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver        User       @relation("MessagesReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId, createdAt])
+  @@index([receiverId, isRead])
+  @@map("direct_messages")
+}

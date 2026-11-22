@@ -1,0 +1,1157 @@
+'use client';
+
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  Users,
+  UserPlus,
+  Plus,
+  Trash2,
+  Shield,
+  Sliders,
+  LogOut,
+  Monitor,
+  Camera,
+  Image as ImageIcon,
+  Sun,
+  Moon,
+  Palette,
+  Globe,
+  Star,
+  Heart,
+  Share2,
+  ExternalLink,
+  ListPlus,
+  Film,
+  X,
+  MessageCircle,
+  Sparkles,
+  Check,
+} from 'lucide-react';
+import { authFetch, useAuthStore } from '../../stores/auth.store';
+import {
+  ACCENT_PRESETS,
+  TRANSLATIONS,
+  usePreferencesStore,
+} from '../../stores/preferences.store';
+
+const PRESET_BANNERS = [
+  'https://image.tmdb.org/t/p/w1280/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg',
+  'https://image.tmdb.org/t/p/w1280/rAiYTfKGqDCRIIqo664sY9XZIvQ.jpg',
+  'https://image.tmdb.org/t/p/w1280/fm6KqXpk3M2HVveHwCrBSSBaO0V.jpg',
+  'https://image.tmdb.org/t/p/w1280/rkB4LyZHo1NHXFEDHl9vSD9r1lI.jpg',
+];
+
+const PRESET_AVATARS = [
+  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+  'https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=200&q=80',
+];
+
+type ProfileTab = 'overview' | 'friends' | 'settings' | 'security';
+
+export default function ProfilePage() {
+  const router = useRouter();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    user,
+    accessToken,
+    profiles,
+    activeProfileId,
+    hydrated,
+    hydrate,
+    setProfiles,
+    logout,
+  } = useAuthStore();
+
+  const {
+    theme,
+    accentColor,
+    language,
+    newYearMode,
+    ageVerified18,
+    setTheme,
+    setAccentColor,
+    setLanguage,
+    setNewYearMode,
+    setAgeVerified18,
+  } = usePreferencesStore();
+  const t = TRANSLATIONS[language];
+
+  const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(null);
+  const [friendsData, setFriendsData] = useState<{
+    friends: any[];
+    incomingRequests: any[];
+    outgoingRequests: any[];
+  }>({ friends: [], incomingRequests: [], outgoingRequests: [] });
+  const [myRatings, setMyRatings] = useState<any[]>([]);
+  const [myCollections, setMyCollections] = useState<any[]>([]);
+  const [newColTitle, setNewColTitle] = useState('');
+  const [newColDesc, setNewColDesc] = useState('');
+  const [friendEmail, setFriendEmail] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+  const [showMediaPicker, setShowMediaPicker] = useState<'avatar' | 'banner' | null>(null);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    if (hydrated && !accessToken) {
+      router.replace('/auth');
+    }
+  }, [hydrated, accessToken, router]);
+
+  const showToast = (msg: string) => {
+    setStatus(msg);
+    setTimeout(() => {
+      setStatus((prev) => (prev === msg ? null : prev));
+    }, 4000);
+  };
+
+  const loadAccountData = useCallback(async () => {
+    if (!accessToken) return;
+
+    const [pRes, sRes, setRes, fRes, rRes, cRes] = await Promise.all([
+      authFetch('/profiles', { cache: 'no-store' }).catch(() => null),
+      authFetch('/auth/sessions', { cache: 'no-store' }).catch(() => null),
+      authFetch('/settings', { cache: 'no-store' }).catch(() => null),
+      authFetch('/social/friends', { cache: 'no-store' }).catch(() => null),
+      authFetch('/social/ratings/me', { cache: 'no-store' }).catch(() => null),
+      authFetch('/social/collections/me', { cache: 'no-store' }).catch(() => null),
+    ]);
+
+    if (pRes?.ok) setProfiles(await pRes.json());
+    if (sRes?.ok) setSessions(await sRes.json());
+    if (fRes?.ok) setFriendsData(await fRes.json());
+    if (rRes?.ok) setMyRatings(await rRes.json());
+    if (cRes?.ok) setMyCollections(await cRes.json());
+    if (setRes?.ok) {
+      const serverSettings = await setRes.json();
+      setSettings(serverSettings);
+      // Do NOT overwrite user's active local theme/language on page visit!
+    }
+  }, [accessToken, setProfiles]);
+
+  useEffect(() => {
+    if (accessToken) {
+      loadAccountData();
+    }
+  }, [accessToken, loadAccountData]);
+
+  const activeProfile =
+    profiles.find((p) => p.id === activeProfileId) || profiles[0] || null;
+
+  const updateActiveProfileMedia = async (patch: { avatarUrl?: string; bannerUrl?: string }) => {
+    if (!accessToken || !activeProfile) return;
+    const res = await authFetch(`/profiles/${activeProfile.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    if (res.ok) {
+      showToast(patch.avatarUrl ? 'Аватар обновлён' : 'Баннер обновлён');
+      setShowMediaPicker(null);
+      await loadAccountData();
+    } else {
+      showToast('Не удалось сохранить изображение (проверьте размер до 10 МБ)');
+    }
+  };
+
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: 'avatarUrl' | 'bannerUrl'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Файл слишком большой — выберите изображение до 10 МБ');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        updateActiveProfileMedia({ [field]: reader.result });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRevokeSession = async (id: string) => {
+    if (!accessToken) return;
+    const res = await authFetch(`/auth/sessions/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Сессия завершена');
+      await loadAccountData();
+    }
+  };
+
+  const handleUpdateSetting = async (patch: Record<string, any>) => {
+    if (!accessToken) return;
+    const res = await authFetch('/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    if (res.ok) {
+      setSettings(await res.json());
+      showToast('Настройки сохранены');
+    }
+  };
+
+  const handleSendFriendRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!friendEmail.trim() || !accessToken) return;
+    const res = await authFetch('/social/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({ email: friendEmail.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setFriendEmail('');
+      showToast('Запрос в друзья отправлен');
+      await loadAccountData();
+    } else {
+      showToast(data?.message || 'Не удалось отправить запрос в друзья');
+    }
+  };
+
+  const handleAcceptFriend = async (requestId: string) => {
+    if (!accessToken) return;
+    const res = await authFetch(`/social/friends/${requestId}/accept`, {
+      method: 'POST',
+    });
+    if (res.ok) {
+      showToast('Пользователь добавлен в друзья!');
+      await loadAccountData();
+    }
+  };
+
+  const handleRemoveFriend = async (friendshipId: string) => {
+    if (!accessToken) return;
+    const res = await authFetch(`/social/friends/${friendshipId}`, {
+      method: 'DELETE',
+    });
+    if (res.ok) {
+      showToast('Удалено из списка друзей / запросов');
+      await loadAccountData();
+    }
+  };
+
+  const handleDeleteRating = async (tmdbId: number, mediaType: string) => {
+    if (!accessToken) return;
+    const res = await authFetch(
+      `/social/ratings/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`,
+      { method: 'DELETE' }
+    );
+    if (res.ok) {
+      showToast('Оценка удалена из витрины профиля');
+      await loadAccountData();
+    }
+  };
+
+  const handleCreateCollection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newColTitle.trim() || !accessToken) return;
+    const res = await authFetch('/social/collections', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: newColTitle.trim(),
+        description: newColDesc.trim() || undefined,
+        isPublic: true,
+      }),
+    });
+    if (res.ok) {
+      setNewColTitle('');
+      setNewColDesc('');
+      showToast('Подборка создана!');
+      await loadAccountData();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err?.message || 'Не удалось создать подборку');
+    }
+  };
+
+  const handleDeleteCollection = async (collectionId: string) => {
+    if (!accessToken) return;
+    const res = await authFetch(`/social/collections/${collectionId}`, {
+      method: 'DELETE',
+    });
+    if (res.ok) {
+      showToast('Подборка удалена');
+      await loadAccountData();
+    }
+  };
+
+  const handleRemoveCollectionItem = async (
+    collectionId: string,
+    tmdbId: number,
+    mediaType: string
+  ) => {
+    if (!accessToken) return;
+    const res = await authFetch(
+      `/social/collections/${collectionId}/items/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`,
+      { method: 'DELETE' }
+    );
+    if (res.ok) {
+      showToast('Фильм убран из подборки');
+      await loadAccountData();
+    }
+  };
+
+  const handleCopyProfileLink = async () => {
+    if (!user) return;
+    const url = `${window.location.origin}/user/${user.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Ссылка на вашу публичную витрину скопирована!');
+    } catch {
+      showToast(`Ссылка на ваш профиль: ${url}`);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    router.push('/auth');
+  };
+
+  if (!hydrated || !user) return null;
+
+  const avgRating =
+    myRatings.length > 0
+      ? (myRatings.reduce((s, r) => s + Number(r.rating || 0), 0) / myRatings.length).toFixed(1)
+      : '—';
+
+  const tabs: { id: ProfileTab; label: string; icon: any; badge?: number }[] = [
+    { id: 'overview', label: 'Витрина и подборки', icon: Sparkles },
+    {
+      id: 'friends',
+      label: 'Друзья',
+      icon: Users,
+      badge: friendsData.incomingRequests.length,
+    },
+    { id: 'settings', label: 'Настройки', icon: Sliders },
+    { id: 'security', label: 'Сессии', icon: Shield },
+  ];
+
+  return (
+    <div className="max-w-5xl mx-auto px-5 sm:px-8 pt-20 md:pt-16 pb-24 min-h-screen bg-[#09090D] space-y-6">
+      {/* Hidden File Inputs */}
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFileUpload(e, 'avatarUrl')}
+      />
+      <input
+        ref={bannerInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFileUpload(e, 'bannerUrl')}
+      />
+
+      {/* Hero Profile Card */}
+      <div className="rounded-3xl overflow-hidden bg-[#111119] border border-[#292936] shadow-2xl">
+        {/* Banner Area */}
+        <div
+          className="relative h-44 sm:h-56 w-full profile-banner-bg bg-cover bg-center"
+          style={
+            activeProfile?.bannerUrl
+              ? { backgroundImage: `url(${activeProfile.bannerUrl})` }
+              : undefined
+          }
+        >
+          <div className="absolute inset-0 profile-banner-fade" />
+
+          {/* Banner Edit Controls */}
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => bannerInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-black/65 hover:bg-black/85 backdrop-blur-md border border-white/15 text-xs font-semibold text-white transition-all"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-[#A18BFF]" />
+              <span className="hidden sm:inline">Загрузить баннер</span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setShowMediaPicker(showMediaPicker === 'banner' ? null : 'banner')
+              }
+              className="px-3 py-2 rounded-xl bg-black/65 hover:bg-black/85 backdrop-blur-md border border-white/15 text-xs font-semibold text-[#A18BFF] transition-all"
+            >
+              Галерея
+            </button>
+          </div>
+        </div>
+
+        {/* Avatar + User Info + Quick Actions */}
+        <div className="px-6 pb-6 -mt-14 relative space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+            <div className="flex items-end gap-4">
+              {/* Avatar */}
+              <div className="relative group shrink-0">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#181821] profile-avatar-ring flex items-center justify-center">
+                  {activeProfile?.avatarUrl ? (
+                    <img
+                      src={activeProfile.avatarUrl}
+                      alt={user.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl font-black text-[#A18BFF] uppercase">
+                      {user.name.slice(0, 1)}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  title="Загрузить аватар"
+                  className="absolute inset-0 rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                >
+                  <Camera className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="pb-1 min-w-0">
+                <h1 className="text-2xl sm:text-3xl font-black text-white truncate">
+                  {user.name}
+                </h1>
+                <p className="text-xs text-[#92929F] truncate">{user.email}</p>
+                <div className="flex flex-wrap items-center gap-2.5 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="text-xs font-semibold text-[#A18BFF] hover:underline"
+                  >
+                    Сменить аватар
+                  </button>
+                  <span className="text-[#292936]">•</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowMediaPicker(showMediaPicker === 'avatar' ? null : 'avatar')
+                    }
+                    className="text-xs font-semibold text-[#92929F] hover:text-white transition-colors"
+                  >
+                    Готовые аватары
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/messages"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl brand-btn text-white text-xs font-bold transition-all"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Чат</span>
+              </Link>
+              <Link
+                href={`/user/${user.id}`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#181821] hover:bg-[#8065FF]/20 border border-[#292936] hover:border-[#8065FF] text-white text-xs font-semibold transition-all"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-[#A18BFF]" />
+                <span>Моя витрина</span>
+              </Link>
+              <button
+                type="button"
+                onClick={handleCopyProfileLink}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#181821] hover:bg-[#8065FF]/20 border border-[#292936] hover:border-[#8065FF] text-[#92929F] hover:text-white text-xs font-semibold transition-all"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Поделиться</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-xs font-semibold transition-all"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Выйти</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Stats Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
+              <p className="text-xl font-black text-white">{myRatings.length}</p>
+              <p className="text-[11px] font-medium text-[#92929F]">Оценённых тайтлов</p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
+              <p className="text-xl font-black text-[#A18BFF]">{avgRating}</p>
+              <p className="text-[11px] font-medium text-[#92929F]">Средняя оценка</p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
+              <p className="text-xl font-black text-white">{myCollections.length}</p>
+              <p className="text-[11px] font-medium text-[#92929F]">Подборок</p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
+              <p className="text-xl font-black text-white">{friendsData.friends.length}</p>
+              <p className="text-[11px] font-medium text-[#92929F]">Друзей</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Preset Picker for Avatar or Banner */}
+        {showMediaPicker && (
+          <div className="px-6 pb-6 pt-3 border-t border-[#292936]">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-[#92929F]">
+                {showMediaPicker === 'banner'
+                  ? 'Выберите готовый кинобаннер:'
+                  : 'Выберите готовый аватар:'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowMediaPicker(null)}
+                className="text-xs text-[#92929F] hover:text-white"
+              >
+                Закрыть
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {(showMediaPicker === 'banner' ? PRESET_BANNERS : PRESET_AVATARS).map((url) => (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() =>
+                    updateActiveProfileMedia(
+                      showMediaPicker === 'banner' ? { bannerUrl: url } : { avatarUrl: url }
+                    )
+                  }
+                  className={`overflow-hidden rounded-xl border border-[#292936] hover:border-[#8065FF] transition-all ${
+                    showMediaPicker === 'banner' ? 'aspect-video' : 'aspect-square'
+                  }`}
+                >
+                  <img src={url} alt="Preset" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Status Toast */}
+      {status && (
+        <div className="px-4 py-3 rounded-2xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-sm text-white flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-[#A18BFF]" />
+            <span>{status}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatus(null)}
+            className="text-xs text-[#92929F] hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`relative inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+                isActive
+                  ? 'brand-btn text-white shadow-lg'
+                  : 'bg-[#111119] border border-[#292936] text-[#92929F] hover:text-white hover:border-[#8065FF]/50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+              {Boolean(tab.badge) && (
+                <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* =================================================================
+          TAB 1: OVERVIEW (Ratings + Custom Collections)
+         ================================================================= */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* My Custom Movie Collections */}
+          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+                <ListPlus className="w-5 h-5 text-[#A18BFF]" />
+                <span>Мои подборки ({myCollections.length})</span>
+              </div>
+              <span className="text-xs text-[#92929F]">
+                Собирайте тематические списки — они видны друзьям на вашей витрине
+              </span>
+            </div>
+
+            <form onSubmit={handleCreateCollection} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input
+                type="text"
+                required
+                value={newColTitle}
+                onChange={(e) => setNewColTitle(e.target.value)}
+                placeholder="Название (напр. Топ киберпанка)..."
+                className="px-4 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
+              />
+              <input
+                type="text"
+                value={newColDesc}
+                onChange={(e) => setNewColDesc(e.target.value)}
+                placeholder="Описание (необязательно)..."
+                className="px-4 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl brand-btn text-white text-xs font-bold transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Создать подборку</span>
+              </button>
+            </form>
+
+            {myCollections.length === 0 ? (
+              <p className="text-xs text-[#92929F]">
+                Подборок пока нет. Создайте первую выше или нажмите «В подборку» на странице любого фильма.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {myCollections.map((col) => (
+                  <div
+                    key={col.id}
+                    className="p-4 rounded-2xl bg-[#181821] border border-[#292936] space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          <span>{col.title}</span>
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-[#8065FF]/15 text-[#A18BFF]">
+                            {col.items?.length || 0} шт.
+                          </span>
+                        </h3>
+                        {col.description && (
+                          <p className="text-xs text-[#92929F] mt-0.5">{col.description}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCollection(col.id)}
+                        title="Удалить подборку"
+                        className="p-1.5 text-[#92929F] hover:text-red-400 rounded-lg shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {!col.items || col.items.length === 0 ? (
+                      <p className="text-xs text-[#92929F] italic">
+                        Пока пусто — откройте любой фильм и нажмите «В подборку».
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-3 overflow-x-auto pb-1">
+                        {col.items.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="relative group w-24 shrink-0 rounded-xl overflow-hidden bg-[#111119] border border-[#292936] hover:border-[#8065FF] transition-all"
+                          >
+                            <Link
+                              href={`/movie/${item.tmdbId}?type=${
+                                item.mediaType === 'SERIES' ? 'tv' : 'movie'
+                              }`}
+                              className="block"
+                            >
+                              <div className="aspect-[2/3] bg-[#09090D] flex items-center justify-center">
+                                {item.posterPath ? (
+                                  <img
+                                    src={item.posterPath}
+                                    alt={item.title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <Film className="w-5 h-5 text-[#92929F]" />
+                                )}
+                              </div>
+                              <p className="p-1.5 text-[10px] font-semibold text-white line-clamp-1">
+                                {item.title}
+                              </p>
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRemoveCollectionItem(col.id, item.tmdbId, item.mediaType)
+                              }
+                              title="Убрать из подборки"
+                              className="absolute top-1 right-1 p-1 rounded-full bg-black/75 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* My Shared Favorite Movies & Ratings Showcase */}
+          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+                <Heart className="w-5 h-5 text-rose-400 fill-rose-400" />
+                <span>Мои оценки и любимые фильмы ({myRatings.length})</span>
+              </div>
+              <span className="text-xs text-[#92929F]">
+                Оценивайте тайтлы на их страницах — они появятся здесь
+              </span>
+            </div>
+
+            {myRatings.length === 0 ? (
+              <p className="text-xs text-[#92929F]">
+                Пока пусто. Откройте любой фильм и нажмите «Оценить» (1–10).
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {myRatings.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#181821] border border-[#292936] hover:border-[#8065FF]/50 transition-all"
+                  >
+                    <Link
+                      href={`/movie/${item.tmdbId}?type=${
+                        item.mediaType === 'SERIES' ? 'tv' : 'movie'
+                      }`}
+                      className="flex items-center gap-3 min-w-0 flex-1"
+                    >
+                      {item.posterPath ? (
+                        <img
+                          src={item.posterPath}
+                          alt={item.title}
+                          className="w-11 h-16 rounded-xl object-cover shrink-0"
+                        />
+                      ) : (
+                        <div className="w-11 h-16 rounded-xl bg-[#09090D] flex items-center justify-center shrink-0">
+                          <Film className="w-4 h-4 text-[#92929F]" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white truncate">{item.title}</p>
+                        <p className="text-xs text-[#A18BFF] font-semibold flex items-center gap-1 mt-0.5">
+                          <Star className="w-3 h-3 fill-[#A18BFF]" />
+                          <span>{item.rating}/10</span>
+                          {item.isFavorite && (
+                            <span className="text-rose-400 ml-1">• Любимый</span>
+                          )}
+                        </p>
+                        {item.review && (
+                          <p className="text-[11px] text-[#92929F] line-clamp-1 mt-0.5">
+                            {item.review}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRating(item.tmdbId, item.mediaType)}
+                      title="Удалить оценку"
+                      className="p-1.5 text-[#92929F] hover:text-red-400 rounded-lg shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* =================================================================
+          TAB 2: FRIENDS & REQUESTS
+         ================================================================= */}
+      {activeTab === 'friends' && (
+        <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-5 animate-fadeIn">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+              <Users className="w-5 h-5 text-[#A18BFF]" />
+              <span>Друзья ({friendsData.friends.length})</span>
+            </div>
+            <Link
+              href="/messages"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl brand-btn text-white text-xs font-bold"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Открыть мессенджер</span>
+            </Link>
+          </div>
+
+          <form onSubmit={handleSendFriendRequest} className="flex flex-wrap gap-3">
+            <input
+              type="email"
+              required
+              value={friendEmail}
+              onChange={(e) => setFriendEmail(e.target.value)}
+              placeholder="Введите email друга, чтобы отправить запрос..."
+              className="flex-1 min-w-[220px] px-4 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
+            />
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl brand-btn text-white text-xs font-bold transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Добавить в друзья</span>
+            </button>
+          </form>
+
+          {/* Incoming Friend Requests */}
+          {friendsData.incomingRequests.length > 0 && (
+            <div className="space-y-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#A18BFF]">
+                Входящие запросы ({friendsData.incomingRequests.length})
+              </p>
+              {friendsData.incomingRequests.map((req) => (
+                <div
+                  key={req.requestId}
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-[#181821] border border-[#8065FF]/40"
+                >
+                  <span className="text-sm font-semibold text-white">{req.from.name}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptFriend(req.requestId)}
+                      className="px-3.5 py-1.5 rounded-xl brand-btn text-white text-xs font-bold"
+                    >
+                      Принять
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFriend(req.requestId)}
+                      className="px-3 py-1.5 rounded-xl bg-[#09090D] border border-[#292936] text-xs text-[#92929F] hover:text-white"
+                    >
+                      Отклонить
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Accepted Friends List */}
+          {friendsData.friends.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-[#181821] border border-[#292936] text-center space-y-2">
+              <Users className="w-8 h-8 text-[#A18BFF] mx-auto opacity-60" />
+              <p className="text-sm font-bold text-white">Список друзей пока пуст</p>
+              <p className="text-xs text-[#92929F]">
+                Добавьте друга по email выше, чтобы переписываться в чате и отправлять друг другу
+                фильмы.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {friendsData.friends.map((f) => (
+                <div
+                  key={f.friendshipId}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-[#181821] border border-[#292936] hover:border-[#8065FF]/60 transition-all"
+                >
+                  <Link href={`/user/${f.user.id}`} className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-11 h-11 rounded-xl overflow-hidden bg-[#09090D] flex items-center justify-center shrink-0">
+                      {f.user.avatarUrl ? (
+                        <img
+                          src={f.user.avatarUrl}
+                          alt={f.user.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-bold text-[#A18BFF] uppercase">
+                          {f.user.name.slice(0, 1)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{f.user.name}</p>
+                      <p className="text-xs text-[#92929F]">
+                        Любимых: {f.favoritesCount} • Оценок: {f.ratingsCount}
+                      </p>
+                    </div>
+                  </Link>
+
+                  <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                    <Link
+                      href={`/messages?friend=${f.user.id}`}
+                      title="Написать сообщение"
+                      className="p-2 text-[#A18BFF] hover:bg-[#8065FF]/20 rounded-xl transition-colors"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFriend(f.friendshipId)}
+                      title="Удалить из друзей"
+                      className="p-2 text-[#92929F] hover:text-red-400 rounded-xl transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* =================================================================
+          TAB 3: INTERFACE & PLAYBACK SETTINGS
+         ================================================================= */}
+      {activeTab === 'settings' && (
+        <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-5 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+            <Sliders className="w-5 h-5 text-[#A18BFF]" />
+            <span>{t.profileSettings}</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Theme Switcher */}
+            <div className="p-4 rounded-2xl bg-[#181821] border border-[#292936] flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-white">{t.themeLabel}</span>
+              <div className="flex items-center gap-1.5 bg-[#09090D] p-1 rounded-xl border border-[#292936]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheme('dark');
+                    handleUpdateSetting({ theme: 'dark' });
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    theme === 'dark'
+                      ? 'brand-btn text-white'
+                      : 'text-[#92929F] hover:text-white'
+                  }`}
+                >
+                  <Moon className="w-3.5 h-3.5" />
+                  <span>{t.themeDark}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheme('light');
+                    handleUpdateSetting({ theme: 'light' });
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    theme === 'light'
+                      ? 'brand-btn text-white'
+                      : 'text-[#92929F] hover:text-white'
+                  }`}
+                >
+                  <Sun className="w-3.5 h-3.5" />
+                  <span>{t.themeLight}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Language Switcher */}
+            <div className="p-4 rounded-2xl bg-[#181821] border border-[#292936] flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-white flex items-center gap-2">
+                <Globe className="w-4 h-4 text-[#A18BFF]" />
+                {t.languageLabel}
+              </span>
+              <div className="flex items-center gap-1.5 bg-[#09090D] p-1 rounded-xl border border-[#292936]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLanguage('ru');
+                    handleUpdateSetting({ language: 'ru' });
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    language === 'ru'
+                      ? 'brand-btn text-white'
+                      : 'text-[#92929F] hover:text-white'
+                  }`}
+                >
+                  Русский
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLanguage('en');
+                    handleUpdateSetting({ language: 'en' });
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    language === 'en'
+                      ? 'brand-btn text-white'
+                      : 'text-[#92929F] hover:text-white'
+                  }`}
+                >
+                  English
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Accent Color Palette Picker */}
+          <div className="p-4 rounded-2xl bg-[#181821] border border-[#292936] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Palette className="w-4 h-4 text-[#A18BFF]" />
+              <span className="text-sm font-medium text-white">{t.accentLabel}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {ACCENT_PRESETS.map((preset) => {
+                const isSelected = accentColor.toLowerCase() === preset.main.toLowerCase();
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      setAccentColor(preset.main);
+                      handleUpdateSetting({ accentColor: preset.main });
+                    }}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                      isSelected
+                        ? 'border-[#8065FF] bg-[#8065FF]/15 text-white'
+                        : 'border-[#292936] bg-[#09090D] text-[#92929F] hover:text-white'
+                    }`}
+                  >
+                    <span
+                      className="w-3.5 h-3.5 rounded-full shrink-0"
+                      style={{ backgroundColor: preset.main }}
+                    />
+                    <span>{language === 'en' ? preset.nameEn : preset.nameRu}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* New Year Festive Mode */}
+          <label className="flex items-center justify-between p-4 rounded-2xl bg-[#181821] border border-[#292936] cursor-pointer">
+            <div>
+              <span className="text-sm font-medium text-white">
+                ❄️ {language === 'en' ? 'New Year Festive Theme' : 'Новогодняя тема'}
+              </span>
+              <p className="text-xs text-[#92929F] mt-0.5">
+                {language === 'en'
+                  ? 'Gentle snowfall and glowing garland lights across the site'
+                  : 'Лёгкий снегопад и мерцающая гирлянда по всему сайту'}
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={newYearMode}
+              onChange={(e) => setNewYearMode(e.target.checked)}
+              className="w-4 h-4 accent-[#8065FF]"
+            />
+          </label>
+
+          {/* 18+ Age Restriction Toggle */}
+          <label className="flex items-center justify-between p-4 rounded-2xl bg-[#181821] border border-[#292936] cursor-pointer">
+            <div>
+              <span className="text-sm font-medium text-white">🔞 Доступ к контенту 18+</span>
+              <p className="text-xs text-[#92929F] mt-0.5">
+                Если выключено — постеры 18+ размываются, а при открытии фильма требуется
+                подтверждение возраста
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={ageVerified18}
+              onChange={(e) => setAgeVerified18(e.target.checked)}
+              className="w-4 h-4 accent-[#8065FF]"
+            />
+          </label>
+
+          {/* Playback Settings */}
+          {settings && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex items-center justify-between p-4 rounded-2xl bg-[#181821] border border-[#292936] cursor-pointer">
+                <span className="text-sm text-white">{t.autoplayNext}</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.autoplayNext)}
+                  onChange={(e) => handleUpdateSetting({ autoplayNext: e.target.checked })}
+                  className="w-4 h-4 accent-[#8065FF]"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-4 rounded-2xl bg-[#181821] border border-[#292936] cursor-pointer">
+                <span className="text-sm text-white">{t.subtitlesDefault}</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.subtitlesEnabled)}
+                  onChange={(e) => handleUpdateSetting({ subtitlesEnabled: e.target.checked })}
+                  className="w-4 h-4 accent-[#8065FF]"
+                />
+              </label>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* =================================================================
+          TAB 4: SECURITY & ACTIVE SESSIONS
+         ================================================================= */}
+      {activeTab === 'security' && (
+        <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+            <Shield className="w-5 h-5 text-[#A18BFF]" />
+            <span>Активные сессии ({sessions.length})</span>
+          </div>
+
+          <div className="space-y-2.5">
+            {sessions.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between p-4 rounded-2xl bg-[#181821] border border-[#292936]"
+              >
+                <div className="flex items-center gap-3">
+                  <Monitor className="w-4 h-4 text-[#A18BFF]" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {s.deviceName || 'Web Browser'}{' '}
+                      {s.isCurrent && (
+                        <span className="text-[11px] text-emerald-400 font-medium ml-1">
+                          (Текущая)
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-[#92929F]">{s.ipAddress || 'localhost'}</p>
+                  </div>
+                </div>
+
+                {!s.isCurrent && (
+                  <button
+                    type="button"
+                    onClick={() => handleRevokeSession(s.id)}
+                    className="px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-xs text-red-400 font-semibold transition-colors"
+                  >
+                    Завершить
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
