@@ -10,7 +10,7 @@
     "clean": "rimraf .next dist"
   },
   "dependencies": {
-    "@cinemaflow/types": "workspace:*",
+    "@cinemaflow/types": "file:../../packages/types",
     "clsx": "^2.1.1",
     "framer-motion": "^11.1.7",
     "hls.js": "^1.5.8",
@@ -31,7 +31,6 @@
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5"
   },
-  "packageManager": "pnpm@10.6.5",
    "engines": {
     "node": "26.x"
   }
