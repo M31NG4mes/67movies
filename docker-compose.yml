@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cinemaflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cinemaflow
+      POSTGRES_PASSWORD: cinemaflow_secret
+      POSTGRES_DB: cinemaflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cinemaflow -d cinemaflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cinemaflow-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Optional TorrServer bridge for P2P video streaming support
+  torrserver:
+    image: yourok/torrserver:latest
+    container_name: cinemaflow-torrserver
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - torrdata:/opt/torrserver/db
+
+volumes:
+  pgdata:
+  redisdata:
+  torrdata:

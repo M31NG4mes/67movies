@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Environment & Secrets (NEVER commit .env files)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Local runtime data & logs
+apps/api/data/
+*.log
+.DS_Store
+Thumbs.db
