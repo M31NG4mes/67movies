@@ -17,6 +17,7 @@ import {
   Star,
   Film,
   MessageCircle,
+  Shield,
   User as UserIcon,
 } from 'lucide-react';
 import { MediaItem } from '@cinemaflow/types';
@@ -45,6 +46,7 @@ function NavbarContent() {
 
   const { user, accessToken, profiles, activeProfileId, hydrate } = useAuthStore();
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
   const { theme, language, newYearMode, setTheme, setLanguage, setNewYearMode } =
     usePreferencesStore();
   const t = TRANSLATIONS[language];
@@ -55,10 +57,11 @@ function NavbarContent() {
     hydrate();
   }, [hydrate]);
 
-  // Poll unread chat messages badge
+  // Poll unread chat messages badge & check admin access
   useEffect(() => {
     if (!accessToken) {
       setUnreadMessages(0);
+      setCanAccessAdmin(false);
       return;
     }
     let cancelled = false;
@@ -71,6 +74,12 @@ function NavbarContent() {
         setUnreadMessages(Number(data?.unreadCount || 0));
       }
     };
+    authFetch('/admin/access', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setCanAccessAdmin(Boolean(d?.canAccessAdmin));
+      })
+      .catch(() => {});
     fetchUnread();
     const timer = setInterval(fetchUnread, 12000);
     return () => {
@@ -130,8 +139,8 @@ function NavbarContent() {
     };
   }, []);
 
-  // Hide navigation chrome on the full-screen /auth welcome page
-  if (pathname === '/auth') {
+  // Hide regular user navigation chrome on /auth and dedicated /admin dashboard
+  if (pathname === '/auth' || pathname.startsWith('/admin')) {
     return null;
   }
 
@@ -234,6 +243,17 @@ function NavbarContent() {
           })}
 
           <div className="w-6 h-px bg-white/10 my-1" />
+
+          {canAccessAdmin && (
+            <Link
+              href="/admin"
+              aria-label="Админ-панель"
+              className="group relative w-11 h-11 rounded-xl flex items-center justify-center text-[#A18BFF] bg-[#8065FF]/15 hover:bg-[#8065FF]/25 border border-[#8065FF]/35 transition-all duration-200"
+            >
+              <Shield className="w-[19px] h-[19px] stroke-[1.9]" />
+              <SidebarTooltip label="Админ-панель" />
+            </Link>
+          )}
         </nav>
 
         {/* Bottom: New Year, Language, Theme & Account */}

@@ -9,6 +9,7 @@ generator client {
 
 enum Role {
   USER
+  MODERATOR
   ADMIN
 }
 
@@ -383,4 +384,54 @@ model DirectMessage {
   @@index([senderId, receiverId, createdAt])
   @@index([receiverId, isRead])
   @@map("direct_messages")
+}
+
+// =========================================================================
+// 5. Административная панель: Источники, Ошибки источников, Настройки сайта
+// =========================================================================
+
+model MediaSource {
+  id            String           @id @default(uuid())
+  name          String
+  code          String           @unique
+  type          String           @default("METADATA") // METADATA | STREAMING | TRAILERS | SCHEDULE | ANIME
+  baseUrl       String
+  healthPath    String           @default("")
+  isEnabled     Boolean          @default(true)
+  priority      Int              @default(10)
+  timeoutMs     Int              @default(6000)
+  config        Json             @default("{}")
+  lastStatus    String           @default("UNKNOWN")  // ONLINE | DEGRADED | OFFLINE | UNKNOWN
+  lastLatencyMs Int?
+  lastCheckedAt DateTime?
+  errorCount    Int              @default(0)
+  errors        SourceErrorLog[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([isEnabled, priority])
+  @@map("media_sources")
+}
+
+model SourceErrorLog {
+  id         String      @id @default(uuid())
+  sourceId   String
+  source     MediaSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  statusCode Int?
+  endpoint   String      @default("")
+  message    String      @db.Text
+  createdAt  DateTime    @default(now())
+
+  @@index([sourceId, createdAt])
+  @@map("source_error_logs")
+}
+
+model SiteSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
 }

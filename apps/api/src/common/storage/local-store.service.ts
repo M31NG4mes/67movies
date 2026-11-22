@@ -14,6 +14,9 @@ export interface LocalDbSchema {
   ratings: Record<string, any>;
   collections: Record<string, any>;
   messages: Record<string, any>;
+  adminSources: Record<string, any>;
+  sourceErrors: Record<string, any>;
+  siteSettings: Record<string, any>;
 }
 
 const EMPTY_DB: LocalDbSchema = {
@@ -28,6 +31,9 @@ const EMPTY_DB: LocalDbSchema = {
   ratings: {},
   collections: {},
   messages: {},
+  adminSources: {},
+  sourceErrors: {},
+  siteSettings: {},
 };
 
 /**

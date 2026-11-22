@@ -8,6 +8,7 @@ import { HistoryModule } from './modules/history/history.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { SocialModule } from './modules/social/social.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { SocialModule } from './modules/social/social.module';
     AuthModule,
     UsersModule,
     SocialModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
