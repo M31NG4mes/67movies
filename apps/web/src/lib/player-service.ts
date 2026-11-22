@@ -322,9 +322,9 @@ export class PlayerService {
   public async togglePiP(): Promise<void> {
     if (!this.video) return;
     if (document.pictureInPictureElement) {
-      return document.exitPictureInPicture();
+      await document.exitPictureInPicture();
     } else if (document.pictureInPictureEnabled) {
-      return this.video.requestPictureInPicture();
+      await this.video.requestPictureInPicture();
     }
   }
 

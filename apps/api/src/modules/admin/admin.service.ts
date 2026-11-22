@@ -8,6 +8,7 @@ import {
 import * as crypto from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { LocalStoreService } from '../../common/storage/local-store.service';
+import { isSafeExternalUrl } from '../../common/security/security.util';
 import {
   AdminRoleDto,
   CreateMediaSourceDto,
@@ -680,6 +681,9 @@ export class AdminService {
     const base = String(source.baseUrl || '').replace(/\/+$/, '');
     const path = String(source.healthPath || '');
     const targetUrl = path ? `${base}${path.startsWith('/') ? path : `/${path}`}` : base;
+    if (!isSafeExternalUrl(targetUrl)) {
+      throw new BadRequestException('URL источника указывает на запрещённый локальный или внутренний адрес');
+    }
     const timeoutMs = Number(source.timeoutMs) || 6000;
 
     const start = Date.now();

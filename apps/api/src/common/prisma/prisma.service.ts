@@ -6,6 +6,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   public client: any = null;
 
   constructor() {
+    if (process.env.USE_IN_MEMORY_DB === 'true') {
+      this.client = null;
+      return;
+    }
     try {
       // Lazy-load PrismaClient so API boots cleanly even if prisma generate hasn't been run
       // or PostgreSQL is not installed locally.
@@ -24,7 +28,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       await this.client.$connect();
       this.logger.log('Connected to PostgreSQL via Prisma');
     } catch (err: any) {
-      this.logger.warn(`Database connection skipped or pending: ${err?.message}`);
+      this.logger.warn(`Database connection failed, falling back to local store: ${err?.message}`);
+      this.client = null;
     }
   }
 

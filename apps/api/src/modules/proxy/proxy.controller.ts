@@ -1,6 +1,7 @@
 import { Controller, Get, Query, Req, Res, Headers } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ProxyService } from './proxy.service';
+import { isSafeExternalUrl, sanitizeProxyHeaders } from '../../common/security/security.util';
 
 @Controller('proxy')
 export class ProxyController {
@@ -16,11 +17,14 @@ export class ProxyController {
     if (!targetUrl) {
       return res.status(400).send('Missing url query parameter');
     }
+    if (!isSafeExternalUrl(targetUrl)) {
+      return res.status(403).json({ statusCode: 403, message: 'Blocked unsafe or private proxy URL' });
+    }
 
     let parsedHeaders: Record<string, string> = {};
     if (rawHeaders) {
       try {
-        parsedHeaders = JSON.parse(rawHeaders);
+        parsedHeaders = sanitizeProxyHeaders(JSON.parse(rawHeaders));
       } catch (e) {}
     }
 
@@ -41,11 +45,14 @@ export class ProxyController {
     if (!targetUrl) {
       return res.status(400).send('Missing url query parameter');
     }
+    if (!isSafeExternalUrl(targetUrl)) {
+      return res.status(403).json({ statusCode: 403, message: 'Blocked unsafe or private proxy URL' });
+    }
 
     let parsedHeaders: Record<string, string> = {};
     if (rawHeaders) {
       try {
-        parsedHeaders = JSON.parse(rawHeaders);
+        parsedHeaders = sanitizeProxyHeaders(JSON.parse(rawHeaders));
       } catch (e) {}
     }
 

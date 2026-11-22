@@ -19,8 +19,13 @@ import {
   UserCheck,
   ImagePlus,
   Smile,
+  Copy,
+  Reply,
+  Pencil,
 } from 'lucide-react';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
 interface FriendUser {
   id: string;
@@ -35,6 +40,11 @@ interface DirectMessageItem {
   content: string;
   imageUrl?: string | null;
   gifUrl?: string | null;
+  replyToId?: string | null;
+  replyToContent?: string | null;
+  replyToSenderName?: string | null;
+  editedAt?: string | null;
+  reactions?: Record<string, string[]>;
   movieTmdbId: number | null;
   movieMediaType: 'MOVIE' | 'SERIES' | null;
   movieTitle: string | null;
@@ -49,6 +59,15 @@ interface ConversationSummary {
   isTyping?: boolean;
   lastMessage: DirectMessageItem | null;
 }
+
+interface GifItem {
+  id: string;
+  title: string;
+  url: string;
+  preview: string;
+}
+
+const QUICK_REACTIONS = ['❤️', '😂', '🔥', '👍', '😱', '🎬'];
 
 const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
   {
@@ -65,67 +84,43 @@ const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
   },
 ];
 
-const CURATED_GIFS: { title: string; tags: string; url: string }[] = [
-  {
-    title: 'Попкорн',
-    tags: 'popcorn кино попкорн смотрю movie',
-    url: 'https://media.giphy.com/media/pUeXcg80cO8I8/giphy.gif',
-  },
-  {
-    title: 'Аплодисменты',
-    tags: 'clap браво аплодисменты дикаприо dicaprio',
-    url: 'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif',
-  },
-  {
-    title: 'Шедевр',
-    tags: 'cinema absolute шедевр скорсезе fire огонь',
-    url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif',
-  },
-  {
-    title: 'Взрыв мозга',
-    tags: 'mind blown шок взрыв мозга wow',
-    url: 'https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.gif',
-  },
-  {
-    title: 'Смех',
-    tags: 'laugh смех ржу lol haha',
-    url: 'https://media.giphy.com/media/10JhviFuU2gWD6/giphy.gif',
-  },
-  {
-    title: 'Огонь',
-    tags: 'fire огонь круто cool yes',
-    url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif',
-  },
-  {
-    title: 'Шок',
-    tags: 'shocked удивление omg шок',
-    url: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif',
-  },
-  {
-    title: 'Жду',
-    tags: 'waiting жду время clock',
-    url: 'https://media.giphy.com/media/QBd2kLB5qDmysEXre9/giphy.gif',
-  },
-  {
-    title: 'Привет',
-    tags: 'hi hello привет здарова wave',
-    url: 'https://media.giphy.com/media/3og0IQCsqncpVWxyTu/giphy.gif',
-  },
-  {
-    title: 'Грусть',
-    tags: 'sad грусть плачу cry',
-    url: 'https://media.giphy.com/media/ISOckXUybVfQ4/giphy.gif',
-  },
-  {
-    title: 'Сердце',
-    tags: 'love любовь сердце heart',
-    url: 'https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif',
-  },
-  {
-    title: 'Кот смотрит',
-    tags: 'cat кот смотрю кино',
-    url: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif',
-  },
+const GIF_CATEGORIES = [
+  { label: '🔥 Тренды', query: '' },
+  { label: '🎬 Кино', query: 'cinema movie popcorn' },
+  { label: '😂 Смех', query: 'funny laugh lol' },
+  { label: '❤️ Любовь', query: 'love heart cute' },
+  { label: '😱 Шок', query: 'shocked mind blown omg' },
+  { label: '🐱 Коты', query: 'cat funny' },
+  { label: '⚡ Аниме', query: 'anime reaction' },
+  { label: '👋 Привет', query: 'hello wave hi' },
+  { label: '👏 Браво', query: 'applause clap bravo' },
+];
+
+const FALLBACK_GIFS: GifItem[] = [
+  { id: 'f1', title: 'Попкорн', url: 'https://media.giphy.com/media/pUeXcg80cO8I8/giphy.gif', preview: 'https://media.giphy.com/media/pUeXcg80cO8I8/200w.gif' },
+  { id: 'f2', title: 'Браво', url: 'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif', preview: 'https://media.giphy.com/media/g9582DNuQppxC/200w.gif' },
+  { id: 'f3', title: 'Шедевр', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', preview: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/200w.gif' },
+  { id: 'f4', title: 'Взрыв мозга', url: 'https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.gif', preview: 'https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/200w.gif' },
+  { id: 'f5', title: 'Смех', url: 'https://media.giphy.com/media/10JhviFuU2gWD6/giphy.gif', preview: 'https://media.giphy.com/media/10JhviFuU2gWD6/200w.gif' },
+  { id: 'f6', title: 'Огонь', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif', preview: 'https://media.giphy.com/media/111ebonMs90YLu/200w.gif' },
+  { id: 'f7', title: 'Шок', url: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif', preview: 'https://media.giphy.com/media/5VKbvrjxpVJCM/200w.gif' },
+  { id: 'f8', title: 'Жду', url: 'https://media.giphy.com/media/QBd2kLB5qDmysEXre9/giphy.gif', preview: 'https://media.giphy.com/media/QBd2kLB5qDmysEXre9/200w.gif' },
+  { id: 'f9', title: 'Привет', url: 'https://media.giphy.com/media/3og0IQCsqncpVWxyTu/giphy.gif', preview: 'https://media.giphy.com/media/3og0IQCsqncpVWxyTu/200w.gif' },
+  { id: 'f10', title: 'Грусть', url: 'https://media.giphy.com/media/ISOckXUybVfQ4/giphy.gif', preview: 'https://media.giphy.com/media/ISOckXUybVfQ4/200w.gif' },
+  { id: 'f11', title: 'Сердце', url: 'https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif', preview: 'https://media.giphy.com/media/26BRv0ThflsHCqDrG/200w.gif' },
+  { id: 'f12', title: 'Кот печатает', url: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif', preview: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/200w.gif' },
+  { id: 'f13', title: 'Танец', url: 'https://media.giphy.com/media/l3vRlT2k2L35Cnn5C/giphy.gif', preview: 'https://media.giphy.com/media/l3vRlT2k2L35Cnn5C/200w.gif' },
+  { id: 'f14', title: 'Ок', url: 'https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif', preview: 'https://media.giphy.com/media/3o7abKhOpu0NwenH3O/200w.gif' },
+  { id: 'f15', title: 'Нет', url: 'https://media.giphy.com/media/vyTnNTrs3wqQ0UIvwE/giphy.gif', preview: 'https://media.giphy.com/media/vyTnNTrs3wqQ0UIvwE/200w.gif' },
+  { id: 'f16', title: 'Да!', url: 'https://media.giphy.com/media/3ohzdIuqJoo8QdKlnW/giphy.gif', preview: 'https://media.giphy.com/media/3ohzdIuqJoo8QdKlnW/200w.gif' },
+  { id: 'f17', title: 'Аниме вау', url: 'https://media.giphy.com/media/b2rLe6TwuIkyQ/giphy.gif', preview: 'https://media.giphy.com/media/b2rLe6TwuIkyQ/200w.gif' },
+  { id: 'f18', title: 'Круто', url: 'https://media.giphy.com/media/SVH9y2LQUVVCRcqD7o/giphy.gif', preview: 'https://media.giphy.com/media/SVH9y2LQUVVCRcqD7o/200w.gif' },
+  { id: 'f19', title: 'Думаю', url: 'https://media.giphy.com/media/a5viI92PAF89q/giphy.gif', preview: 'https://media.giphy.com/media/a5viI92PAF89q/200w.gif' },
+  { id: 'f20', title: 'Очки', url: 'https://media.giphy.com/media/1jnyRP4DorCh2/giphy.gif', preview: 'https://media.giphy.com/media/1jnyRP4DorCh2/200w.gif' },
+  { id: 'f21', title: 'Фейспалм', url: 'https://media.giphy.com/media/XsUtdIeJ0MWMo/giphy.gif', preview: 'https://media.giphy.com/media/XsUtdIeJ0MWMo/200w.gif' },
+  { id: 'f22', title: 'Вечеринка', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', preview: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/200w.gif' },
+  { id: 'f23', title: 'Кивок', url: 'https://media.giphy.com/media/NEvPzZ8bd1V4Y/giphy.gif', preview: 'https://media.giphy.com/media/NEvPzZ8bd1V4Y/200w.gif' },
+  { id: 'f24', title: 'Сон', url: 'https://media.giphy.com/media/mkhMTALnrYRLnuoe5P/giphy.gif', preview: 'https://media.giphy.com/media/mkhMTALnrYRLnuoe5P/200w.gif' },
 ];
 
 function formatMessageTime(iso: string) {
@@ -195,10 +190,18 @@ function MessagesContent() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
 
-  // Emoji & GIF Picker
+  // Reply, Edit, Copy & Active Message Actions
+  const [replyingTo, setReplyingTo] = useState<DirectMessageItem | null>(null);
+  const [editingMsg, setEditingMsg] = useState<DirectMessageItem | null>(null);
+  const [activeMsgActionsId, setActiveMsgActionsId] = useState<string | null>(null);
+  const [chatToast, setChatToast] = useState<string | null>(null);
+
+  // Emoji & Live GIF Picker
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerTab, setPickerTab] = useState<'emoji' | 'gif'>('emoji');
   const [gifSearch, setGifSearch] = useState('');
+  const [gifResults, setGifResults] = useState<GifItem[]>(FALLBACK_GIFS);
+  const [loadingGifs, setLoadingGifs] = useState(false);
 
   // Fullscreen image lightbox
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -215,8 +218,14 @@ function MessagesContent() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const prevMsgCountRef = useRef(0);
   const lastTypingPingRef = useRef(0);
+
+  const showChatToast = (msg: string) => {
+    setChatToast(msg);
+    setTimeout(() => setChatToast((prev) => (prev === msg ? null : prev)), 2200);
+  };
 
   useEffect(() => {
     hydrate();
@@ -229,9 +238,7 @@ function MessagesContent() {
   }, [hydrated, accessToken, router]);
 
   useEffect(() => {
-    if (initialFriendId) {
-      setSelectedFriendId(initialFriendId);
-    }
+    if (initialFriendId) setSelectedFriendId(initialFriendId);
   }, [initialFriendId]);
 
   const loadConversations = useCallback(async () => {
@@ -282,23 +289,26 @@ function MessagesContent() {
     if (accessToken && selectedFriendId) {
       prevMsgCountRef.current = 0;
       setIsFriendTyping(false);
+      setReplyingTo(null);
+      setEditingMsg(null);
       loadThread(selectedFriendId, false);
     }
   }, [accessToken, selectedFriendId, loadThread]);
 
-  // Smooth live polling every 2 seconds for instant messages & typing indicator
+  // Live polling (pauses automatically when browser tab is hidden to save CPU/battery)
   useEffect(() => {
     if (!accessToken) return;
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       loadConversations();
       if (selectedFriendId) {
         loadThread(selectedFriendId, true);
       }
-    }, 2000);
+    }, 2200);
     return () => clearInterval(interval);
   }, [accessToken, selectedFriendId, loadConversations, loadThread]);
 
-  // Auto-scroll smoothly when new messages or typing bubble arrive
+  // Smooth auto-scroll on new messages or typing bubble
   useEffect(() => {
     if (messages.length > prevMsgCountRef.current || isFriendTyping) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -306,7 +316,45 @@ function MessagesContent() {
     prevMsgCountRef.current = messages.length;
   }, [messages.length, isFriendTyping]);
 
-  // Notify server when current user is typing (throttled every 2.2s)
+  // Live GIF search via backend /api/media/gifs (Tenor API -> thousands of GIFs + fallback)
+  useEffect(() => {
+    if (!pickerOpen || pickerTab !== 'gif') return;
+    let cancelled = false;
+    setLoadingGifs(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/media/gifs?q=${encodeURIComponent(gifSearch.trim())}&limit=32`
+        );
+        if (res.ok && !cancelled) {
+          const items = await res.json();
+          if (Array.isArray(items) && items.length > 0) {
+            setGifResults(items);
+            return;
+          }
+        }
+        if (!cancelled) {
+          const q = gifSearch.trim().toLowerCase();
+          setGifResults(
+            q
+              ? FALLBACK_GIFS.filter((g) => g.title.toLowerCase().includes(q))
+              : FALLBACK_GIFS
+          );
+        }
+      } catch {
+        if (!cancelled) setGifResults(FALLBACK_GIFS);
+      } finally {
+        if (!cancelled) setLoadingGifs(false);
+      }
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [pickerOpen, pickerTab, gifSearch]);
+
   const triggerTypingPing = useCallback(() => {
     if (!selectedFriendId || !accessToken) return;
     const now = Date.now();
@@ -386,7 +434,7 @@ function MessagesContent() {
     e.target.value = '';
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      notifyFriend('Файл слишком большой (максимум 10 МБ)');
+      showChatToast('Файл слишком большой (макс. 10 МБ)');
       return;
     }
     try {
@@ -394,12 +442,76 @@ function MessagesContent() {
       setPendingImage(compressed);
       setPickerOpen(false);
     } catch {
-      notifyFriend('Не удалось обработать фото');
+      showChatToast('Не удалось обработать фото');
     }
   };
 
-  const sendPayload = async (payload: { content?: string; imageUrl?: string; gifUrl?: string }) => {
-    if (!selectedFriendId || sending) return;
+  const handleCopyMessage = async (msg: DirectMessageItem) => {
+    const textToCopy = msg.content || msg.movieTitle || '';
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      showChatToast('Скопировано ✓');
+    } catch {
+      showChatToast('Не удалось скопировать');
+    }
+    setActiveMsgActionsId(null);
+  };
+
+  const handleStartReply = (msg: DirectMessageItem) => {
+    setEditingMsg(null);
+    setReplyingTo(msg);
+    setActiveMsgActionsId(null);
+    inputRef.current?.focus();
+  };
+
+  const handleStartEdit = (msg: DirectMessageItem) => {
+    setReplyingTo(null);
+    setEditingMsg(msg);
+    setDraft(msg.content || '');
+    setActiveMsgActionsId(null);
+    inputRef.current?.focus();
+  };
+
+  const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (!user) return;
+    setActiveMsgActionsId(null);
+
+    // Optimistic update for instant feel
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        const map = { ...(m.reactions || {}) };
+        const list = Array.isArray(map[emoji]) ? [...map[emoji]] : [];
+        const idx = list.indexOf(user.id);
+        if (idx >= 0) list.splice(idx, 1);
+        else list.push(user.id);
+        if (list.length === 0) delete map[emoji];
+        else map[emoji] = list;
+        return { ...m, reactions: map };
+      })
+    );
+
+    const res = await authFetch(`/social/messages/${encodeURIComponent(messageId)}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }).catch(() => null);
+
+    if (res?.ok) {
+      const updated = await res.json();
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, ...updated } : m)));
+    }
+  };
+
+  const sendPayload = async (payload: {
+    content?: string;
+    imageUrl?: string;
+    gifUrl?: string;
+    replyToId?: string;
+    replyToContent?: string;
+    replyToSenderName?: string;
+  }) => {
+    if (!selectedFriendId || sending) return false;
     setSending(true);
     try {
       const res = await authFetch(`/social/messages/${encodeURIComponent(selectedFriendId)}`, {
@@ -420,36 +532,78 @@ function MessagesContent() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFriendId || (!draft.trim() && !pendingImage) || sending) return;
+    if (!selectedFriendId || sending) return;
+
+    // Handle Edit mode
+    if (editingMsg) {
+      const updatedText = draft.trim();
+      if (!updatedText) return;
+      setSending(true);
+      try {
+        const res = await authFetch(`/social/messages/${encodeURIComponent(editingMsg.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ content: updatedText }),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setMessages((prev) => prev.map((m) => (m.id === editingMsg.id ? { ...m, ...updated } : m)));
+          setEditingMsg(null);
+          setDraft('');
+          showChatToast('Сообщение изменено ✓');
+        }
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    if (!draft.trim() && !pendingImage) return;
 
     const text = draft.trim();
     const img = pendingImage;
+    const reply = replyingTo;
+
     setDraft('');
     setPendingImage(null);
+    setReplyingTo(null);
     setPickerOpen(false);
 
     const ok = await sendPayload({
       content: text || undefined,
       imageUrl: img || undefined,
+      replyToId: reply?.id,
+      replyToContent: reply
+        ? reply.content || reply.movieTitle || (reply.imageUrl ? '📷 Фото' : reply.gifUrl ? '🎞️ GIF' : '')
+        : undefined,
+      replyToSenderName: reply
+        ? reply.senderId === user?.id
+          ? user?.name
+          : activeFriend?.name || 'Друг'
+        : undefined,
     });
+
     if (!ok) {
       setDraft(text);
       setPendingImage(img);
+      setReplyingTo(reply);
     }
   };
 
   const handleSendGif = async (gifUrl: string) => {
     setPickerOpen(false);
-    await sendPayload({ gifUrl });
+    const reply = replyingTo;
+    setReplyingTo(null);
+    await sendPayload({
+      gifUrl,
+      replyToId: reply?.id,
+      replyToContent: reply ? reply.content || reply.movieTitle || 'Сообщение' : undefined,
+      replyToSenderName: reply
+        ? reply.senderId === user?.id
+          ? user?.name
+          : activeFriend?.name || 'Друг'
+        : undefined,
+    });
   };
-
-  const filteredGifs = gifSearch.trim()
-    ? CURATED_GIFS.filter(
-        (g) =>
-          g.title.toLowerCase().includes(gifSearch.toLowerCase()) ||
-          g.tags.toLowerCase().includes(gifSearch.toLowerCase())
-      )
-    : CURATED_GIFS;
 
   if (!hydrated || !user) return null;
 
@@ -463,7 +617,21 @@ function MessagesContent() {
         onChange={handlePhotoPick}
       />
 
-      {/* Compact Header (hidden on mobile when inside an active chat thread for max screen space) */}
+      {/* Floating Micro-Toast */}
+      <AnimatePresence>
+        {chatToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[80] px-4 py-2 rounded-2xl bg-[#181821]/95 border border-[#8065FF]/50 text-xs font-bold text-white shadow-2xl backdrop-blur-md"
+          >
+            {chatToast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Compact Header */}
       <div
         className={`${
           selectedFriendId ? 'hidden md:flex' : 'flex'
@@ -509,7 +677,6 @@ function MessagesContent() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {/* Incoming Friend Requests */}
             <AnimatePresence>
               {incomingRequests.length > 0 && (
                 <motion.div
@@ -541,7 +708,6 @@ function MessagesContent() {
                           type="button"
                           onClick={() => handleRejectFriend(req.requestId)}
                           className="p-1 rounded-lg text-[#92929F] hover:text-red-400"
-                          title="Отклонить"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -603,6 +769,7 @@ function MessagesContent() {
                         <img
                           src={conv.friend.avatarUrl}
                           alt={conv.friend.name}
+                          decoding="async"
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -656,7 +823,7 @@ function MessagesContent() {
               </div>
               <h2 className="text-lg font-bold text-white">Выберите друга для переписки</h2>
               <p className="text-xs text-[#92929F] max-w-sm leading-relaxed">
-                Отправляйте фото, эмодзи, GIF и карточки фильмов прямо со страницы любого тайтла.
+                Отправляйте фото, эмодзи, тысячи GIF, реакции, ответы и карточки фильмов!
               </p>
             </div>
           ) : (
@@ -668,7 +835,6 @@ function MessagesContent() {
                     type="button"
                     onClick={() => setSelectedFriendId(null)}
                     className="md:hidden p-2 rounded-xl bg-[#181821] text-[#92929F] hover:text-white active:scale-95 transition-transform"
-                    aria-label="Назад к списку"
                   >
                     <ArrowLeft className="w-4 h-4" />
                   </button>
@@ -729,7 +895,10 @@ function MessagesContent() {
               </div>
 
               {/* Messages Feed */}
-              <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-2.5 bg-[#09090D]/50 scroll-smooth">
+              <div
+                onClick={() => setActiveMsgActionsId(null)}
+                className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3 bg-[#09090D]/50 scroll-smooth"
+              >
                 {loadingChat ? (
                   <div className="py-12 text-center text-xs text-[#92929F]">
                     Загрузка сообщений...
@@ -745,37 +914,116 @@ function MessagesContent() {
                   <AnimatePresence initial={false}>
                     {messages.map((msg) => {
                       const isMine = msg.senderId === user.id;
+                      const showActions = activeMsgActionsId === msg.id;
                       const movieHref = msg.movieTmdbId
                         ? `/movie/${msg.movieTmdbId}?type=${
                             msg.movieMediaType === 'SERIES' ? 'tv' : 'movie'
                           }`
                         : null;
+                      const reactionEntries = Object.entries(msg.reactions || {}).filter(
+                        ([, users]) => Array.isArray(users) && users.length > 0
+                      );
 
                       return (
                         <motion.div
                           key={msg.id}
-                          initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                          initial={{ opacity: 0, y: 10, scale: 0.97 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                          className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+                          transition={{ type: 'spring', stiffness: 440, damping: 32 }}
+                          className={`group flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
                         >
+                          {/* Quick Hover / Tap Action Bar (Reactions + Reply + Copy + Edit) */}
                           <div
-                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg ${
+                            onClick={(e) => e.stopPropagation()}
+                            className={`mb-1 flex items-center gap-1 px-2 py-1 rounded-2xl bg-[#181821]/95 border border-[#292936] shadow-xl backdrop-blur-md transition-all ${
+                              showActions
+                                ? 'opacity-100 scale-100 pointer-events-auto'
+                                : 'opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto'
+                            }`}
+                          >
+                            {QUICK_REACTIONS.map((em) => (
+                              <button
+                                key={em}
+                                type="button"
+                                onClick={() => handleToggleReaction(msg.id, em)}
+                                className="w-6 h-6 rounded-lg hover:bg-white/10 hover:scale-125 active:scale-95 text-sm flex items-center justify-center transition-transform"
+                              >
+                                {em}
+                              </button>
+                            ))}
+                            <span className="w-px h-4 bg-[#292936] mx-0.5" />
+                            <button
+                              type="button"
+                              onClick={() => handleStartReply(msg)}
+                              title="Ответить"
+                              className="p-1.5 rounded-lg text-[#92929F] hover:text-white hover:bg-white/10"
+                            >
+                              <Reply className="w-3.5 h-3.5" />
+                            </button>
+                            {(msg.content || msg.movieTitle) && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyMessage(msg)}
+                                title="Копировать"
+                                className="p-1.5 rounded-lg text-[#92929F] hover:text-white hover:bg-white/10"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {isMine && msg.content && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(msg)}
+                                title="Редактировать"
+                                className="p-1.5 rounded-lg text-[#92929F] hover:text-[#A18BFF] hover:bg-white/10"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Message Bubble */}
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMsgActionsId((cur) => (cur === msg.id ? null : msg.id));
+                            }}
+                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg cursor-pointer ${
                               isMine
                                 ? 'bg-[#8065FF] text-white rounded-br-md'
                                 : 'bg-[#181821] border border-[#292936] text-white rounded-bl-md'
                             }`}
                           >
+                            {/* Quoted Reply Preview */}
+                            {msg.replyToContent && (
+                              <div
+                                className={`px-2.5 py-1.5 rounded-xl border-l-2 text-xs ${
+                                  isMine
+                                    ? 'bg-black/20 border-white/70 text-white/90'
+                                    : 'bg-[#111119] border-[#A18BFF] text-[#B8B6C8]'
+                                }`}
+                              >
+                                <p className="font-bold text-[10px] opacity-85">
+                                  {msg.replyToSenderName || 'Ответ'}
+                                </p>
+                                <p className="line-clamp-1 text-[11px]">{msg.replyToContent}</p>
+                              </div>
+                            )}
+
                             {/* Uploaded Photo */}
                             {msg.imageUrl && (
                               <button
                                 type="button"
-                                onClick={() => setLightboxUrl(msg.imageUrl!)}
-                                className="block overflow-hidden rounded-xl max-w-[280px] sm:max-w-[320px] focus:outline-none"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLightboxUrl(msg.imageUrl!);
+                                }}
+                                className="block overflow-hidden rounded-xl max-w-[280px] sm:max-w-[320px]"
                               >
                                 <img
                                   src={msg.imageUrl}
                                   alt="Фото"
+                                  decoding="async"
                                   className="w-full max-h-72 object-cover rounded-xl hover:scale-[1.02] transition-transform duration-200"
                                 />
                               </button>
@@ -785,22 +1033,28 @@ function MessagesContent() {
                             {msg.gifUrl && (
                               <button
                                 type="button"
-                                onClick={() => setLightboxUrl(msg.gifUrl!)}
-                                className="block overflow-hidden rounded-xl max-w-[260px] focus:outline-none"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLightboxUrl(msg.gifUrl!);
+                                }}
+                                className="block overflow-hidden rounded-xl max-w-[260px]"
                               >
                                 <img
                                   src={msg.gifUrl}
                                   alt="GIF"
+                                  loading="lazy"
+                                  decoding="async"
                                   className="w-full max-h-60 object-cover rounded-xl"
                                 />
                               </button>
                             )}
 
-                            {/* Embedded Shared Movie Card */}
+                            {/* Shared Movie Card */}
                             {movieHref && msg.movieTitle && (
                               <Link
                                 href={movieHref}
-                                className={`group flex items-center gap-3 p-2.5 rounded-xl transition-all ${
+                                onClick={(e) => e.stopPropagation()}
+                                className={`group/card flex items-center gap-3 p-2.5 rounded-xl transition-all ${
                                   isMine
                                     ? 'bg-black/25 hover:bg-black/35 border border-white/15'
                                     : 'bg-[#111119] hover:border-[#8065FF] border border-[#292936]'
@@ -811,7 +1065,7 @@ function MessagesContent() {
                                     <img
                                       src={msg.moviePosterPath}
                                       alt={msg.movieTitle}
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                      className="w-full h-full object-cover group-hover/card:scale-105 transition-transform"
                                     />
                                   ) : (
                                     <Film className="w-5 h-5 text-[#92929F]" />
@@ -848,12 +1102,13 @@ function MessagesContent() {
                               </p>
                             )}
 
-                            {/* Timestamp + Read Check */}
+                            {/* Timestamp + Edited + Read Check */}
                             <div
-                              className={`flex items-center justify-end gap-1 text-[10px] ${
+                              className={`flex items-center justify-end gap-1.5 text-[10px] ${
                                 isMine ? 'text-white/75' : 'text-[#92929F]'
                               }`}
                             >
+                              {msg.editedAt && <span className="italic opacity-80">изм.</span>}
                               <span>{formatMessageTime(msg.createdAt)}</span>
                               {isMine &&
                                 (msg.isRead ? (
@@ -863,13 +1118,41 @@ function MessagesContent() {
                                 ))}
                             </div>
                           </div>
+
+                          {/* Reactions Pills */}
+                          {reactionEntries.length > 0 && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex flex-wrap items-center gap-1 mt-1 px-1"
+                            >
+                              {reactionEntries.map(([emoji, userIds]) => {
+                                const reactedByMe = userIds.includes(user.id);
+                                return (
+                                  <motion.button
+                                    key={emoji}
+                                    type="button"
+                                    whileTap={{ scale: 0.88 }}
+                                    onClick={() => handleToggleReaction(msg.id, emoji)}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border transition-all ${
+                                      reactedByMe
+                                        ? 'bg-[#8065FF]/25 border-[#8065FF] text-white'
+                                        : 'bg-[#181821] border-[#292936] text-[#B8B6C8] hover:border-[#8065FF]/60'
+                                    }`}
+                                  >
+                                    <span>{emoji}</span>
+                                    <span className="text-[10px]">{userIds.length}</span>
+                                  </motion.button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </motion.div>
                       );
                     })}
                   </AnimatePresence>
                 )}
 
-                {/* Live Animated Typing Indicator Bubble */}
+                {/* Animated Typing Indicator */}
                 <AnimatePresence>
                   {isFriendTyping && (
                     <motion.div
@@ -900,6 +1183,57 @@ function MessagesContent() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* Active Reply / Edit Context Bar */}
+              <AnimatePresence>
+                {(replyingTo || editingMsg) && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="px-4 py-2 bg-[#181821] border-t border-[#292936] flex items-center justify-between gap-3 shrink-0"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {editingMsg ? (
+                        <Pencil className="w-4 h-4 text-[#A18BFF] shrink-0" />
+                      ) : (
+                        <Reply className="w-4 h-4 text-[#A18BFF] shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold text-[#A18BFF]">
+                          {editingMsg
+                            ? 'Редактирование сообщения'
+                            : `Ответ для ${
+                                replyingTo?.senderId === user.id
+                                  ? user.name
+                                  : activeFriend?.name || 'друга'
+                              }`}
+                        </p>
+                        <p className="text-xs text-[#92929F] truncate">
+                          {editingMsg
+                            ? editingMsg.content
+                            : replyingTo?.content ||
+                              replyingTo?.movieTitle ||
+                              (replyingTo?.imageUrl ? '📷 Фото' : '🎞️ GIF')}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyingTo(null);
+                        if (editingMsg) {
+                          setEditingMsg(null);
+                          setDraft('');
+                        }
+                      }}
+                      className="p-1.5 rounded-lg text-[#92929F] hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Pending Photo Preview */}
               <AnimatePresence>
                 {pendingImage && (
@@ -928,7 +1262,7 @@ function MessagesContent() {
                 )}
               </AnimatePresence>
 
-              {/* Animated Emoji & GIF Picker Tray */}
+              {/* Animated Emoji & Thousands-of-GIFs Picker Tray */}
               <AnimatePresence>
                 {pickerOpen && (
                   <motion.div
@@ -936,7 +1270,7 @@ function MessagesContent() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 12, scale: 0.98 }}
                     transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                    className="border-t border-[#292936] bg-[#14141D] p-3 space-y-2.5 shrink-0 max-h-64 flex flex-col"
+                    className="border-t border-[#292936] bg-[#14141D] p-3 space-y-2.5 shrink-0 max-h-72 flex flex-col"
                   >
                     <div className="flex items-center justify-between gap-2 shrink-0">
                       <div className="flex items-center gap-1 bg-[#09090D] p-1 rounded-xl border border-[#292936]">
@@ -969,8 +1303,8 @@ function MessagesContent() {
                           type="text"
                           value={gifSearch}
                           onChange={(e) => setGifSearch(e.target.value)}
-                          placeholder="Поиск GIF (попкорн, огонь...)..."
-                          className="flex-1 max-w-[220px] px-3 py-1.5 rounded-lg bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
+                          placeholder="Искать любые GIF (кино, коты, мемы)..."
+                          className="flex-1 max-w-[260px] px-3 py-1.5 rounded-lg bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
                         />
                       )}
 
@@ -982,6 +1316,25 @@ function MessagesContent() {
                         <X className="w-4 h-4" />
                       </button>
                     </div>
+
+                    {pickerTab === 'gif' && (
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0">
+                        {GIF_CATEGORIES.map((cat) => (
+                          <button
+                            key={cat.label}
+                            type="button"
+                            onClick={() => setGifSearch(cat.query)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap border transition-all ${
+                              gifSearch === cat.query
+                                ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF]'
+                                : 'bg-[#09090D] border-[#292936] text-[#92929F] hover:text-white'
+                            }`}
+                          >
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="flex-1 overflow-y-auto pr-1">
                       {pickerTab === 'emoji' ? (
@@ -1009,24 +1362,26 @@ function MessagesContent() {
                             </div>
                           ))}
                         </div>
+                      ) : loadingGifs ? (
+                        <div className="py-8 text-center text-xs text-[#92929F]">
+                          Загрузка GIF...
+                        </div>
                       ) : (
                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                          {filteredGifs.map((g) => (
+                          {gifResults.map((g) => (
                             <button
-                              key={g.url}
+                              key={g.id}
                               type="button"
                               onClick={() => handleSendGif(g.url)}
                               className="group relative aspect-video rounded-xl overflow-hidden bg-[#09090D] border border-[#292936] hover:border-[#8065FF] transition-all"
                             >
                               <img
-                                src={g.url}
+                                src={g.preview || g.url}
                                 alt={g.title}
                                 loading="lazy"
+                                decoding="async"
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               />
-                              <span className="absolute inset-x-0 bottom-0 px-1.5 py-0.5 bg-black/70 text-[10px] font-bold text-white truncate">
-                                {g.title}
-                              </span>
                             </button>
                           ))}
                         </div>
@@ -1041,14 +1396,16 @@ function MessagesContent() {
                 onSubmit={handleSend}
                 className="p-2.5 sm:p-3.5 border-t border-[#292936] bg-[#111119] flex items-center gap-2 shrink-0"
               >
-                <button
-                  type="button"
-                  onClick={() => photoInputRef.current?.click()}
-                  title="Прикрепить фото"
-                  className="p-2.5 rounded-xl bg-[#181821] hover:bg-[#252533] border border-[#292936] text-[#92929F] hover:text-[#A18BFF] active:scale-95 transition-all shrink-0"
-                >
-                  <ImagePlus className="w-4 h-4" />
-                </button>
+                {!editingMsg && (
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    title="Прикрепить фото"
+                    className="p-2.5 rounded-xl bg-[#181821] hover:bg-[#252533] border border-[#292936] text-[#92929F] hover:text-[#A18BFF] active:scale-95 transition-all shrink-0"
+                  >
+                    <ImagePlus className="w-4 h-4" />
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1064,13 +1421,14 @@ function MessagesContent() {
                 </button>
 
                 <input
+                  ref={inputRef}
                   type="text"
                   value={draft}
                   onChange={(e) => {
                     setDraft(e.target.value);
-                    if (e.target.value.trim()) triggerTypingPing();
+                    if (e.target.value.trim() && !editingMsg) triggerTypingPing();
                   }}
-                  placeholder="Сообщение..."
+                  placeholder={editingMsg ? 'Измените текст сообщения...' : 'Сообщение...'}
                   className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
                 />
 
@@ -1080,8 +1438,10 @@ function MessagesContent() {
                   disabled={(!draft.trim() && !pendingImage) || sending}
                   className="inline-flex items-center justify-center gap-2 px-3.5 sm:px-5 py-2.5 rounded-xl brand-btn text-white text-sm font-bold disabled:opacity-40 transition-all shrink-0"
                 >
-                  <Send className="w-4 h-4" />
-                  <span className="hidden sm:inline">Отправить</span>
+                  {editingMsg ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                  <span className="hidden sm:inline">
+                    {editingMsg ? 'Сохранить' : 'Отправить'}
+                  </span>
                 </motion.button>
               </form>
             </>
@@ -1119,7 +1479,7 @@ function MessagesContent() {
         )}
       </AnimatePresence>
 
-      {/* Add Friend Modal right inside Messenger */}
+      {/* Add Friend Modal */}
       <AnimatePresence>
         {isAddFriendOpen && (
           <motion.div

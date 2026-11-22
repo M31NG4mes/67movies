@@ -65,15 +65,33 @@ function NavbarContent() {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  // Poll unread chat messages badge & check admin access
+  // Check admin role once per login session (not on every route change)
   useEffect(() => {
     if (!accessToken) {
-      setUnreadMessages(0);
       setCanAccessAdmin(false);
       return;
     }
     let cancelled = false;
+    authFetch('/admin/access', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setCanAccessAdmin(Boolean(d?.canAccessAdmin));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  // Poll unread chat messages badge (pauses when tab is hidden)
+  useEffect(() => {
+    if (!accessToken) {
+      setUnreadMessages(0);
+      return;
+    }
+    let cancelled = false;
     const fetchUnread = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       const res = await authFetch('/social/messages/unread-count', { cache: 'no-store' }).catch(
         () => null
       );
@@ -82,14 +100,8 @@ function NavbarContent() {
         setUnreadMessages(Number(data?.unreadCount || 0));
       }
     };
-    authFetch('/admin/access', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled) setCanAccessAdmin(Boolean(d?.canAccessAdmin));
-      })
-      .catch(() => {});
     fetchUnread();
-    const timer = setInterval(fetchUnread, 12000);
+    const timer = setInterval(fetchUnread, 20000);
     return () => {
       cancelled = true;
       clearInterval(timer);

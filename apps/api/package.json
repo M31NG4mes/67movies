@@ -12,6 +12,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "test:unit": "node --test test/unit.test.mjs",
+    "test:integration": "node --test test/integration.test.mjs",
+    "test:e2e": "node --test test/e2e.test.mjs",
+    "test": "node --test test/unit.test.mjs test/integration.test.mjs test/e2e.test.mjs",
     "clean": "rimraf dist"
   },
   "dependencies": {

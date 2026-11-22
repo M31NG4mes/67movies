@@ -10,7 +10,7 @@ interface MediaCardProps {
   fluid?: boolean;
 }
 
-export function MediaCard({ media, fluid = false }: MediaCardProps) {
+function MediaCardInner({ media, fluid = false }: MediaCardProps) {
   const ageVerified18 = usePreferencesStore((s) => s.ageVerified18);
   const poster =
     media.posterPath ||
@@ -39,7 +39,8 @@ export function MediaCard({ media, fluid = false }: MediaCardProps) {
           src={poster}
           alt={media.title}
           loading="lazy"
-          className={`w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 ${
+          decoding="async"
+          className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
             is18Plus && !ageVerified18 ? 'blur-md scale-105 brightness-75' : ''
           }`}
         />
@@ -74,3 +75,5 @@ export function MediaCard({ media, fluid = false }: MediaCardProps) {
     </Link>
   );
 }
+
+export const MediaCard = React.memo(MediaCardInner);

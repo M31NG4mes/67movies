@@ -261,6 +261,44 @@ export class ExternalMediaService {
   }
 
   /**
+   * 6. Live GIF Search (Tenor public API) — thousands of GIFs for chat
+   */
+  async searchGifs(query?: string, limit = 32): Promise<Array<{ id: string; title: string; url: string; preview: string }>> {
+    const q = (query || '').trim();
+    const safeLimit = Math.min(40, Math.max(8, Number(limit) || 32));
+    const cacheKey = `ext:gifs:${q.toLowerCase() || 'trending'}:${safeLimit}`;
+    const cached = await this.redisService.get<any[]>(cacheKey);
+    if (cached && cached.length > 0) return cached;
+
+    const apiKey = this.configService.get<string>('TENOR_API_KEY') || 'LIVDSRZULELA';
+    const endpoint = q
+      ? `https://g.tenor.com/v1/search?q=${encodeURIComponent(q)}&key=${apiKey}&limit=${safeLimit}&contentfilter=medium`
+      : `https://g.tenor.com/v1/trending?key=${apiKey}&limit=${safeLimit}&contentfilter=medium`;
+
+    const data = await this.fetchJson<any>(endpoint);
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const mapped = results
+      .map((item: any) => {
+        const media = item?.media?.[0];
+        const url = media?.gif?.url || media?.mediumgif?.url || media?.tinygif?.url;
+        const preview = media?.tinygif?.url || media?.nanogif?.url || url;
+        if (!url) return null;
+        return {
+          id: String(item.id),
+          title: item.content_description || item.title || 'GIF',
+          url,
+          preview,
+        };
+      })
+      .filter(Boolean);
+
+    if (mapped.length > 0) {
+      await this.redisService.set(cacheKey, mapped, 600);
+    }
+    return mapped;
+  }
+
+  /**
    * Combined enrichment endpoint for /movie/[id]
    */
   async getAllExtras(params: {

@@ -8,7 +8,7 @@ import {
   CatalogSort,
 } from '../../components/media/CatalogFilters';
 import { mockMoviesCatalog, mockSeriesCatalog } from '../../lib/catalog-data';
-import { Genre, MediaType } from '@cinemaflow/types';
+import { Genre, MediaItem, MediaType } from '@cinemaflow/types';
 
 interface CatalogPageProps {
   searchParams?: {
@@ -148,7 +148,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-5 animate-fadeIn">
-          {items.map((item) => (
+          {items.map((item: MediaItem) => (
             <MediaCard key={item.id} media={item} fluid />
           ))}
         </div>

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TmdbService } from './tmdb.service';
+import { AppCacheService } from '../../common/cache/cache.service';
 import { Genre, MediaItem, MediaType, PaginatedResult, Season } from '@cinemaflow/types';
 
 @Injectable()
@@ -7,50 +8,68 @@ export class MediaService {
   private readonly logger = new Logger(MediaService.name);
   private readonly kpUrlCache = new Map<string, string>();
 
-  constructor(private readonly tmdbService: TmdbService) {}
+  constructor(
+    private readonly tmdbService: TmdbService,
+    private readonly cache: AppCacheService,
+  ) {}
 
   async getTrending(mediaType: 'movie' | 'tv' | 'all' = 'all', timeWindow: 'day' | 'week' = 'day', page = 1): Promise<PaginatedResult<MediaItem>> {
-    return this.tmdbService.getTrending(mediaType, timeWindow, page);
+    return this.cache.wrap(`media:trending:${mediaType}:${timeWindow}:${page}`, 600, () =>
+      this.tmdbService.getTrending(mediaType, timeWindow, page),
+    );
   }
 
   async getPopularMovies(page = 1): Promise<PaginatedResult<MediaItem>> {
-    return this.tmdbService.getPopularMovies(page);
+    return this.cache.wrap(`media:pop:movie:${page}`, 600, () =>
+      this.tmdbService.getPopularMovies(page),
+    );
   }
 
   async getPopularTv(page = 1): Promise<PaginatedResult<MediaItem>> {
-    return this.tmdbService.getPopularTv(page);
+    return this.cache.wrap(`media:pop:tv:${page}`, 600, () =>
+      this.tmdbService.getPopularTv(page),
+    );
   }
 
   async getNewMovies(page = 1): Promise<PaginatedResult<MediaItem>> {
-    return this.tmdbService.getNewMovies(page);
+    return this.cache.wrap(`media:new:movie:${page}`, 600, () =>
+      this.tmdbService.getNewMovies(page),
+    );
   }
 
   async getNewTv(page = 1): Promise<PaginatedResult<MediaItem>> {
-    return this.tmdbService.getNewTv(page);
+    return this.cache.wrap(`media:new:tv:${page}`, 600, () =>
+      this.tmdbService.getNewTv(page),
+    );
   }
 
   async search(query: string, page = 1): Promise<PaginatedResult<MediaItem>> {
-    return this.tmdbService.searchMulti(query, page);
+    const key = `media:search:${query.trim().toLowerCase()}:${page}`;
+    return this.cache.wrap(key, 180, () => this.tmdbService.searchMulti(query, page));
   }
 
   async getMovieDetails(id: string | number): Promise<MediaItem | null> {
-    return this.tmdbService.getMovieDetails(id);
+    return this.cache.wrap(`media:movie:${id}`, 900, () => this.tmdbService.getMovieDetails(id));
   }
 
   async getTvDetails(id: string | number): Promise<MediaItem | null> {
-    return this.tmdbService.getTvDetails(id);
+    return this.cache.wrap(`media:tv:${id}`, 900, () => this.tmdbService.getTvDetails(id));
   }
 
   async getTvSeason(tvId: string | number, seasonNumber: number): Promise<Season | null> {
-    return this.tmdbService.getTvSeason(tvId, seasonNumber);
+    return this.cache.wrap(`media:tv:${tvId}:s:${seasonNumber}`, 900, () =>
+      this.tmdbService.getTvSeason(tvId, seasonNumber),
+    );
   }
 
   async getGenres(type: MediaType = 'movie'): Promise<Genre[]> {
-    return this.tmdbService.getGenres(type);
+    return this.cache.wrap(`media:genres:${type}`, 3600, () => this.tmdbService.getGenres(type));
   }
 
   async getCalendarReleases(year: number, month: number, type: 'all' | 'movie' | 'tv' = 'all') {
-    return this.tmdbService.getCalendarReleases(year, month, type);
+    return this.cache.wrap(`media:cal:${year}:${month}:${type}`, 1800, () =>
+      this.tmdbService.getCalendarReleases(year, month, type),
+    );
   }
 
   async discoverByGenre(
@@ -66,7 +85,10 @@ export class MediaService {
       originalLanguage?: string;
     }
   ): Promise<PaginatedResult<MediaItem>> {
-    return this.tmdbService.discoverByGenre(type, genreId, page, sort, extra);
+    const key = `media:discover:${type}:${genreId || 'all'}:${page}:${sort}:${JSON.stringify(extra || {})}`;
+    return this.cache.wrap(key, 300, () =>
+      this.tmdbService.discoverByGenre(type, genreId, page, sort, extra),
+    );
   }
 
   async getDetails(id: string, type?: MediaType): Promise<MediaItem | null> {

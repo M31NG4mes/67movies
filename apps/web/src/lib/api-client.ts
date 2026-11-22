@@ -17,7 +17,7 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 async function fetcher<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
   const isMutation = options?.method && options.method !== 'GET';
-  const fetchInit: RequestInit & { next?: { revalidate: number } } = {
+  const fetchInit: RequestInit & { next?: { revalidate?: number | false } } = {
     ...options,
     headers: {
       'Content-Type': 'application/json',

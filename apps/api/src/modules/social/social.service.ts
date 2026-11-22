@@ -8,14 +8,17 @@ import {
 import * as crypto from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { LocalStoreService } from '../../common/storage/local-store.service';
+import { sanitizeText } from '../../common/security/security.util';
 import { AuthService } from '../auth/auth.service';
 import { UsersService } from '../users/users.service';
 import { MediaTypeDto } from '../users/dto/users.dto';
 import {
   AddCollectionItemDto,
   CreateCollectionDto,
+  EditMessageDto,
   SendFriendRequestDto,
   SendMessageDto,
+  ToggleReactionDto,
   UpsertRatingDto,
 } from './dto/social.dto';
 
@@ -754,7 +757,7 @@ export class SocialService {
   async sendMessageToFriend(userId: string, friendId: string, dto: SendMessageDto) {
     await this.ensureAreFriends(userId, friendId);
 
-    const content = (dto.content || '').trim();
+    const content = sanitizeText(dto.content || '');
     const imageUrl = dto.imageUrl?.trim() || null;
     const gifUrl = dto.gifUrl?.trim() || null;
 
@@ -774,6 +777,10 @@ export class SocialService {
           content,
           imageUrl,
           gifUrl,
+          replyToId: dto.replyToId || null,
+          replyToContent: dto.replyToContent ? sanitizeText(dto.replyToContent).slice(0, 200) : null,
+          replyToSenderName: dto.replyToSenderName ? sanitizeText(dto.replyToSenderName).slice(0, 80) : null,
+          reactions: {},
           movieTmdbId: dto.movieTmdbId || null,
           movieMediaType: dto.movieTmdbId ? dto.movieMediaType || MediaTypeDto.MOVIE : null,
           movieTitle: dto.movieTitle || null,
@@ -790,6 +797,11 @@ export class SocialService {
       content,
       imageUrl,
       gifUrl,
+      replyToId: dto.replyToId || null,
+      replyToContent: dto.replyToContent ? sanitizeText(dto.replyToContent).slice(0, 200) : null,
+      replyToSenderName: dto.replyToSenderName ? sanitizeText(dto.replyToSenderName).slice(0, 80) : null,
+      editedAt: null,
+      reactions: {},
       movieTmdbId: dto.movieTmdbId || null,
       movieMediaType: dto.movieTmdbId ? dto.movieMediaType || MediaTypeDto.MOVIE : null,
       movieTitle: dto.movieTitle || null,
@@ -800,5 +812,81 @@ export class SocialService {
     this.memMessages.set(msg.id, msg);
     this.persistSocial();
     return msg;
+  }
+
+  async editMessage(userId: string, messageId: string, dto: EditMessageDto) {
+    const cleanContent = sanitizeText(dto.content);
+    if (!cleanContent) {
+      throw new BadRequestException('Текст сообщения не может быть пустым');
+    }
+
+    const dmModel = (this.db as any)?.directMessage;
+    if (dmModel) {
+      const existing = await dmModel.findUnique({ where: { id: messageId } });
+      if (!existing) throw new NotFoundException('Сообщение не найдено');
+      if (existing.senderId !== userId) {
+        throw new ForbiddenException('Вы можете редактировать только свои сообщения');
+      }
+      return dmModel.update({
+        where: { id: messageId },
+        data: { content: cleanContent, editedAt: new Date() },
+      });
+    }
+
+    const existing = this.memMessages.get(messageId);
+    if (!existing) throw new NotFoundException('Сообщение не найдено');
+    if (existing.senderId !== userId) {
+      throw new ForbiddenException('Вы можете редактировать только свои сообщения');
+    }
+    existing.content = cleanContent;
+    existing.editedAt = new Date();
+    this.persistSocial();
+    return existing;
+  }
+
+  async toggleMessageReaction(userId: string, messageId: string, dto: ToggleReactionDto) {
+    const emoji = dto.emoji.trim();
+    if (!emoji) throw new BadRequestException('Укажите эмодзи для реакции');
+
+    const applyToggle = (current: any) => {
+      const map: Record<string, string[]> =
+        current && typeof current === 'object' && !Array.isArray(current) ? { ...current } : {};
+      const list = Array.isArray(map[emoji]) ? [...map[emoji]] : [];
+      const idx = list.indexOf(userId);
+      if (idx >= 0) {
+        list.splice(idx, 1);
+      } else {
+        list.push(userId);
+      }
+      if (list.length === 0) {
+        delete map[emoji];
+      } else {
+        map[emoji] = list;
+      }
+      return map;
+    };
+
+    const dmModel = (this.db as any)?.directMessage;
+    if (dmModel) {
+      const existing = await dmModel.findUnique({ where: { id: messageId } });
+      if (!existing) throw new NotFoundException('Сообщение не найдено');
+      if (existing.senderId !== userId && existing.receiverId !== userId) {
+        throw new ForbiddenException('Нет доступа к этому диалогу');
+      }
+      const nextReactions = applyToggle(existing.reactions);
+      return dmModel.update({
+        where: { id: messageId },
+        data: { reactions: nextReactions },
+      });
+    }
+
+    const existing = this.memMessages.get(messageId);
+    if (!existing) throw new NotFoundException('Сообщение не найдено');
+    if (existing.senderId !== userId && existing.receiverId !== userId) {
+      throw new ForbiddenException('Нет доступа к этому диалогу');
+    }
+    existing.reactions = applyToggle(existing.reactions);
+    this.persistSocial();
+    return existing;
   }
 }

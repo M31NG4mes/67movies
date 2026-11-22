@@ -112,6 +112,11 @@ export class MediaController {
     return this.externalMediaService.getTvMazeSchedule(date);
   }
 
+  @Get('gifs')
+  async searchGifs(@Query('q') q?: string, @Query('limit') limit?: string) {
+    return this.externalMediaService.searchGifs(q, limit ? parseInt(limit, 10) : 32);
+  }
+
   @Get('extra/:id')
   async getExtras(
     @Param('id') id: string,

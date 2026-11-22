@@ -32,7 +32,7 @@ export default async function HomePage() {
     trending.length >= 5
       ? trending.slice(0, 5)
       : [...popularMovies.slice(0, 3), ...popularSeries.slice(0, 2)]
-  ).filter((item) => Boolean(item.backdropPath || item.posterPath));
+  ).filter((item: MediaItem) => Boolean(item.backdropPath || item.posterPath));
 
   const editorsChoice = [...popularMovies, ...popularSeries]
     .filter((item) => item.voteAverage >= 7.6)

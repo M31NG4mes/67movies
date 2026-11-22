@@ -373,6 +373,11 @@ model DirectMessage {
   content         String     @default("") @db.Text
   imageUrl        String?    @db.Text
   gifUrl          String?    @db.Text
+  replyToId       String?
+  replyToContent  String?    @db.Text
+  replyToSenderName String?
+  editedAt        DateTime?
+  reactions       Json       @default("{}")
   movieTmdbId     Int?
   movieMediaType  MediaType?
   movieTitle      String?

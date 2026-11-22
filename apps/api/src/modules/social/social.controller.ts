@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -15,8 +16,10 @@ import { MediaTypeDto } from '../users/dto/users.dto';
 import {
   AddCollectionItemDto,
   CreateCollectionDto,
+  EditMessageDto,
   SendFriendRequestDto,
   SendMessageDto,
+  ToggleReactionDto,
   UpsertRatingDto,
 } from './dto/social.dto';
 import { SocialService } from './social.service';
@@ -186,5 +189,25 @@ export class SocialController {
     @Param('friendId') friendId: string,
   ) {
     return this.socialService.setTypingStatus(user.userId, friendId);
+  }
+
+  @Patch('messages/:messageId')
+  @UseGuards(JwtAuthGuard)
+  editMessage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('messageId') messageId: string,
+    @Body() dto: EditMessageDto,
+  ) {
+    return this.socialService.editMessage(user.userId, messageId, dto);
+  }
+
+  @Post('messages/:messageId/reactions')
+  @UseGuards(JwtAuthGuard)
+  toggleMessageReaction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('messageId') messageId: string,
+    @Body() dto: ToggleReactionDto,
+  ) {
+    return this.socialService.toggleMessageReaction(user.userId, messageId, dto);
   }
 }

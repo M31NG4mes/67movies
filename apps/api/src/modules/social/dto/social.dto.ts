@@ -125,4 +125,33 @@ export class SendMessageDto {
   @IsString()
   @MaxLength(500)
   moviePosterPath?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  replyToId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  replyToContent?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  replyToSenderName?: string;
+}
+
+export class EditMessageDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  content: string;
+}
+
+export class ToggleReactionDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(16)
+  emoji: string;
 }
