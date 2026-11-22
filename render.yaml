@@ -3,7 +3,7 @@ services:
     name: 67movies-api
     runtime: node
     plan: free
-    buildCommand: pnpm install --no-frozen-lockfile && pnpm --filter @cinemaflow/api prisma:generate && pnpm --filter @cinemaflow/api build
+    buildCommand: pnpm install --no-frozen-lockfile --prod=false && pnpm --filter @cinemaflow/api prisma:generate && pnpm --filter @cinemaflow/api build
     startCommand: pnpm --filter @cinemaflow/api start:prod
     envVars:
       - key: NODE_VERSION
