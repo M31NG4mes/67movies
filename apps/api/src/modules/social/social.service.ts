@@ -48,6 +48,7 @@ export class SocialService {
   private readonly memRatings = new Map<string, InMemoryRating>();
   private readonly memCollections = new Map<string, any>();
   private readonly memMessages = new Map<string, any>();
+  private readonly typingStatus = new Map<string, number>(); // key: `${senderId}->${receiverId}`, val: expiresAt ms
 
   constructor(
     private readonly prisma: PrismaService,
@@ -635,6 +636,22 @@ export class SocialService {
     return { unreadCount };
   }
 
+  async setTypingStatus(userId: string, friendId: string) {
+    await this.ensureAreFriends(userId, friendId);
+    this.typingStatus.set(`${userId}->${friendId}`, Date.now() + 5000);
+    return { ok: true };
+  }
+
+  private isUserTypingTo(senderId: string, receiverId: string): boolean {
+    const exp = this.typingStatus.get(`${senderId}->${receiverId}`);
+    if (!exp) return false;
+    if (Date.now() > exp) {
+      this.typingStatus.delete(`${senderId}->${receiverId}`);
+      return false;
+    }
+    return true;
+  }
+
   async getConversations(userId: string) {
     const friendsData = await this.getFriendsOverview(userId);
     const dmModel = (this.db as any)?.directMessage;
@@ -674,6 +691,7 @@ export class SocialService {
           friend: f.user,
           unreadCount,
           lastMessage,
+          isTyping: this.isUserTypingTo(friendId, userId),
         };
       }),
     );
@@ -710,7 +728,7 @@ export class SocialService {
         take: 150,
       });
 
-      return { friend, messages };
+      return { friend, messages, isFriendTyping: this.isUserTypingTo(friendId, userId) };
     }
 
     let changed = false;
@@ -730,16 +748,22 @@ export class SocialService {
       });
 
     if (changed) this.persistSocial();
-    return { friend, messages };
+    return { friend, messages, isFriendTyping: this.isUserTypingTo(friendId, userId) };
   }
 
   async sendMessageToFriend(userId: string, friendId: string, dto: SendMessageDto) {
     await this.ensureAreFriends(userId, friendId);
 
     const content = (dto.content || '').trim();
-    if (!content && !dto.movieTmdbId) {
-      throw new BadRequestException('Введите текст сообщения или прикрепите фильм');
+    const imageUrl = dto.imageUrl?.trim() || null;
+    const gifUrl = dto.gifUrl?.trim() || null;
+
+    if (!content && !dto.movieTmdbId && !imageUrl && !gifUrl) {
+      throw new BadRequestException('Введите текст сообщения или прикрепите фото, GIF или фильм');
     }
+
+    // Clear typing indicator immediately once message is sent
+    this.typingStatus.delete(`${userId}->${friendId}`);
 
     const dmModel = (this.db as any)?.directMessage;
     if (dmModel) {
@@ -748,6 +772,8 @@ export class SocialService {
           senderId: userId,
           receiverId: friendId,
           content,
+          imageUrl,
+          gifUrl,
           movieTmdbId: dto.movieTmdbId || null,
           movieMediaType: dto.movieTmdbId ? dto.movieMediaType || MediaTypeDto.MOVIE : null,
           movieTitle: dto.movieTitle || null,
@@ -762,6 +788,8 @@ export class SocialService {
       senderId: userId,
       receiverId: friendId,
       content,
+      imageUrl,
+      gifUrl,
       movieTmdbId: dto.movieTmdbId || null,
       movieMediaType: dto.movieTmdbId ? dto.movieMediaType || MediaTypeDto.MOVIE : null,
       movieTitle: dto.movieTitle || null,

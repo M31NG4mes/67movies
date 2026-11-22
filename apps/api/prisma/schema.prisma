@@ -371,6 +371,8 @@ model DirectMessage {
   senderId        String
   receiverId      String
   content         String     @default("") @db.Text
+  imageUrl        String?    @db.Text
+  gifUrl          String?    @db.Text
   movieTmdbId     Int?
   movieMediaType  MediaType?
   movieTitle      String?

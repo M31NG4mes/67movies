@@ -99,6 +99,15 @@ export class SendMessageDto {
   content?: string;
 
   @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  gifUrl?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   movieTmdbId?: number;

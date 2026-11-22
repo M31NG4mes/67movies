@@ -178,4 +178,13 @@ export class SocialController {
   ) {
     return this.socialService.sendMessageToFriend(user.userId, friendId, dto);
   }
+
+  @Post('messages/:friendId/typing')
+  @UseGuards(JwtAuthGuard)
+  setTypingStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('friendId') friendId: string,
+  ) {
+    return this.socialService.setTypingStatus(user.userId, friendId);
+  }
 }

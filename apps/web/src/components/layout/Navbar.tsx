@@ -18,8 +18,10 @@ import {
   Film,
   MessageCircle,
   Shield,
+  Menu,
   User as UserIcon,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MediaItem } from '@cinemaflow/types';
 import { api } from '../../lib/api-client';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
@@ -38,6 +40,7 @@ function NavbarContent() {
   const pathname = usePathname();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -56,6 +59,11 @@ function NavbarContent() {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // Close mobile drawer automatically on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
 
   // Poll unread chat messages badge & check admin access
   useEffect(() => {
@@ -465,102 +473,201 @@ function NavbarContent() {
       </div>
 
       {/* =================================================================
-          MOBILE ONLY: Compact Top Bar (Logo + Search + Lang + Theme)
+          MOBILE ONLY: Minimal Floating Controls (Menu + Search)
+          All navigation & settings are tucked cleanly inside the Slide-Out Drawer
          ================================================================= */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 glass-nav-scrolled px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg brand-logo-badge flex items-center justify-center text-xs font-black text-white">
-            67
-          </span>
-          <div className="flex items-baseline tracking-tight">
-            <span className="text-lg font-black text-white">67</span>
-            <span className="text-xs font-semibold text-[#A18BFF] ml-0.5">movies</span>
-          </div>
-        </Link>
+      <div className="md:hidden fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(true)}
+          aria-label="Открыть меню"
+          className="pointer-events-auto relative w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+        >
+          <Menu className="w-5 h-5" />
+          {unreadMessages > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow">
+              {unreadMessages > 9 ? '9+' : unreadMessages}
+            </span>
+          )}
+        </button>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setNewYearMode(!newYearMode)}
-            aria-label="Новогодняя тема"
-            className={`p-1.5 rounded-lg transition-colors ${
-              newYearMode ? 'text-sky-300 bg-sky-400/15' : 'text-[#B8B6C8]'
-            }`}
-          >
-            <Snowflake className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setLanguage(language === 'ru' ? 'en' : 'ru')}
-            className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase text-[#B8B6C8] border border-white/15"
-          >
-            {language.toUpperCase()}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            aria-label="Тема"
-            className="p-1.5 text-[#B8B6C8]"
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsSearchOpen(true)}
-            aria-label="Поиск"
-            className="p-1.5 text-[#B8B6C8]"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
+        <button
+          type="button"
+          onClick={() => setIsSearchOpen(true)}
+          aria-label="Поиск"
+          className="pointer-events-auto w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+      </div>
 
-      {/* MOBILE ONLY: Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 glass-nav-scrolled border-t border-[#292936] px-2 py-2 flex items-center justify-around">
-        {[
-          { label: t.home, href: '/', icon: Home, active: pathname === '/' },
-          { label: t.catalog, href: '/catalog', icon: Compass, active: pathname === '/catalog' },
-          {
-            label: language === 'en' ? 'Calendar' : 'Календарь',
-            href: '/calendar',
-            icon: CalendarDays,
-            active: pathname === '/calendar',
-          },
-          {
-            label: t.watchlist,
-            href: '/watchlist',
-            icon: Bookmark,
-            active: pathname === '/watchlist',
-          },
-          {
-            label: user ? user.name : t.signIn,
-            href: user ? '/profile' : '/auth',
-            icon: UserIcon,
-            active: pathname === '/profile' || pathname === '/auth',
-          },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex flex-col items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
-                item.active ? 'text-[#A18BFF]' : 'text-[#92929F]'
-              }`}
+      {/* MOBILE ONLY: Smooth Slide-Out Navigation Drawer */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="md:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+          >
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-[280px] max-w-[82vw] h-full bg-[#111119] border-r border-[#292936] p-4 flex flex-col justify-between shadow-2xl overflow-y-auto"
             >
-              <div className="relative">
-                <Icon className="w-5 h-5" />
-                {Boolean((item as any).badge) && (
-                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
-                    {(item as any).badge > 9 ? '9+' : (item as any).badge}
-                  </span>
-                )}
+              <div className="space-y-5">
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-[#292936]">
+                  <Link
+                    href="/"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5"
+                  >
+                    <span className="w-9 h-9 rounded-xl brand-logo-badge flex items-center justify-center text-sm font-black text-white">
+                      67
+                    </span>
+                    <div className="flex items-baseline tracking-tight">
+                      <span className="text-lg font-black text-white">67</span>
+                      <span className="text-xs font-semibold text-[#A18BFF] ml-0.5">movies</span>
+                    </div>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    aria-label="Закрыть меню"
+                    className="p-2 rounded-xl bg-[#181821] text-[#92929F] hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* User Card */}
+                <Link
+                  href={user ? '/profile' : '/auth'}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center gap-3 p-3 rounded-2xl bg-[#181821] border border-[#292936] hover:border-[#8065FF] transition-all"
+                >
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#09090D] flex items-center justify-center shrink-0">
+                    {user && currentAccountProfile?.avatarUrl ? (
+                      <img
+                        src={currentAccountProfile.avatarUrl}
+                        alt={user.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <UserIcon className="w-5 h-5 text-[#A18BFF]" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white truncate">
+                      {user ? user.name : t.signIn}
+                    </p>
+                    <p className="text-[11px] text-[#92929F] truncate">
+                      {user ? 'Личный кабинет' : 'Войти в аккаунт'}
+                    </p>
+                  </div>
+                </Link>
+
+                {/* Navigation Links */}
+                <nav className="space-y-1">
+                  {sideLinks.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-bold transition-all ${
+                          item.isActive
+                            ? 'bg-[#8065FF]/15 text-[#A18BFF] border border-[#8065FF]/35'
+                            : 'text-[#B8B6C8] hover:text-white hover:bg-[#181821]'
+                        }`}
+                      >
+                        <span className="flex items-center gap-3">
+                          <Icon className="w-4 h-4" />
+                          <span>{item.label}</span>
+                        </span>
+                        {Boolean((item as any).badge) && (
+                          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
+                            {(item as any).badge > 9 ? '9+' : (item as any).badge}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+
+                  {canAccessAdmin && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-[#A18BFF] bg-[#8065FF]/10 border border-[#8065FF]/30 mt-2"
+                    >
+                      <Shield className="w-4 h-4" />
+                      <span>Админ-панель</span>
+                    </Link>
+                  )}
+                </nav>
               </div>
-              <span className="max-w-[56px] truncate">{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+
+              {/* Drawer Footer: Theme, Language & New Year Toggles */}
+              <div className="pt-4 border-t border-[#292936] grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+                    setTheme(nextTheme);
+                    if (accessToken) {
+                      authFetch('/settings', {
+                        method: 'PATCH',
+                        body: JSON.stringify({ theme: nextTheme }),
+                      }).catch(() => {});
+                    }
+                  }}
+                  className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
+                >
+                  {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-[#A18BFF]" />}
+                  <span>{theme === 'dark' ? 'Светлая' : 'Тёмная'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextLang = language === 'ru' ? 'en' : 'ru';
+                    setLanguage(nextLang);
+                    if (accessToken) {
+                      authFetch('/settings', {
+                        method: 'PATCH',
+                        body: JSON.stringify({ language: nextLang }),
+                      }).catch(() => {});
+                    }
+                  }}
+                  className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
+                >
+                  <span className="text-xs font-black text-white">{language.toUpperCase()}</span>
+                  <span>Язык</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNewYearMode(!newYearMode)}
+                  className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-[10px] font-bold ${
+                    newYearMode
+                      ? 'bg-sky-500/20 border-sky-400/40 text-sky-300'
+                      : 'bg-[#181821] border-[#292936] text-[#B8B6C8]'
+                  }`}
+                >
+                  <Snowflake className="w-4 h-4" />
+                  <span>Зима</span>
+                </button>
+              </div>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Interactive Search Overlay Modal */}
       {isSearchOpen && (
