@@ -6,8 +6,8 @@ import { MediaCard } from './MediaCard';
 import { MediaItem } from '@cinemaflow/types';
 
 interface MediaRailProps {
-  title: string;
-  subtitle?: string;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
   items: MediaItem[];
   icon?: React.ReactNode;
 }

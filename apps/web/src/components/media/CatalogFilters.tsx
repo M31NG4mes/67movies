@@ -2,8 +2,24 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SlidersHorizontal, X, RotateCcw, Check, Star, Calendar, Globe, ArrowUpDown } from 'lucide-react';
+import {
+  SlidersHorizontal,
+  X,
+  RotateCcw,
+  Check,
+  Star,
+  Calendar,
+  Globe,
+  ArrowUpDown,
+  Film,
+  Tv,
+  Sparkles,
+  Flame,
+  BookOpen,
+  Heart,
+} from 'lucide-react';
 import { Genre } from '@cinemaflow/types';
+import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
 
 export type CatalogCategory = 'movie' | 'tv' | 'cartoons' | 'anime' | 'documentary' | 'dorama';
 export type CatalogSort = 'popularity' | 'rating' | 'date' | 'votes';
@@ -18,51 +34,6 @@ export interface CatalogFilterState {
   lang: string;
 }
 
-const CATEGORIES: Array<{ id: CatalogCategory; label: string }> = [
-  { id: 'movie', label: 'Фильмы' },
-  { id: 'tv', label: 'Сериалы' },
-  { id: 'cartoons', label: 'Мультфильмы' },
-  { id: 'anime', label: 'Аниме' },
-  { id: 'documentary', label: 'Документалки' },
-  { id: 'dorama', label: 'Дорамы' },
-];
-
-const YEAR_PRESETS = [
-  { label: '2025–2026', from: '2025', to: '2026' },
-  { label: '2020-е', from: '2020', to: '2026' },
-  { label: '2010-е', from: '2010', to: '2019' },
-  { label: '2000-е', from: '2000', to: '2009' },
-  { label: '90-е', from: '1990', to: '1999' },
-  { label: 'Классика', from: '1950', to: '1989' },
-];
-
-const RATING_OPTIONS = [
-  { value: '', label: 'Любой' },
-  { value: '6', label: '6+' },
-  { value: '7', label: '7+' },
-  { value: '7.5', label: '7.5+' },
-  { value: '8', label: '8+' },
-  { value: '8.5', label: '8.5+' },
-];
-
-const LANG_OPTIONS = [
-  { value: '', label: 'Любая страна' },
-  { value: 'en', label: 'США / Великобритания' },
-  { value: 'ru', label: 'Россия' },
-  { value: 'ja', label: 'Япония' },
-  { value: 'ko', label: 'Южная Корея' },
-  { value: 'fr', label: 'Франция' },
-  { value: 'es', label: 'Испания' },
-  { value: 'tr', label: 'Турция' },
-];
-
-const SORT_OPTIONS: Array<{ value: CatalogSort; label: string }> = [
-  { value: 'popularity', label: 'По популярности' },
-  { value: 'rating', label: 'По рейтингу' },
-  { value: 'date', label: 'По дате выхода' },
-  { value: 'votes', label: 'По числу оценок' },
-];
-
 interface CatalogFiltersProps {
   initial: CatalogFilterState;
   genres: Genre[];
@@ -70,6 +41,10 @@ interface CatalogFiltersProps {
 
 export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
   const router = useRouter();
+  const language = usePreferencesStore((s) => s.language);
+  const t = TRANSLATIONS[language];
+  const isEn = language === 'en';
+
   const [isOpen, setIsOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
 
@@ -80,6 +55,51 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
   const [yearTo, setYearTo] = useState<string>(initial.yearTo);
   const [minRating, setMinRating] = useState<string>(initial.minRating);
   const [lang, setLang] = useState<string>(initial.lang);
+
+  const CATEGORIES: Array<{ id: CatalogCategory; label: string; icon: any }> = [
+    { id: 'movie', label: t.movies, icon: Film },
+    { id: 'tv', label: t.series, icon: Tv },
+    { id: 'cartoons', label: t.cartoons, icon: Sparkles },
+    { id: 'anime', label: t.anime, icon: Flame },
+    { id: 'documentary', label: t.documentary, icon: BookOpen },
+    { id: 'dorama', label: t.dorama, icon: Heart },
+  ];
+
+  const YEAR_PRESETS = [
+    { label: '2025–2026', from: '2025', to: '2026' },
+    { label: isEn ? '2020s' : '2020-е', from: '2020', to: '2026' },
+    { label: isEn ? '2010s' : '2010-е', from: '2010', to: '2019' },
+    { label: isEn ? '2000s' : '2000-е', from: '2000', to: '2009' },
+    { label: isEn ? '90s' : '90-е', from: '1990', to: '1999' },
+    { label: isEn ? 'Classics' : 'Классика', from: '1950', to: '1989' },
+  ];
+
+  const RATING_OPTIONS = [
+    { value: '', label: t.anyRating },
+    { value: '6', label: '6+' },
+    { value: '7', label: '7+' },
+    { value: '7.5', label: '7.5+' },
+    { value: '8', label: '8+' },
+    { value: '8.5', label: '8.5+' },
+  ];
+
+  const LANG_OPTIONS = [
+    { value: '', label: t.anyCountry },
+    { value: 'en', label: isEn ? 'USA / UK' : 'США / Великобритания' },
+    { value: 'ru', label: isEn ? 'Russia' : 'Россия' },
+    { value: 'ja', label: isEn ? 'Japan' : 'Япония' },
+    { value: 'ko', label: isEn ? 'South Korea' : 'Южная Корея' },
+    { value: 'fr', label: isEn ? 'France' : 'Франция' },
+    { value: 'es', label: isEn ? 'Spain' : 'Испания' },
+    { value: 'tr', label: isEn ? 'Turkey' : 'Турция' },
+  ];
+
+  const SORT_OPTIONS: Array<{ value: CatalogSort; label: string }> = [
+    { value: 'popularity', label: t.sortPopularity },
+    { value: 'rating', label: t.sortRating },
+    { value: 'date', label: t.sortDate },
+    { value: 'votes', label: t.sortVotes },
+  ];
 
   const navigateWith = (next: Partial<CatalogFilterState>) => {
     const merged: CatalogFilterState = {
@@ -130,13 +150,59 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     router.push('/catalog');
   };
 
+  // Build visible active chips for quick 1-click clearing
+  const activeChips: Array<{ id: string; label: string; onClear: () => void }> = [];
+  if (initial.genre > 0) {
+    const gName = genres.find((g) => g.id === initial.genre)?.name || `#${initial.genre}`;
+    activeChips.push({
+      id: 'genre',
+      label: gName,
+      onClear: () => {
+        setGenre(0);
+        navigateWith({ genre: 0 });
+      },
+    });
+  }
+  if (initial.yearFrom || initial.yearTo) {
+    activeChips.push({
+      id: 'year',
+      label: `${initial.yearFrom || '...'}–${initial.yearTo || '...'}`,
+      onClear: () => {
+        setYearFrom('');
+        setYearTo('');
+        navigateWith({ yearFrom: '', yearTo: '' });
+      },
+    });
+  }
+  if (initial.minRating) {
+    activeChips.push({
+      id: 'rating',
+      label: `★ ${initial.minRating}+`,
+      onClear: () => {
+        setMinRating('');
+        navigateWith({ minRating: '' });
+      },
+    });
+  }
+  if (initial.lang) {
+    const lName = LANG_OPTIONS.find((l) => l.value === initial.lang)?.label || initial.lang;
+    activeChips.push({
+      id: 'lang',
+      label: lName,
+      onClear: () => {
+        setLang('');
+        navigateWith({ lang: '' });
+      },
+    });
+  }
+
   return (
-    <div className="space-y-4 mb-7">
-      {/* Top Row: Category Pills + Dedicated "Фильтры" Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Scrollable Category Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 -mx-5 px-5 sm:mx-0 sm:px-0 scrollbar-none">
+    <div className="space-y-3.5 mb-7">
+      {/* Top Row: Category Tabs with Icons + Sort & Filters Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 -mx-5 px-5 lg:mx-0 lg:px-0 scrollbar-none">
           {CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
             const isActive = initial.category === cat.id;
             return (
               <button
@@ -147,32 +213,33 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                   setGenre(0);
                   navigateWith({ category: cat.id, genre: 0 });
                 }}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                   isActive
                     ? 'brand-btn text-white'
                     : 'bg-[#111119] text-[#92929F] hover:text-white border border-[#292936] hover:border-[#8065FF]/60'
                 }`}
               >
-                {cat.label}
+                <Icon className="w-3.5 h-3.5" />
+                <span>{cat.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Dedicated Sort Dropdown + Filters Toggle Button */}
+        {/* Sort Dropdown + Filters Toggle */}
         <div className="flex items-center gap-2 shrink-0">
           {activeFiltersCount > 0 && (
             <button
               type="button"
               onClick={handleReset}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#181821] hover:bg-red-500/15 border border-[#292936] hover:border-red-500/40 text-xs font-semibold text-[#92929F] hover:text-red-300 transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#181821] hover:bg-red-500/15 border border-[#292936] hover:border-red-500/40 text-xs font-semibold text-[#92929F] hover:text-red-300 transition-all"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Сбросить</span>
+              <span className="hidden sm:inline">{t.reset}</span>
             </button>
           )}
 
-          {/* Quick Sort Dropdown Button */}
+          {/* Quick Sort Dropdown */}
           <div className="relative">
             <button
               type="button"
@@ -180,15 +247,16 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                 setIsSortOpen(!isSortOpen);
                 setIsOpen(false);
               }}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all ${
                 isSortOpen || initial.sort !== 'popularity'
                   ? 'bg-[#8065FF]/20 border-[#8065FF] text-white'
                   : 'bg-[#111119] border-[#292936] hover:border-[#8065FF] text-white'
               }`}
             >
               <ArrowUpDown className="w-3.5 h-3.5 text-[#A18BFF]" />
+              <span className="text-[#92929F] font-semibold hidden sm:inline">{t.sortBy}:</span>
               <span>
-                {SORT_OPTIONS.find((o) => o.value === initial.sort)?.label || 'Сортировка'}
+                {SORT_OPTIONS.find((o) => o.value === initial.sort)?.label || t.sortBy}
               </span>
             </button>
 
@@ -226,14 +294,14 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
               setIsOpen(!isOpen);
               setIsSortOpen(false);
             }}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold transition-all ${
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
               isOpen || activeFiltersCount > 0
                 ? 'bg-[#8065FF]/20 border-[#8065FF] text-white'
                 : 'bg-[#111119] border-[#292936] hover:border-[#8065FF] text-white'
             }`}
           >
             <SlidersHorizontal className="w-4 h-4 text-[#A18BFF]" />
-            <span>Фильтры</span>
+            <span>{t.filters}</span>
             {activeFiltersCount > 0 && (
               <span className="px-1.5 py-0.5 rounded-md bg-[#8065FF] text-white text-[10px] font-black">
                 {activeFiltersCount}
@@ -243,13 +311,30 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
         </div>
       </div>
 
+      {/* Active Filter Chips (instant 1-click removal) */}
+      {activeChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {activeChips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={chip.onClear}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-semibold text-[#A18BFF] hover:bg-rose-500/15 hover:border-rose-500/40 hover:text-rose-300 transition-all"
+            >
+              <span>{chip.label}</span>
+              <X className="w-3 h-3" />
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Expandable Advanced Filter Panel */}
       {isOpen && (
         <div className="p-5 sm:p-6 rounded-2xl bg-[#111119] border border-[#292936] shadow-2xl space-y-6 animate-scaleIn">
           <div className="flex items-center justify-between border-b border-[#292936] pb-3.5">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-[#A18BFF]" />
-              <span>Расширенные фильтры каталога</span>
+              <span>{t.advancedFilters}</span>
             </h2>
             <button
               type="button"
@@ -265,7 +350,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
             <div className="space-y-2.5">
               <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
                 <ArrowUpDown className="w-3.5 h-3.5 text-[#A18BFF]" />
-                <span>Сортировка</span>
+                <span>{t.sortBy}</span>
               </label>
               <div className="grid grid-cols-2 gap-1.5">
                 {SORT_OPTIONS.map((opt) => (
@@ -289,7 +374,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
             <div className="space-y-2.5">
               <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
                 <Star className="w-3.5 h-3.5 text-[#A18BFF]" />
-                <span>Минимальный рейтинг</span>
+                <span>{t.minRating}</span>
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {RATING_OPTIONS.map((r) => (
@@ -313,7 +398,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
             <div className="space-y-2.5">
               <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-[#A18BFF]" />
-                <span>Страна / Язык оригинала</span>
+                <span>{t.countryLang}</span>
               </label>
               <select
                 value={lang}
@@ -333,7 +418,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
           <div className="space-y-2.5">
             <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-[#A18BFF]" />
-              <span>Год выхода</span>
+              <span>{t.yearLabel}</span>
             </label>
             <div className="flex flex-wrap items-center gap-2">
               <input
@@ -342,7 +427,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                 max={2026}
                 value={yearFrom}
                 onChange={(e) => setYearFrom(e.target.value)}
-                placeholder="От (напр. 2010)"
+                placeholder={t.yearFrom}
                 className="w-32 px-3 py-2 rounded-xl bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
               />
               <span className="text-[#92929F] text-xs">—</span>
@@ -352,7 +437,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                 max={2026}
                 value={yearTo}
                 onChange={(e) => setYearTo(e.target.value)}
-                placeholder="До (напр. 2026)"
+                placeholder={t.yearTo}
                 className="w-32 px-3 py-2 rounded-xl bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
               />
 
@@ -384,7 +469,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
           {/* 5. Genre Pills */}
           <div className="space-y-2.5">
             <label className="text-xs font-bold uppercase tracking-wider text-[#92929F]">
-              Жанр
+              {t.genres}
             </label>
             <div className="flex flex-wrap gap-1.5">
               {genres.map((g) => (
@@ -398,7 +483,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                       : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
                   }`}
                 >
-                  {g.name}
+                  {g.id === 0 ? t.allGenres : g.name}
                 </button>
               ))}
             </div>
@@ -411,7 +496,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
               onClick={handleReset}
               className="px-4 py-2.5 rounded-xl bg-[#181821] hover:bg-[#20202C] border border-[#292936] text-xs font-semibold text-[#92929F] hover:text-white transition-all"
             >
-              Сбросить все
+              {t.reset}
             </button>
             <button
               type="button"
@@ -419,7 +504,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl brand-btn text-white text-xs font-bold"
             >
               <Check className="w-4 h-4" />
-              <span>Применить фильтры</span>
+              <span>{t.applyFilters}</span>
             </button>
           </div>
         </div>

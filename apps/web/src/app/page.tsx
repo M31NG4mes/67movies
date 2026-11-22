@@ -2,6 +2,7 @@ import React from 'react';
 import { api } from '../lib/api-client';
 import { HeroBanner } from '../components/media/HeroBanner';
 import { MediaRail } from '../components/media/MediaRail';
+import { T } from '../components/common/T';
 import { mockMoviesCatalog, mockSeriesCatalog } from '../lib/catalog-data';
 import { MediaItem } from '@cinemaflow/types';
 
@@ -46,11 +47,11 @@ export default async function HomePage() {
 
       {/* First rail tucked into hero bottom fade */}
       <div className="relative -mt-10 sm:-mt-20 md:-mt-24 z-20 space-y-4 sm:space-y-5">
-        <MediaRail title="Популярные фильмы" items={popularMovies} />
-        <MediaRail title="Новинки кино" items={newMovies} />
-        <MediaRail title="Популярные сериалы" items={popularSeries} />
-        <MediaRail title="Выбор редакции" items={editorsChoice} />
-        <MediaRail title="Новые сериалы" items={newSeries} />
+        <MediaRail title={<T k="popularMovies" />} items={popularMovies} />
+        <MediaRail title={<T k="newMovies" />} items={newMovies} />
+        <MediaRail title={<T k="popularSeries" />} items={popularSeries} />
+        <MediaRail title={<T k="editorsChoice" />} items={editorsChoice} />
+        <MediaRail title={<T k="newSeries" />} items={newSeries} />
       </div>
     </div>
   );

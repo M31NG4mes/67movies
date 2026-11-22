@@ -579,7 +579,7 @@ function NavbarContent() {
                       {user ? user.name : t.signIn}
                     </p>
                     <p className="text-[11px] text-[#92929F] truncate">
-                      {user ? 'Личный кабинет' : 'Войти в аккаунт'}
+                      {user ? t.myProfile : t.signInAccount}
                     </p>
                   </div>
                 </Link>
@@ -619,7 +619,7 @@ function NavbarContent() {
                       className="flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-[#A18BFF] bg-[#8065FF]/10 border border-[#8065FF]/30 mt-2"
                     >
                       <Shield className="w-4 h-4" />
-                      <span>Админ-панель</span>
+                      <span>{t.adminPanel}</span>
                     </Link>
                   )}
                 </nav>
@@ -642,7 +642,7 @@ function NavbarContent() {
                   className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
                 >
                   {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-[#A18BFF]" />}
-                  <span>{theme === 'dark' ? 'Светлая' : 'Тёмная'}</span>
+                  <span>{theme === 'dark' ? t.themeLight : t.themeDark}</span>
                 </button>
 
                 <button
@@ -660,7 +660,7 @@ function NavbarContent() {
                   className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
                 >
                   <span className="text-xs font-black text-white">{language.toUpperCase()}</span>
-                  <span>Язык</span>
+                  <span>{t.langShort}</span>
                 </button>
 
                 <button
@@ -673,7 +673,7 @@ function NavbarContent() {
                   }`}
                 >
                   <Snowflake className="w-4 h-4" />
-                  <span>Зима</span>
+                  <span>{t.winterLabel}</span>
                 </button>
               </div>
             </motion.aside>

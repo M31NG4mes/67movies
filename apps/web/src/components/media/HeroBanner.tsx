@@ -122,15 +122,18 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
             <button
               type="button"
               onClick={toggleSave}
-              title={isSaved ? 'В избранном' : 'Добавить в избранное'}
-              aria-label="Добавить в избранное"
-              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center transition-all backdrop-blur-sm ${
+              title={isSaved ? t.inWatchlist : t.addToWatchlist}
+              aria-label={isSaved ? t.inWatchlist : t.addToWatchlist}
+              className={`inline-flex items-center gap-2 px-4 h-11 sm:h-12 rounded-xl border text-xs sm:text-sm font-semibold transition-all backdrop-blur-sm ${
                 isSaved
                   ? 'border-[#8065FF] bg-[#8065FF]/25 text-white'
                   : 'border-white/25 bg-white/10 hover:border-[#8065FF] text-white'
               }`}
             >
-              {isSaved ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+              {isSaved ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              <span className="hidden sm:inline">
+                {isSaved ? t.inWatchlist : t.addToWatchlist}
+              </span>
             </button>
           </div>
         </div>

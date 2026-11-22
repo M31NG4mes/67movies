@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Star, Film, Tv, Clock } from 'lucide-react';
 import { api } from '../../lib/api-client';
+import { T } from '../../components/common/T';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
@@ -131,13 +132,13 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         <div>
           <div className="flex items-center gap-2 text-[#A18BFF] text-xs font-bold uppercase tracking-widest mb-1.5">
             <CalendarDays className="w-4 h-4" />
-            <span>График релизов</span>
+            <span><T k="calendarEyebrow" /></span>
           </div>
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
-            Календарь премьер
+            <T k="calendarTitle" />
           </h1>
           <p className="text-sm text-[#92929F] mt-1">
-            Даты выхода фильмов и сериалов по дням из базы TMDB
+            <T k="calendarSubtitle" />
           </p>
         </div>
 
@@ -198,10 +199,10 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
               </span>
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
-                  Сегодня в эфире (TVMaze)
+                  <T k="onAirToday" />
                 </h2>
                 <p className="text-xs text-[#92929F]">
-                  Свежие серии сериалов, выходящие сегодня по расписанию телесетей и стримингов
+                  <T k="onAirSubtitle" />
                 </p>
               </div>
             </div>

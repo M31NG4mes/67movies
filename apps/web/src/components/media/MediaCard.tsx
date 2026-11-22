@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { MediaItem } from '@cinemaflow/types';
-import { usePreferencesStore } from '../../stores/preferences.store';
+import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
 
 interface MediaCardProps {
   media: MediaItem;
@@ -12,6 +12,8 @@ interface MediaCardProps {
 
 function MediaCardInner({ media, fluid = false }: MediaCardProps) {
   const ageVerified18 = usePreferencesStore((s) => s.ageVerified18);
+  const language = usePreferencesStore((s) => s.language);
+  const t = TRANSLATIONS[language];
   const poster =
     media.posterPath ||
     media.backdropPath ||
@@ -67,7 +69,7 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
           <div className="flex items-center justify-between text-[11px] text-white/75 mt-1">
             <span>{media.releaseYear || ''}</span>
             <span className="uppercase tracking-wider text-[10px]">
-              {targetType === 'tv' ? 'Сериал' : 'Фильм'}
+              {targetType === 'tv' ? t.seriesBadge : t.movieBadge}
             </span>
           </div>
         </div>

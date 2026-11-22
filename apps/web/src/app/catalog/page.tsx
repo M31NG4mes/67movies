@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { api } from '../../lib/api-client';
 import { MediaCard } from '../../components/media/MediaCard';
+import { T } from '../../components/common/T';
 import {
   CatalogCategory,
   CatalogFilters,
@@ -141,9 +142,11 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
       {/* Media Grid */}
       {items.length === 0 ? (
         <div className="text-center py-20 bg-[#181821] border border-[#292936] rounded-2xl p-8 max-w-xl mx-auto">
-          <p className="text-lg font-semibold text-white">Ничего не найдено</p>
+          <p className="text-lg font-semibold text-white">
+            <T k="nothingFound" />
+          </p>
           <p className="text-sm text-[#92929F] mt-2">
-            Попробуйте ослабить фильтры по годам или минимальному рейтингу.
+            <T k="tryRelaxFilters" />
           </p>
         </div>
       ) : (
@@ -162,18 +165,18 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
               href={buildPageUrl(page - 1)}
               className="px-5 py-2.5 rounded-xl bg-[#181821] hover:bg-[#20202C] border border-[#292936] hover:border-[#8065FF] text-sm font-semibold text-white transition-all"
             >
-              ← Назад
+              ← <T k="prevPage" />
             </Link>
           )}
           <span className="px-4 py-2 text-xs font-semibold text-[#92929F]">
-            Страница {page} из {Math.min(totalPages, 500)}
+            <T k="pageLabel" /> {page} <T k="ofLabel" /> {Math.min(totalPages, 500)}
           </span>
           {page < Math.min(totalPages, 500) && (
             <Link
               href={buildPageUrl(page + 1)}
               className="px-5 py-2.5 rounded-xl brand-btn text-sm font-semibold text-white"
             >
-              Вперёд →
+              <T k="nextPage" /> →
             </Link>
           )}
         </div>
