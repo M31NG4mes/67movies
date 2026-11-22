@@ -1,7 +1,7 @@
 {
   "name": "@cinemaflow/web",
   "version": "1.0.0",
-  "description": "CinemaFlow Next.js Frontend with Custom Cinema Player and Smart TV Spatial Navigation",
+  "description": "CinemaFlow Next.js Frontend",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
@@ -26,9 +26,13 @@
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.38",
+    "postcss": "^3.4.38",
     "rimraf": "^5.0.5",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5"
+  },
+  "packageManager": "pnpm@10.6.5",
+  "engines": {
+    "node": "20.x"
   }
 }
