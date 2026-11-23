@@ -179,6 +179,8 @@ export default function WatchPage() {
           type: resolvedType,
           year: media?.releaseYear || yearHint || 2024,
           tmdbId: media?.tmdbId,
+          imdbId: media?.imdbId,
+          kinopoiskId: media?.kinopoiskId,
           season: resolvedType === 'tv' ? currentSeason : undefined,
           episode: resolvedType === 'tv' ? currentEpisode : undefined,
           rezkaUrl: media?.rezkaUrl || rezkaUrlHint,

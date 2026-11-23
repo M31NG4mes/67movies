@@ -378,84 +378,149 @@ function mapTmdbToMedia(item: any, type: MediaType): MediaItem {
 
 export const api = {
   media: {
-    getTrending: async (type: 'movie' | 'tv' | 'all' = 'all', _timeWindow: 'day' | 'week' = 'day', page = 1) => {
-      const cat = type === 'movie' ? 'popular_movies' : type === 'tv' ? 'popular_tv' : 'trending';
-      return (
-        (await fetchHdRezkaCatalog(cat, page)) || {
-          items: [],
-          page,
-          totalPages: page,
-          totalItems: 0,
+    getTrending: async (type: 'movie' | 'tv' | 'all' = 'all', timeWindow: 'day' | 'week' = 'day', page = 1) => {
+      try {
+        return await fetcher<PaginatedResult<MediaItem>>(`/media/trending?type=${type}&timeWindow=${timeWindow}&page=${page}`);
+      } catch (err) {
+        const tmdbData: any = await fetchDirectTmdb(`/trending/${type}/${timeWindow}`, { page: String(page) });
+        if (tmdbData?.results) {
+          return {
+            items: tmdbData.results.map((r: any) => mapTmdbToMedia(r, r.media_type === 'tv' ? 'tv' : 'movie')),
+            page: tmdbData.page,
+            totalPages: tmdbData.total_pages,
+            totalItems: tmdbData.total_results,
+          };
         }
-      );
+        const rezka = await fetchHdRezkaCatalog(
+          type === 'movie' ? 'popular_movies' : type === 'tv' ? 'popular_tv' : 'trending',
+          page,
+        );
+        if (rezka) return rezka;
+        throw err;
+      }
     },
 
     getPopularMovies: async (page = 1) => {
-      return (
-        (await fetchHdRezkaCatalog('popular_movies', page)) || {
-          items: [],
-          page,
-          totalPages: page,
-          totalItems: 0,
+      try {
+        return await fetcher<PaginatedResult<MediaItem>>(`/media/popular/movies?page=${page}`);
+      } catch (err) {
+        const tmdbData: any = await fetchDirectTmdb('/movie/popular', { page: String(page) });
+        if (tmdbData?.results) {
+          return {
+            items: tmdbData.results.map((r: any) => mapTmdbToMedia(r, 'movie')),
+            page: tmdbData.page,
+            totalPages: tmdbData.total_pages,
+            totalItems: tmdbData.total_results,
+          };
         }
-      );
+        const rezka = await fetchHdRezkaCatalog('popular_movies', page);
+        if (rezka) return rezka;
+        throw err;
+      }
     },
 
     getPopularTv: async (page = 1) => {
-      return (
-        (await fetchHdRezkaCatalog('popular_tv', page)) || {
-          items: [],
-          page,
-          totalPages: page,
-          totalItems: 0,
+      try {
+        return await fetcher<PaginatedResult<MediaItem>>(`/media/popular/tv?page=${page}`);
+      } catch (err) {
+        const tmdbData: any = await fetchDirectTmdb('/tv/popular', { page: String(page) });
+        if (tmdbData?.results) {
+          return {
+            items: tmdbData.results.map((r: any) => mapTmdbToMedia(r, 'tv')),
+            page: tmdbData.page,
+            totalPages: tmdbData.total_pages,
+            totalItems: tmdbData.total_results,
+          };
         }
-      );
+        const rezka = await fetchHdRezkaCatalog('popular_tv', page);
+        if (rezka) return rezka;
+        throw err;
+      }
     },
 
     getNewMovies: async (page = 1) => {
-      return (
-        (await fetchHdRezkaCatalog('new_movies', page)) || {
-          items: [],
-          page,
-          totalPages: page,
-          totalItems: 0,
+      try {
+        return await fetcher<PaginatedResult<MediaItem>>(`/media/new/movies?page=${page}`);
+      } catch (err) {
+        const tmdbData: any = await fetchDirectTmdb('/movie/now_playing', { page: String(page) });
+        if (tmdbData?.results) {
+          return {
+            items: tmdbData.results.map((r: any) => mapTmdbToMedia(r, 'movie')),
+            page: tmdbData.page,
+            totalPages: tmdbData.total_pages,
+            totalItems: tmdbData.total_results,
+          };
         }
-      );
+        const rezka = await fetchHdRezkaCatalog('new_movies', page);
+        if (rezka) return rezka;
+        throw err;
+      }
     },
 
     getNewTv: async (page = 1) => {
-      return (
-        (await fetchHdRezkaCatalog('new_tv', page)) || {
-          items: [],
-          page,
-          totalPages: page,
-          totalItems: 0,
+      try {
+        return await fetcher<PaginatedResult<MediaItem>>(`/media/new/tv?page=${page}`);
+      } catch (err) {
+        const tmdbData: any = await fetchDirectTmdb('/tv/on_the_air', { page: String(page) });
+        if (tmdbData?.results) {
+          return {
+            items: tmdbData.results.map((r: any) => mapTmdbToMedia(r, 'tv')),
+            page: tmdbData.page,
+            totalPages: tmdbData.total_pages,
+            totalItems: tmdbData.total_results,
+          };
         }
-      );
+        const rezka = await fetchHdRezkaCatalog('new_tv', page);
+        if (rezka) return rezka;
+        throw err;
+      }
     },
 
     search: async (query: string, page = 1) => {
-      if (typeof window !== 'undefined') {
-        try {
-          const res = await fetch(
-            `/api/hdrezka?action=search&q=${encodeURIComponent(query)}&page=${page}`,
-            { cache: 'no-store' },
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const items = Array.isArray(data?.items) ? data.items.map(mapHdRezkaItemToMedia) : [];
-            return {
-              items,
-              page: Number(data?.page) || page,
-              totalPages: Number(data?.totalPages) || page,
-              totalItems: Number(data?.totalItems) || items.length,
-            };
+      const rezkaPromise =
+        typeof window !== 'undefined'
+          ? fetch(`/api/hdrezka?action=search&q=${encodeURIComponent(query)}&page=${page}`, { cache: 'no-store' })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => (Array.isArray(d?.items) ? d.items.map(mapHdRezkaItemToMedia) : []))
+              .catch(() => [] as MediaItem[])
+          : Promise.resolve([] as MediaItem[]);
+
+      let primary: PaginatedResult<MediaItem> | null = null;
+      try {
+        primary = await fetcher<PaginatedResult<MediaItem>>(`/media/search?q=${encodeURIComponent(query)}&page=${page}`);
+      } catch (err) {
+        const tmdbData: any = await fetchDirectTmdb('/search/multi', { query, page: String(page) });
+        if (tmdbData?.results) {
+          primary = {
+            items: tmdbData.results
+              .filter((r: any) => r.media_type === 'movie' || r.media_type === 'tv')
+              .map((r: any) => mapTmdbToMedia(r, r.media_type)),
+            page: tmdbData.page,
+            totalPages: tmdbData.total_pages,
+            totalItems: tmdbData.total_results,
+          };
+        } else {
+          const rezkaItems = await rezkaPromise;
+          if (rezkaItems.length > 0) {
+            return { items: rezkaItems, page, totalPages: page, totalItems: rezkaItems.length };
           }
-        } catch {
-          // ignore
+          throw err;
         }
       }
-      return { items: [], page, totalPages: page, totalItems: 0 };
+
+      const rezkaItems = await rezkaPromise;
+      if (!rezkaItems.length) return primary;
+      const existingKeys = new Set(
+        primary.items.map((item) => `${item.title.toLowerCase().trim()}::${item.releaseYear || 0}`),
+      );
+      const uniqueRezka = rezkaItems.filter(
+        (item: MediaItem) => !existingKeys.has(`${item.title.toLowerCase().trim()}::${item.releaseYear || 0}`),
+      );
+      return {
+        ...primary,
+        items: [...primary.items, ...uniqueRezka],
+        totalItems: (primary.totalItems || primary.items.length) + uniqueRezka.length,
+      };
     },
 
     getMovieDetails: async (id: string | number, rezkaUrl?: string) => {
@@ -622,7 +687,7 @@ export const api = {
 
     discoverByGenre: async (
       type: MediaType = 'movie',
-      _genreId?: number,
+      genreId?: number,
       page = 1,
       sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
       extra?: {
@@ -634,28 +699,98 @@ export const api = {
         q?: string;
       }
     ) => {
-      if (extra?.q?.trim()) {
-        return api.media.search(extra.q.trim(), page);
-      }
       const category = extra?.category || type;
-      const isDate = sort === 'date';
-      let rezkaCat = 'popular_movies';
-      if (category === 'anime') rezkaCat = 'animation';
-      else if (category === 'cartoon') rezkaCat = 'cartoons';
-      else if (category === 'tv' || category === 'dorama' || type === 'tv') {
-        rezkaCat = isDate ? 'new_tv' : 'popular_tv';
-      } else {
-        rezkaCat = isDate ? 'new_movies' : 'popular_movies';
-      }
+      const isTv = category === 'tv' || category === 'anime' || category === 'dorama';
+      const resolvedType: MediaType = isTv ? 'tv' : 'movie';
 
-      return (
-        (await fetchHdRezkaCatalog(rezkaCat, page)) || {
-          items: [],
-          page,
-          totalPages: page,
-          totalItems: 0,
+      try {
+        const sp = new URLSearchParams({
+          type: resolvedType,
+          category,
+          sort,
+          page: String(page),
+        });
+        if (genreId && genreId > 0) sp.set('genreId', String(genreId));
+        if (extra?.yearFrom) sp.set('yearFrom', String(extra.yearFrom));
+        if (extra?.yearTo) sp.set('yearTo', String(extra.yearTo));
+        if (extra?.minRating) sp.set('minRating', String(extra.minRating));
+        if (extra?.lang) sp.set('lang', extra.lang);
+        if (extra?.q) sp.set('q', extra.q);
+        return await fetcher<PaginatedResult<MediaItem>>(`/media/discover?${sp.toString()}`);
+      } catch (err) {
+        if (category === 'anime') {
+          try {
+            const alSp = new URLSearchParams({
+              page: String(page),
+              limit: '36',
+              'f[sorting]':
+                sort === 'rating' || sort === 'votes'
+                  ? 'RATING_DESC'
+                  : sort === 'date'
+                  ? 'YEAR_DESC'
+                  : 'FRESH_AT_DESC',
+            });
+            if (extra?.yearFrom && extra?.yearTo) {
+              alSp.set('f[years][from_year]', String(extra.yearFrom));
+              alSp.set('f[years][to_year]', String(extra.yearTo));
+            }
+            if (extra?.q?.trim()) {
+              alSp.set('f[search]', extra.q.trim());
+            }
+            const res = await fetch(`${ANILIBERTY_BASE}/api/v1/anime/catalog/releases?${alSp.toString()}`);
+            if (res.ok) {
+              const raw: any = await res.json();
+              const list = Array.isArray(raw?.data) ? raw.data : [];
+              const mapped = list.map((r: any) => mapDirectAniLibertyRelease(r)).filter(Boolean) as MediaItem[];
+              if (mapped.length > 0) {
+                return {
+                  items: mapped,
+                  page,
+                  totalPages: Number(raw?.meta?.pagination?.total_pages) || page + 1,
+                  totalItems: Number(raw?.meta?.pagination?.total) || mapped.length,
+                };
+              }
+            }
+          } catch {}
         }
-      );
+
+        const sortByMap: Record<string, string> = {
+          popularity: 'popularity.desc',
+          rating: 'vote_average.desc',
+          votes: 'vote_count.desc',
+          date: resolvedType === 'tv' ? 'first_air_date.desc' : 'primary_release_date.desc',
+        };
+        const params: Record<string, string> = {
+          sort_by: sortByMap[sort] || 'popularity.desc',
+        };
+        if (genreId && genreId > 0) params.with_genres = String(genreId);
+        if (category === 'anime') {
+          params.with_genres = '16';
+          params.with_original_language = 'ja';
+        } else if (category === 'cartoon') {
+          params.with_genres = '16';
+        } else if (category === 'dorama') {
+          params.with_original_language = 'ko';
+        }
+        if (extra?.yearFrom) {
+          params[resolvedType === 'tv' ? 'first_air_date.gte' : 'primary_release_date.gte'] = `${extra.yearFrom}-01-01`;
+        }
+        if (extra?.yearTo) {
+          params[resolvedType === 'tv' ? 'first_air_date.lte' : 'primary_release_date.lte'] = `${extra.yearTo}-12-31`;
+        }
+        if (extra?.minRating) params['vote_average.gte'] = String(extra.minRating);
+
+        const tmdbRes: any = await fetchDirectTmdb(`/discover/${resolvedType}`, { ...params, page: String(page) });
+        if (tmdbRes?.results) {
+          return {
+            items: tmdbRes.results.map((m: any) => mapTmdbToMedia(m, resolvedType)),
+            page: tmdbRes.page || page,
+            totalPages: tmdbRes.total_pages || 1,
+            totalItems: tmdbRes.total_results || tmdbRes.results.length,
+          };
+        }
+        throw err;
+      }
     },
 
     getById: async (id: string, type?: MediaType, rezkaUrl?: string): Promise<MediaItem> => {
@@ -1047,6 +1182,8 @@ export const api = {
       type: MediaType;
       year: number;
       tmdbId?: number;
+      imdbId?: string;
+      kinopoiskId?: number;
       season?: number;
       episode?: number;
       rezkaUrl?: string;
@@ -1066,11 +1203,39 @@ export const api = {
           if (params.episode !== undefined) sp.set('episode', String(params.episode));
           if (params.translatorId !== undefined) sp.set('translatorId', String(params.translatorId));
 
-          const rezkaRes = await fetch(`/api/hdrezka?${sp.toString()}`, { cache: 'no-store' });
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 6000);
+          const rezkaRes = await fetch(`/api/hdrezka?${sp.toString()}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          }).finally(() => clearTimeout(timer));
           if (rezkaRes.ok) {
             const rezkaData = await rezkaRes.json();
             if (Array.isArray(rezkaData?.sourceGroups) && rezkaData.sourceGroups.length > 0) {
               return rezkaData.sourceGroups as StreamSourceGroup[];
+            }
+          }
+        } catch {
+          // Fall through to Kodik movie-streams / backend sources resolver
+        }
+
+        try {
+          const msSp = new URLSearchParams({
+            title: params.title,
+            type: params.type,
+            year: String(params.year),
+          });
+          if (params.originalTitle) msSp.set('originalTitle', params.originalTitle);
+          if (params.imdbId) msSp.set('imdbId', params.imdbId);
+          if (params.kinopoiskId) msSp.set('kinopoiskId', String(params.kinopoiskId));
+          if (params.season !== undefined) msSp.set('season', String(params.season));
+          if (params.episode !== undefined) msSp.set('episode', String(params.episode));
+
+          const msRes = await fetch(`/api/movie-streams?${msSp.toString()}`, { cache: 'no-store' });
+          if (msRes.ok) {
+            const msData = await msRes.json();
+            if (Array.isArray(msData?.sourceGroups) && msData.sourceGroups.length > 0) {
+              return msData.sourceGroups as StreamSourceGroup[];
             }
           }
         } catch {
