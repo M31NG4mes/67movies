@@ -13,6 +13,7 @@ import requests
 from HDrezka import (
     AJAXFail,
     EmptyPage,
+    Filters,
     HDRezkaError,
     HDrezka,
     NetworkClient,
@@ -34,6 +35,7 @@ DEFAULT_MIRRORS = [
 ]
 
 _CACHE: Dict[str, Tuple[float, Any]] = {}
+_URL_BY_ID: Dict[str, str] = {}
 SEARCH_TTL = 600
 DETAILS_TTL = 900
 STREAM_TTL = 300
@@ -154,8 +156,11 @@ def _normalize_poster(poster: Any, mirror: str = "https://rezka.ag") -> Dict[str
     media_type = _infer_media_type(poster.entity, poster.status, poster.url)
     year = _extract_year(poster.year)
     genres = [g.strip() for g in str(poster.genre or "").split(",") if g.strip()]
+    rid = f"rezka-{poster.id}"
+    if getattr(poster, "url", None):
+        _URL_BY_ID[rid] = poster.url
     return {
-        "id": f"rezka-{poster.id}",
+        "id": rid,
         "rezkaId": poster.id,
         "rezkaUrl": poster.url,
         "title": poster.title,
@@ -169,6 +174,48 @@ def _normalize_poster(poster: Any, mirror: str = "https://rezka.ag") -> Dict[str
         "status": poster.status,
         "source": "hdrezka",
     }
+
+
+def get_catalog(category: str = "trending", page: int = 1, genre: Optional[str] = None) -> Dict[str, Any]:
+    cat = (category or "trending").lower().strip()
+    cache_key = f"catalog:{cat}:{genre or ''}:{page}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    def _fetch(client: HDrezka, _mirror: str):
+        if cat == "popular_movies":
+            nav = client.films().filter(Filters.POPULAR)
+        elif cat == "popular_tv":
+            nav = client.series().filter(Filters.POPULAR)
+        elif cat == "new_movies":
+            nav = client.films().filter(Filters.LAST)
+        elif cat == "new_tv":
+            nav = client.series().filter(Filters.LAST)
+        elif cat == "watching":
+            nav = client.filter(Filters.WATCHING)
+        elif cat == "cartoons":
+            nav = client.cartoons().filter(Filters.POPULAR)
+        elif cat == "animation":
+            nav = client.animation().filter(Filters.POPULAR)
+        else:
+            nav = client.filter(Filters.POPULAR)
+        return nav.page(page).get()
+
+    try:
+        posters, mirror = _with_mirrors(_fetch)
+    except EmptyPage:
+        return _cache_set(cache_key, {"items": [], "page": page, "totalPages": page, "totalItems": 0}, SEARCH_TTL)
+
+    items = [_normalize_poster(p, mirror) for p in posters]
+    result = {
+        "items": items,
+        "page": page,
+        "totalPages": page + 1 if len(items) >= 20 else page,
+        "totalItems": len(items),
+        "mirror": mirror,
+    }
+    return _cache_set(cache_key, result, SEARCH_TTL)
 
 
 def search_content(query: str, page: int = 1) -> Dict[str, Any]:
@@ -255,6 +302,30 @@ def _extract_details_payload(details: Any) -> Dict[str, Any]:
                 }
             )
 
+    cast_list: List[Dict[str, Any]] = []
+    raw_cast = [p for p in (info.cast or []) if hasattr(p, "name")][:8] if info else []
+    if raw_cast:
+        def _load_person(person_obj: Any) -> Dict[str, Any]:
+            photo = getattr(person_obj, "img_url", None)
+            if not photo and hasattr(person_obj, "quick_content"):
+                try:
+                    ext = person_obj.quick_content()
+                    photo = getattr(ext, "img_url", None)
+                except Exception:
+                    photo = None
+            return {
+                "id": getattr(person_obj, "id", 0) or 0,
+                "name": person_obj.name,
+                "role": getattr(person_obj, "job", None) or "Актёр",
+                "profilePath": _normalize_image_url(photo),
+            }
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            cast_list = list(pool.map(_load_person, raw_cast))
+
+    if getattr(details, "url", None):
+        _URL_BY_ID[f"rezka-{details.id}"] = details.url
+
     return {
         "id": f"rezka-{details.id}",
         "rezkaId": details.id,
@@ -274,14 +345,17 @@ def _extract_details_payload(details: Any) -> Dict[str, Any]:
         "status": details.status,
         "type": media_type,
         "source": "hdrezka",
+        "cast": cast_list,
         "translators": translators,
         "seasons": seasons,
         "hasPlayer": isinstance(player, (Film, Serial)),
     }
 
 
-def get_details(url: str, force_refresh: bool = False) -> Dict[str, Any]:
+def get_details(url: str = "", item_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
     clean_url = (url or "").strip()
+    if not clean_url and item_id:
+        clean_url = _URL_BY_ID.get(item_id.strip(), "")
     if not clean_url:
         raise HdRezkaServiceError("BAD_REQUEST", "Не указан URL страницы HDRezka", status=400)
 

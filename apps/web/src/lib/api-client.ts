@@ -99,7 +99,39 @@ function mapHdRezkaItemToMedia(raw: any): MediaItem {
     voteCount: Number(raw?.voteCount) || 0,
     genres,
     seasons,
+    cast: Array.isArray(raw?.cast)
+      ? raw.cast.map((p: any) => ({
+          id: Number(p?.id) || 0,
+          name: String(p?.name || ''),
+          role: p?.role ? String(p.role) : 'Актёр',
+          profilePath: p?.profilePath || null,
+        }))
+      : undefined,
   };
+}
+
+async function fetchHdRezkaCatalog(
+  category: string,
+  page = 1,
+): Promise<PaginatedResult<MediaItem> | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const res = await fetch(
+      `/api/hdrezka?action=catalog&category=${encodeURIComponent(category)}&page=${page}`,
+      { cache: 'no-store' },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data?.items) || data.items.length === 0) return null;
+    return {
+      items: data.items.map(mapHdRezkaItemToMedia),
+      page: Number(data.page) || page,
+      totalPages: Number(data.totalPages) || page,
+      totalItems: Number(data.totalItems) || data.items.length,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem | null {
@@ -347,6 +379,9 @@ function mapTmdbToMedia(item: any, type: MediaType): MediaItem {
 export const api = {
   media: {
     getTrending: async (type: 'movie' | 'tv' | 'all' = 'all', timeWindow: 'day' | 'week' = 'day', page = 1) => {
+      const cat = type === 'movie' ? 'popular_movies' : type === 'tv' ? 'popular_tv' : 'trending';
+      const rezkaCatalog = await fetchHdRezkaCatalog(cat, page);
+      if (rezkaCatalog) return rezkaCatalog;
       try {
         return await fetcher<PaginatedResult<MediaItem>>(`/media/trending?type=${type}&timeWindow=${timeWindow}&page=${page}`);
       } catch (err) {
@@ -365,6 +400,8 @@ export const api = {
     },
 
     getPopularMovies: async (page = 1) => {
+      const rezkaCatalog = await fetchHdRezkaCatalog('popular_movies', page);
+      if (rezkaCatalog) return rezkaCatalog;
       try {
         return await fetcher<PaginatedResult<MediaItem>>(`/media/popular/movies?page=${page}`);
       } catch (err) {
@@ -382,6 +419,8 @@ export const api = {
     },
 
     getPopularTv: async (page = 1) => {
+      const rezkaCatalog = await fetchHdRezkaCatalog('popular_tv', page);
+      if (rezkaCatalog) return rezkaCatalog;
       try {
         return await fetcher<PaginatedResult<MediaItem>>(`/media/popular/tv?page=${page}`);
       } catch (err) {
@@ -399,6 +438,8 @@ export const api = {
     },
 
     getNewMovies: async (page = 1) => {
+      const rezkaCatalog = await fetchHdRezkaCatalog('new_movies', page);
+      if (rezkaCatalog) return rezkaCatalog;
       try {
         return await fetcher<PaginatedResult<MediaItem>>(`/media/new/movies?page=${page}`);
       } catch (err) {
@@ -416,6 +457,8 @@ export const api = {
     },
 
     getNewTv: async (page = 1) => {
+      const rezkaCatalog = await fetchHdRezkaCatalog('new_tv', page);
+      if (rezkaCatalog) return rezkaCatalog;
       try {
         return await fetcher<PaginatedResult<MediaItem>>(`/media/new/tv?page=${page}`);
       } catch (err) {
@@ -433,21 +476,34 @@ export const api = {
     },
 
     search: async (query: string, page = 1) => {
-      const rezkaPromise =
-        typeof window !== 'undefined'
-          ? fetch(`/api/hdrezka?action=search&q=${encodeURIComponent(query)}&page=${page}`, { cache: 'no-store' })
-              .then((r) => (r.ok ? r.json() : null))
-              .then((d) => (Array.isArray(d?.items) ? d.items.map(mapHdRezkaItemToMedia) : []))
-              .catch(() => [] as MediaItem[])
-          : Promise.resolve([] as MediaItem[]);
+      if (typeof window !== 'undefined') {
+        try {
+          const res = await fetch(
+            `/api/hdrezka?action=search&q=${encodeURIComponent(query)}&page=${page}`,
+            { cache: 'no-store' },
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data?.items) && data.items.length > 0) {
+              return {
+                items: data.items.map(mapHdRezkaItemToMedia),
+                page: Number(data.page) || page,
+                totalPages: Number(data.totalPages) || page,
+                totalItems: Number(data.totalItems) || data.items.length,
+              };
+            }
+          }
+        } catch {
+          // Fall back to backend/TMDB search
+        }
+      }
 
-      let primary: PaginatedResult<MediaItem> | null = null;
       try {
-        primary = await fetcher<PaginatedResult<MediaItem>>(`/media/search?q=${encodeURIComponent(query)}&page=${page}`);
+        return await fetcher<PaginatedResult<MediaItem>>(`/media/search?q=${encodeURIComponent(query)}&page=${page}`);
       } catch (err) {
         const tmdbData: any = await fetchDirectTmdb('/search/multi', { query, page: String(page) });
         if (tmdbData?.results) {
-          primary = {
+          return {
             items: tmdbData.results
               .filter((r: any) => r.media_type === 'movie' || r.media_type === 'tv')
               .map((r: any) => mapTmdbToMedia(r, r.media_type)),
@@ -455,44 +511,20 @@ export const api = {
             totalPages: tmdbData.total_pages,
             totalItems: tmdbData.total_results,
           };
-        } else {
-          const rezkaItems = await rezkaPromise;
-          if (rezkaItems.length > 0) {
-            return {
-              items: rezkaItems,
-              page,
-              totalPages: page,
-              totalItems: rezkaItems.length,
-            };
-          }
-          throw err;
         }
+        throw err;
       }
-
-      const rezkaItems = await rezkaPromise;
-      if (!rezkaItems.length) return primary;
-
-      const existingKeys = new Set(
-        primary.items.map((item) => `${item.title.toLowerCase().trim()}::${item.releaseYear || 0}`),
-      );
-      const uniqueRezka = rezkaItems.filter(
-        (item: MediaItem) => !existingKeys.has(`${item.title.toLowerCase().trim()}::${item.releaseYear || 0}`),
-      );
-      return {
-        ...primary,
-        items: [...primary.items, ...uniqueRezka],
-        totalItems: (primary.totalItems || primary.items.length) + uniqueRezka.length,
-      };
     },
 
     getMovieDetails: async (id: string | number, rezkaUrl?: string) => {
       const idStr = String(id);
-      if (/^rezka-\d+$/i.test(idStr)) {
+      if (/^rezka-\d+$/i.test(idStr) && typeof window !== 'undefined') {
         const targetUrl = rezkaUrl || getRememberedRezkaUrl(idStr);
-        if (targetUrl && typeof window !== 'undefined') {
-          const res = await fetch(`/api/hdrezka?action=details&url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
-          if (res.ok) return mapHdRezkaItemToMedia(await res.json());
-        }
+        const q = targetUrl
+          ? `url=${encodeURIComponent(targetUrl)}`
+          : `id=${encodeURIComponent(idStr)}`;
+        const res = await fetch(`/api/hdrezka?action=details&${q}`, { cache: 'no-store' });
+        if (res.ok) return mapHdRezkaItemToMedia(await res.json());
       }
       try {
         return await fetcher<MediaItem>(`/media/movie/${id}`);
@@ -505,12 +537,13 @@ export const api = {
 
     getTvDetails: async (id: string | number, rezkaUrl?: string) => {
       const idStr = String(id);
-      if (/^rezka-\d+$/i.test(idStr)) {
+      if (/^rezka-\d+$/i.test(idStr) && typeof window !== 'undefined') {
         const targetUrl = rezkaUrl || getRememberedRezkaUrl(idStr);
-        if (targetUrl && typeof window !== 'undefined') {
-          const res = await fetch(`/api/hdrezka?action=details&url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
-          if (res.ok) return mapHdRezkaItemToMedia(await res.json());
-        }
+        const q = targetUrl
+          ? `url=${encodeURIComponent(targetUrl)}`
+          : `id=${encodeURIComponent(idStr)}`;
+        const res = await fetch(`/api/hdrezka?action=details&${q}`, { cache: 'no-store' });
+        if (res.ok) return mapHdRezkaItemToMedia(await res.json());
       }
       try {
         return await fetcher<MediaItem>(`/media/tv/${id}`);
@@ -848,12 +881,13 @@ export const api = {
     },
 
     getById: async (id: string, type?: MediaType): Promise<MediaItem> => {
-      if (/^rezka-\d+$/i.test(id)) {
+      if (/^rezka-\d+$/i.test(id) && typeof window !== 'undefined') {
         const targetUrl = getRememberedRezkaUrl(id);
-        if (targetUrl && typeof window !== 'undefined') {
-          const res = await fetch(`/api/hdrezka?action=details&url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
-          if (res.ok) return mapHdRezkaItemToMedia(await res.json());
-        }
+        const q = targetUrl
+          ? `url=${encodeURIComponent(targetUrl)}`
+          : `id=${encodeURIComponent(id)}`;
+        const res = await fetch(`/api/hdrezka?action=details&${q}`, { cache: 'no-store' });
+        if (res.ok) return mapHdRezkaItemToMedia(await res.json());
       }
       try {
         return await fetcher<MediaItem>(`/media/${encodeURIComponent(id)}${type ? `?type=${type}` : ''}`);

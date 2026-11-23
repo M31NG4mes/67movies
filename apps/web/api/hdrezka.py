@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from _hdrezka_service import (
     HdRezkaServiceError,
+    get_catalog,
     get_details,
     get_streams,
     search_content,
@@ -56,6 +57,13 @@ class handler(BaseHTTPRequestHandler):
         action = (_first_param(qs, "action") or "search").lower()
 
         try:
+            if action == "catalog":
+                category = _first_param(qs, "category") or "trending"
+                page = _int_param(qs, "page") or 1
+                data = get_catalog(category=category, page=max(1, page))
+                self._send_json(200, data)
+                return
+
             if action == "search":
                 q = _first_param(qs, "q") or ""
                 page = _int_param(qs, "page") or 1
@@ -65,8 +73,9 @@ class handler(BaseHTTPRequestHandler):
 
             if action == "details":
                 url = _first_param(qs, "url") or ""
+                item_id = _first_param(qs, "id")
                 force = _first_param(qs, "force") == "1"
-                data = get_details(url, force_refresh=force)
+                data = get_details(url, item_id=item_id, force_refresh=force)
                 self._send_json(200, data)
                 return
 

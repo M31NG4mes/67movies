@@ -89,24 +89,23 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
         return (
           <div
             key={item.id}
-            className={`absolute inset-0 bg-cover bg-no-repeat transition-opacity duration-700 ease-out ${
+            className={`absolute inset-0 transition-opacity duration-700 ease-out ${
               isActive ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
             }`}
-            style={{
-              backgroundImage: `url(${bg})`,
-              backgroundPosition: 'center 20%',
-            }}
           >
-            {isActive && (
-              <div
-                className="w-full h-full animate-heroZoom"
-                style={{
-                  backgroundImage: `url(${bg})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center 20%',
-                }}
-              />
-            )}
+            <img
+              src={bg}
+              alt={item.title}
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (img.dataset.proxied === '1') return;
+                img.dataset.proxied = '1';
+                img.src = `/api/image?url=${encodeURIComponent(bg)}`;
+              }}
+              className={`w-full h-full object-cover ${isActive ? 'animate-heroZoom' : ''}`}
+              style={{ objectPosition: 'center 20%' }}
+            />
           </div>
         );
       })}
