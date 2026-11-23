@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: 67movies-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      TMDB_API_KEY: ${TMDB_API_KEY:-9cea7e9e78f99a9f9468c4f74f3d7eab}
+      TMDB_BASE_URL: ${TMDB_BASE_URL:-https://api.themoviedb.org/3}
+      TMDB_IMAGE_BASE_URL: ${TMDB_IMAGE_BASE_URL:-https://image.tmdb.org/t/p}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+        NEXT_PUBLIC_TMDB_IMAGE_BASE: ${NEXT_PUBLIC_TMDB_IMAGE_BASE:-https://image.tmdb.org/t/p}
+    container_name: 67movies-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+      TMDB_API_KEY: ${TMDB_API_KEY:-9cea7e9e78f99a9f9468c4f74f3d7eab}
+      TMDB_BASE_URL: ${TMDB_BASE_URL:-https://api.themoviedb.org/3}
+      NEXT_PUBLIC_TMDB_IMAGE_BASE: ${NEXT_PUBLIC_TMDB_IMAGE_BASE:-https://image.tmdb.org/t/p}
