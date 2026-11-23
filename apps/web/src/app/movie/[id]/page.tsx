@@ -276,8 +276,45 @@ export default function MovieDetailPage() {
           if (d) setExtras(d);
         })
         .catch(() => {});
+
+      // Ensure ANY anime (even opened via TMDB/MAL ID) resolves its AniLiberty release, episodes & voiceovers
+      const looksLikeAnime =
+        isAnime ||
+        /^al-\d+$/i.test(mediaId) ||
+        /^mal-\d+$/i.test(mediaId) ||
+        media.source === 'aniliberty' ||
+        media.source === 'jikan' ||
+        media.source === 'shikimori' ||
+        Boolean(media.anilibertyId || media.malId);
+
+      if (looksLikeAnime && (!media.anilibertyId || !media.seasons?.[0]?.episodes?.length)) {
+        api.media
+          .resolveAniLibertyRelease({
+            anilibertyId: media.anilibertyId,
+            malId: media.malId,
+            title: media.title,
+            originalTitle: media.originalTitle,
+          })
+          .then((alRelease) => {
+            if (!alRelease) return;
+            setMedia((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                anilibertyId: alRelease.anilibertyId || prev.anilibertyId,
+                voiceovers: alRelease.voiceovers?.length ? alRelease.voiceovers : prev.voiceovers,
+                voiceTeamName: alRelease.voiceTeamName || prev.voiceTeamName,
+                seasons: alRelease.seasons?.length ? alRelease.seasons : prev.seasons,
+              };
+            });
+            if (alRelease.seasons?.[0]?.episodes?.length) {
+              setSeasonData(alRelease.seasons[0]);
+            }
+          })
+          .catch(() => {});
+      }
     }
-  }, [media, addToHistory, loadCommunityReviews]);
+  }, [media?.id, addToHistory, loadCommunityReviews, mediaId]);
 
   const openCollectionModal = async () => {
     setIsCollectionModalOpen(true);
@@ -413,15 +450,40 @@ export default function MovieDetailPage() {
     ? `al-${media.anilibertyId}`
     : null;
 
+  const isAnimeMedia = Boolean(
+    anilibertyTargetId ||
+      /^mal-\d+$/i.test(mediaId) ||
+      media?.source === 'aniliberty' ||
+      media?.source === 'jikan' ||
+      media?.source === 'shikimori' ||
+      media?.malId ||
+      extras.anime ||
+      media?.genres?.some(
+        (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+      ) ||
+      (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
+  );
+
+  const buildAnimeWatchUrl = (seasonNum: number, episodeNum: number) => {
+    const watchId = anilibertyTargetId || mediaId;
+    const sp = new URLSearchParams({
+      season: String(seasonNum),
+      episode: String(episodeNum),
+      anime: '1',
+    });
+    if (media?.title) sp.set('title', media.title);
+    if (media?.originalTitle) sp.set('originalTitle', media.originalTitle);
+    if (media?.malId) sp.set('malId', String(media.malId));
+    return `/watch/${encodeURIComponent(watchId)}?${sp.toString()}`;
+  };
+
   const handleEpisodeChange = (seasonNum: number, episodeNum: number) => {
     setSelectedSeason(seasonNum);
     setSelectedEpisode(episodeNum);
 
-    // AniLiberty anime: play the episode right in the built-in HLS player
-    if (anilibertyTargetId) {
-      router.push(
-        `/watch/${encodeURIComponent(anilibertyTargetId)}?season=${seasonNum}&episode=${episodeNum}`
-      );
+    // All anime: always open in the built-in HLS player on the site, never redirect externally
+    if (isAnimeMedia) {
+      router.push(buildAnimeWatchUrl(seasonNum, episodeNum));
       return;
     }
 
@@ -672,10 +734,10 @@ export default function MovieDetailPage() {
 
             {/* Primary Action Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              {/* Button: «Смотреть» -> built-in HLS player (AniLiberty) or Kinopoisk */}
-              {anilibertyTargetId ? (
+              {/* Button: «Смотреть» -> built-in HLS player for ALL anime, Kinopoisk for movies/series */}
+              {isAnimeMedia ? (
                 <Link
-                  href={`/watch/${encodeURIComponent(anilibertyTargetId)}?season=1&episode=${selectedEpisode}`}
+                  href={buildAnimeWatchUrl(selectedSeason, selectedEpisode)}
                   data-nav-item="true"
                   className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
                 >

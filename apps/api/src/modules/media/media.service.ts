@@ -73,15 +73,18 @@ export class MediaService {
 
   async getPopularMovies(page = 1): Promise<PaginatedResult<MediaItem>> {
     return this.cache.wrap(`media:pop:movie:${page}`, 600, async () => {
-      const [tmdbRes, kpMovies, animeMovies] = await Promise.all([
+      const [tmdbRes, kpMovies, alMovies] = await Promise.all([
         this.tmdbService.getPopularMovies(page),
         this.kinopoiskProvider.getPopular('movie', page).catch(() => []),
-        this.animeProvider.getPopular('movie', page).catch(() => []),
+        this.aniLiberty
+          .getCatalog({ page, limit: 8, types: ['MOVIE'], sort: 'rating' })
+          .then((r) => r?.items || [])
+          .catch(() => []),
       ]);
 
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
-        [kpMovies, animeMovies.slice(0, 8)],
+        [kpMovies, alMovies.slice(0, 8)],
         { maxItems: 36, requirePoster: true },
       );
 
@@ -97,16 +100,19 @@ export class MediaService {
 
   async getPopularTv(page = 1): Promise<PaginatedResult<MediaItem>> {
     return this.cache.wrap(`media:pop:tv:${page}`, 600, async () => {
-      const [tmdbRes, kpTv, tvMaze, animeTv] = await Promise.all([
+      const [tmdbRes, kpTv, tvMaze, alTv] = await Promise.all([
         this.tmdbService.getPopularTv(page),
         this.kinopoiskProvider.getPopular('tv', page).catch(() => []),
         this.tvMazeProvider.getPopular(page).catch(() => []),
-        this.animeProvider.getPopular('tv', page).catch(() => []),
+        this.aniLiberty
+          .getCatalog({ page, limit: 8, types: ['TV'], sort: 'rating' })
+          .then((r) => r?.items || [])
+          .catch(() => []),
       ]);
 
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
-        [kpTv, tvMaze, animeTv.slice(0, 8)],
+        [kpTv, tvMaze, alTv.slice(0, 8)],
         { maxItems: 36, requirePoster: true },
       );
 
@@ -145,16 +151,19 @@ export class MediaService {
 
   async getNewTv(page = 1): Promise<PaginatedResult<MediaItem>> {
     return this.cache.wrap(`media:new:tv:${page}`, 600, async () => {
-      const [tmdbRes, kpNewTv, tvMazeNew, animeNew] = await Promise.all([
+      const [tmdbRes, kpNewTv, tvMazeNew, alNew] = await Promise.all([
         this.tmdbService.getNewTv(page),
         this.kinopoiskProvider.getNew('tv', page).catch(() => []),
         this.tvMazeProvider.getNew(page).catch(() => []),
-        this.animeProvider.getNew('tv', page).catch(() => []),
+        this.aniLiberty
+          .getCatalog({ page, limit: 8, types: ['TV'], sort: 'popularity' })
+          .then((r) => r?.items || [])
+          .catch(() => []),
       ]);
 
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
-        [kpNewTv, tvMazeNew, animeNew.slice(0, 8)],
+        [kpNewTv, tvMazeNew, alNew.slice(0, 8)],
         { maxItems: 36, requirePoster: true },
       );
 
@@ -244,11 +253,39 @@ export class MediaService {
     return this.cache.wrap(`media:genres:${type}`, 3600, () => this.tmdbService.getGenres(type));
   }
 
-  /** HLS stream groups for an AniLiberty episode (id like `al-1234`). */
-  async getAnimeStreams(id: string, episode = 1): Promise<StreamSourceGroup[]> {
+  /**
+   * HLS stream groups for an anime episode.
+   * Supports direct `al-<id>` as well as `mal-<id>` or TMDB anime IDs by resolving the release in AniLiberty.
+   */
+  async getAnimeStreams(
+    id: string,
+    episode = 1,
+    extra?: { title?: string; originalTitle?: string; malId?: number },
+  ): Promise<StreamSourceGroup[]> {
     const parsed = parsePrefixedMediaId(id);
-    if (parsed.provider !== 'aniliberty') return [];
-    return this.aniLiberty.getStreams(parseInt(parsed.rawId, 10), episode);
+    if (parsed.provider === 'aniliberty') {
+      return this.aniLiberty.getStreams(parseInt(parsed.rawId, 10), episode);
+    }
+
+    let title = extra?.title;
+    let originalTitle = extra?.originalTitle;
+    let malId = extra?.malId || (parsed.provider === 'anime' ? parseInt(parsed.rawId, 10) : undefined);
+
+    if (!title && !originalTitle) {
+      const details = await this.getDetails(id).catch(() => null);
+      if (details?.anilibertyId) {
+        return this.aniLiberty.getStreams(details.anilibertyId, episode);
+      }
+      title = details?.title;
+      originalTitle = details?.originalTitle;
+      malId = malId || details?.malId;
+    }
+
+    const matched = await this.aniLiberty.findMatchingRelease({ title, originalTitle, malId });
+    if (matched?.anilibertyId) {
+      return this.aniLiberty.getStreams(matched.anilibertyId, episode);
+    }
+    return [];
   }
 
   async getCalendarReleases(year: number, month: number, type: 'all' | 'movie' | 'tv' = 'all') {
@@ -391,12 +428,10 @@ export class MediaService {
     const isAnime =
       item.source === 'jikan' ||
       item.source === 'shikimori' ||
+      item.source === 'aniliberty' ||
       Boolean(item.malId) ||
-      Boolean(
-        item.genres?.some((g) => g.id === 16 || /аниме|anime/i.test(g.name)) &&
-          item.originalTitle &&
-          /[\u3040-\u30ff\u4e00-\u9faf]/.test(item.originalTitle),
-      );
+      Boolean(item.genres?.some((g) => g.id === 16 || /аниме|anime/i.test(g.name))) ||
+      Boolean(item.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(item.originalTitle));
     if (!isAnime) return item;
 
     try {

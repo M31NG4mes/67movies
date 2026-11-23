@@ -289,15 +289,22 @@ export class AniLibertyProviderService {
     originalTitle?: string;
     malId?: number;
   }): Promise<MediaItem | null> {
-    const query = (params.title || params.originalTitle || '').trim();
-    if (!query) return null;
+    const candidateQueries: string[] = [];
+    const addQuery = (q?: string) => {
+      const clean = (q || '').trim();
+      if (clean && !candidateQueries.includes(clean)) {
+        candidateQueries.push(clean);
+      }
+      const basePart = clean.split(/[:—–-]/)[0]?.trim();
+      if (basePart && basePart.length >= 3 && !candidateQueries.includes(basePart)) {
+        candidateQueries.push(basePart);
+      }
+    };
 
-    const catalog = await this.getCatalog({
-      page: 1,
-      limit: 8,
-      search: query,
-    });
-    if (!catalog || catalog.items.length === 0) return null;
+    addQuery(params.title);
+    addQuery(params.originalTitle);
+
+    if (candidateQueries.length === 0) return null;
 
     const norm = (s?: string) =>
       String(s || '')
@@ -309,18 +316,31 @@ export class AniLibertyProviderService {
     const qTitle = norm(params.title);
     const qOrig = norm(params.originalTitle);
 
-    const matched =
-      (params.malId ? catalog.items.find((i) => i.malId === params.malId) : undefined) ||
-      catalog.items.find(
-        (i) =>
-          (qTitle && norm(i.title) === qTitle) ||
-          (qOrig && norm(i.originalTitle) === qOrig) ||
-          (qTitle && norm(i.title).startsWith(qTitle)),
-      ) ||
-      catalog.items[0];
+    for (const query of candidateQueries) {
+      const catalog = await this.getCatalog({
+        page: 1,
+        limit: 10,
+        search: query,
+      });
+      if (!catalog || catalog.items.length === 0) continue;
 
-    if (!matched?.anilibertyId) return null;
-    return this.getDetails(matched.anilibertyId);
+      const matched =
+        (params.malId ? catalog.items.find((i) => i.malId === params.malId) : undefined) ||
+        catalog.items.find(
+          (i) =>
+            (qTitle && norm(i.title) === qTitle) ||
+            (qOrig && norm(i.originalTitle) === qOrig) ||
+            (qTitle && norm(i.title).startsWith(qTitle)) ||
+            (qTitle && qTitle.startsWith(norm(i.title))),
+        ) ||
+        catalog.items[0];
+
+      if (matched?.anilibertyId) {
+        return this.getDetails(matched.anilibertyId);
+      }
+    }
+
+    return null;
   }
 
   // ---------------------------------------------------------------------------

@@ -58,10 +58,24 @@ export class MediaController {
   }
 
   @Get('anime/:id/streams')
-  async getAnimeStreams(@Param('id') id: string, @Query('episode') episode = '1') {
+  async getAnimeStreams(
+    @Param('id') id: string,
+    @Query('episode') episode = '1',
+    @Query('title') title?: string,
+    @Query('originalTitle') originalTitle?: string,
+    @Query('malId') malId?: string,
+  ) {
     const ep = parseFloat(episode);
     return {
-      groups: await this.mediaService.getAnimeStreams(id, Number.isFinite(ep) && ep > 0 ? ep : 1),
+      groups: await this.mediaService.getAnimeStreams(
+        id,
+        Number.isFinite(ep) && ep > 0 ? ep : 1,
+        {
+          title,
+          originalTitle,
+          malId: malId ? parseInt(malId, 10) || undefined : undefined,
+        },
+      ),
     };
   }
 

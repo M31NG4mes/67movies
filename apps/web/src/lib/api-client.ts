@@ -110,6 +110,95 @@ function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem |
   return base;
 }
 
+async function fetchDirectAniLibertyReleaseById(alId: number | string): Promise<any | null> {
+  try {
+    const res = await fetch(`${ANILIBERTY_BASE}/api/v1/anime/releases/${alId}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const raw: any = await res.json();
+    const r = raw?.data || raw;
+    return r && r.id ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findDirectAniLibertyReleaseRaw(params: {
+  anilibertyId?: number;
+  malId?: number;
+  title?: string;
+  originalTitle?: string;
+}): Promise<any | null> {
+  if (params.anilibertyId) {
+    const direct = await fetchDirectAniLibertyReleaseById(params.anilibertyId);
+    if (direct) return direct;
+  }
+
+  const queries: string[] = [];
+  const pushQ = (q?: string) => {
+    const clean = (q || '').trim();
+    if (clean && !queries.includes(clean)) queries.push(clean);
+    const base = clean.split(/[:—–-]/)[0]?.trim();
+    if (base && base.length >= 3 && !queries.includes(base)) queries.push(base);
+  };
+  pushQ(params.title);
+  pushQ(params.originalTitle);
+
+  const norm = (s?: string) =>
+    String(s || '')
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/[^a-zа-я0-9]+/gi, ' ')
+      .trim();
+
+  const qTitle = norm(params.title);
+  const qOrig = norm(params.originalTitle);
+
+  for (const q of queries) {
+    try {
+      const sp = new URLSearchParams({
+        page: '1',
+        limit: '10',
+        'f[search]': q,
+      });
+      const res = await fetch(
+        `${ANILIBERTY_BASE}/api/v1/anime/catalog/releases?${sp.toString()}`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) continue;
+      const json: any = await res.json();
+      const list: any[] = Array.isArray(json?.data) ? json.data : [];
+      if (list.length === 0) continue;
+
+      const hit =
+        (params.malId
+          ? list.find(
+              (r) => Number(r?.mal?.id) === params.malId || Number(r?.shikimori?.id) === params.malId
+            )
+          : undefined) ||
+        list.find((r) => {
+          const m = norm(r?.name?.main);
+          const e = norm(r?.name?.english);
+          return (
+            (qTitle && m === qTitle) ||
+            (qOrig && e === qOrig) ||
+            (qTitle && m.startsWith(qTitle)) ||
+            (qTitle && qTitle.startsWith(m))
+          );
+        }) ||
+        list[0];
+
+      if (hit?.id) {
+        const full = await fetchDirectAniLibertyReleaseById(hit.id);
+        if (full) return full;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 async function fetcher<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
   const isMutation = options?.method && options.method !== 'GET';
@@ -713,69 +802,101 @@ export const api = {
         throw err;
       }
     },
+
+    resolveAniLibertyRelease: async (params: {
+      anilibertyId?: number;
+      malId?: number;
+      title?: string;
+      originalTitle?: string;
+    }): Promise<MediaItem | null> => {
+      const raw = await findDirectAniLibertyReleaseRaw(params);
+      return raw ? mapDirectAniLibertyRelease(raw, true) : null;
+    },
   },
 
   sources: {
-    /** AniLiberty HLS streams (qualities 480/720/1080) for an anime episode (`al-<id>`). */
-    getAnimeStreams: async (id: string, episode = 1): Promise<StreamSourceGroup[]> => {
+    /**
+     * AniLiberty HLS streams (qualities 480/720/1080) for any anime episode.
+     * Works with `al-<id>`, `mal-<id>`, or TMDB anime IDs (auto-resolving by title / malId).
+     */
+    getAnimeStreams: async (
+      id: string,
+      episode = 1,
+      extra?: {
+        title?: string;
+        originalTitle?: string;
+        malId?: number;
+        anilibertyId?: number;
+      }
+    ): Promise<StreamSourceGroup[]> => {
+      const targetId = extra?.anilibertyId ? `al-${extra.anilibertyId}` : id;
       try {
+        const sp = new URLSearchParams({ episode: String(episode) });
+        if (extra?.title) sp.set('title', extra.title);
+        if (extra?.originalTitle) sp.set('originalTitle', extra.originalTitle);
+        if (extra?.malId) sp.set('malId', String(extra.malId));
         const r = await fetcher<{ groups: StreamSourceGroup[] }>(
-          `/media/anime/${encodeURIComponent(id)}/streams?episode=${episode}`,
+          `/media/anime/${encodeURIComponent(targetId)}/streams?${sp.toString()}`,
           { cache: 'no-store' }
         );
         if (r?.groups && r.groups.length > 0) return r.groups;
       } catch {}
 
-      if (/^al-\d+$/i.test(id)) {
-        try {
-          const alId = id.slice(3);
-          const res = await fetch(`${ANILIBERTY_BASE}/api/v1/anime/releases/${alId}`, {
-            cache: 'no-store',
-          });
-          if (res.ok) {
-            const raw: any = await res.json();
-            const r = raw?.data || raw;
-            const eps: any[] = Array.isArray(r?.episodes) ? r.episodes : [];
-            const ep =
-              eps.find((e) => Number(e?.ordinal) === Number(episode)) ||
-              (eps.length === 1 ? eps[0] : null);
-            if (ep) {
-              const team = Array.isArray(r?.members)
-                ? r.members
-                    .filter((m: any) => m?.nickname && /озвуч|voic/i.test(String(m?.role?.description || m?.role?.value || '')))
-                    .map((m: any) => String(m.nickname))
-                : [];
-              const voiceActing =
-                team.length > 0 ? `AniLibria: ${team.slice(0, 3).join(', ')}` : 'AniLibria';
-              const levels: Array<[string, '1080p' | '720p' | '480p']> = [
-                ['hls_1080', '1080p'],
-                ['hls_720', '720p'],
-                ['hls_480', '480p'],
-              ];
-              const streams = levels
-                .filter(([f]) => typeof ep[f] === 'string' && ep[f])
-                .map(([f, quality]) => ({
-                  id: `al-${alId}-e${ep.ordinal}-${quality}`,
-                  providerId: 'aniliberty',
-                  providerName: 'AniLiberty',
-                  title: ep.name || `Серия ${ep.ordinal}`,
-                  voiceActing,
-                  season: 1,
-                  episode: Number(ep.ordinal),
-                  quality,
-                  format: 'hls' as const,
-                  streamUrl: String(ep[f]),
-                  audioTracks: [
-                    { id: '0', language: 'ru', label: 'Русский (AniLibria)', isDefault: true },
-                  ],
-                }));
-              if (streams.length > 0) {
-                return [{ providerId: 'aniliberty', providerName: 'AniLiberty', voiceActing, streams }];
-              }
+      try {
+        const alMatch = /^al-(\d+)$/i.exec(targetId);
+        const malMatch = /^mal-(\d+)$/i.exec(targetId);
+        const r = await findDirectAniLibertyReleaseRaw({
+          anilibertyId: extra?.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined),
+          malId: extra?.malId || (malMatch ? Number(malMatch[1]) : undefined),
+          title: extra?.title,
+          originalTitle: extra?.originalTitle,
+        });
+        if (r) {
+          const alId = r.id;
+          const eps: any[] = Array.isArray(r?.episodes) ? r.episodes : [];
+          const ep =
+            eps.find((e) => Number(e?.ordinal) === Number(episode)) ||
+            (eps.length === 1 ? eps[0] : eps[0] || null);
+          if (ep) {
+            const team = Array.isArray(r?.members)
+              ? r.members
+                  .filter(
+                    (m: any) =>
+                      m?.nickname &&
+                      /озвуч|voic/i.test(String(m?.role?.description || m?.role?.value || ''))
+                  )
+                  .map((m: any) => String(m.nickname))
+              : [];
+            const voiceActing =
+              team.length > 0 ? `AniLibria: ${team.slice(0, 3).join(', ')}` : 'AniLibria';
+            const levels: Array<[string, '1080p' | '720p' | '480p']> = [
+              ['hls_1080', '1080p'],
+              ['hls_720', '720p'],
+              ['hls_480', '480p'],
+            ];
+            const streams = levels
+              .filter(([f]) => typeof ep[f] === 'string' && ep[f])
+              .map(([f, quality]) => ({
+                id: `al-${alId}-e${ep.ordinal}-${quality}`,
+                providerId: 'aniliberty',
+                providerName: 'AniLiberty',
+                title: ep.name || `Серия ${ep.ordinal}`,
+                voiceActing,
+                season: 1,
+                episode: Number(ep.ordinal),
+                quality,
+                format: 'hls' as const,
+                streamUrl: String(ep[f]),
+                audioTracks: [
+                  { id: '0', language: 'ru', label: 'Русский (AniLibria)', isDefault: true },
+                ],
+              }));
+            if (streams.length > 0) {
+              return [{ providerId: 'aniliberty', providerName: 'AniLiberty', voiceActing, streams }];
             }
           }
-        } catch {}
-      }
+        }
+      } catch {}
       return [];
     },
 
