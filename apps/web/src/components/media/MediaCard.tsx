@@ -71,7 +71,7 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
             decoding="async"
             referrerPolicy="no-referrer"
             onError={handleImageError}
-            className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
+            className={`w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06] ${
               is18Plus && !ageVerified18 ? 'blur-md scale-105 brightness-75' : ''
             }`}
           />

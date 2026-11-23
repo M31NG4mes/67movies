@@ -25,7 +25,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MediaItem } from '@cinemaflow/types';
 import { api } from '../../lib/api-client';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
-import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
+import { THEME_PRESETS, TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
+import { Logo } from './Logo';
 
 function SidebarTooltip({ label }: { label: string }) {
   return (
@@ -46,6 +47,7 @@ function NavbarContent() {
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const searchBoxRef = useRef<HTMLDivElement>(null);
+  const desktopSearchInputRef = useRef<HTMLInputElement>(null);
 
   const { user, accessToken, profiles, activeProfileId, hydrate } = useAuthStore();
   const [unreadMessages, setUnreadMessages] = useState(0);
@@ -146,6 +148,15 @@ function NavbarContent() {
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (window.innerWidth >= 768) {
+          desktopSearchInputRef.current?.focus();
+          setShowDropdown(true);
+        } else {
+          setIsSearchOpen(true);
+        }
+      }
       if (e.key === 'Escape') {
         setShowDropdown(false);
         setIsSearchOpen(false);
@@ -223,16 +234,10 @@ function NavbarContent() {
          ================================================================= */}
       <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-16 z-50 bg-[#09090D]/95 border-r border-white/[0.06] flex-col items-center justify-between py-5">
         {/* Top: Brand Logo */}
-        <Link
-          href="/"
-          aria-label="67movies"
-          className="group relative w-10 h-10 rounded-xl brand-logo-badge flex items-center justify-center transition-transform duration-200 hover:scale-105 active:scale-95"
-        >
-          <span className="text-[17px] font-black text-white tracking-tighter leading-none">
-            67
-          </span>
+        <div className="group relative">
+          <Logo compact />
           <SidebarTooltip label="67movies" />
-        </Link>
+        </div>
 
         {/* Middle: Navigation + Search Icons */}
         <nav className="flex flex-col items-center gap-3.5">
@@ -250,7 +255,9 @@ function NavbarContent() {
                 }`}
               >
                 {item.isActive && (
-                  <span
+                  <motion.span
+                    layoutId="sidebar-active-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                     className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
                     style={{ backgroundColor: 'var(--brand-main)' }}
                   />
@@ -327,11 +334,12 @@ function NavbarContent() {
             <SidebarTooltip label={language === 'ru' ? 'Язык: Русский' : 'Language: English'} />
           </button>
 
-          {/* Theme Switcher */}
+          {/* Theme Switcher (cycles through all 5 themes) */}
           <button
             type="button"
             onClick={() => {
-              const nextTheme = theme === 'dark' ? 'light' : 'dark';
+              const idx = THEME_PRESETS.findIndex((p) => p.id === theme);
+              const nextTheme = THEME_PRESETS[(idx + 1) % THEME_PRESETS.length].id;
               setTheme(nextTheme);
               if (accessToken) {
                 authFetch('/settings', {
@@ -343,21 +351,16 @@ function NavbarContent() {
             aria-label="Переключить тему"
             className="group relative w-10 h-10 rounded-xl flex items-center justify-center text-[#8C8A9A] hover:text-white hover:bg-white/5 transition-all"
           >
-            {theme === 'dark' ? (
-              <Sun className="w-[19px] h-[19px] stroke-[1.75]" />
-            ) : (
+            {theme === 'light' ? (
               <Moon className="w-[19px] h-[19px] stroke-[1.75]" />
+            ) : (
+              <Sun className="w-[19px] h-[19px] stroke-[1.75]" />
             )}
             <SidebarTooltip
-              label={
-                theme === 'dark'
-                  ? language === 'en'
-                    ? 'Light theme'
-                    : 'Светлая тема'
-                  : language === 'en'
-                  ? 'Dark theme'
-                  : 'Тёмная тема'
-              }
+              label={`${t.themeLabel}: ${
+                THEME_PRESETS.find((p) => p.id === theme)?.[language === 'en' ? 'nameEn' : 'nameRu'] ||
+                theme
+              }`}
             />
           </button>
 
@@ -397,6 +400,7 @@ function NavbarContent() {
           <form onSubmit={handleSearchSubmit} className="relative group">
             <Search className="w-4 h-4 text-[#92929F] group-focus-within:text-[#A18BFF] absolute left-4 top-1/2 -translate-y-1/2 transition-colors pointer-events-none" />
             <input
+              ref={desktopSearchInputRef}
               type="text"
               value={searchQuery}
               onFocus={() => setShowDropdown(true)}
@@ -405,8 +409,13 @@ function NavbarContent() {
                 setShowDropdown(true);
               }}
               placeholder={t.searchPlaceholder}
-              className="w-full pl-11 pr-10 py-2.5 rounded-2xl bg-[#111119]/85 backdrop-blur-xl border border-white/15 focus:border-[#8065FF] text-sm text-white placeholder-[#92929F] shadow-xl focus:outline-none transition-all"
+              className="w-full pl-11 pr-16 py-2.5 rounded-2xl bg-[#111119]/85 backdrop-blur-xl border border-white/15 focus:border-[#8065FF] text-sm text-white placeholder-[#92929F] shadow-xl focus:outline-none transition-all"
             />
+            {!searchQuery && (
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-[#92929F]">
+                Ctrl K
+              </span>
+            )}
             {searchQuery && (
               <button
                 type="button"
@@ -743,6 +752,62 @@ function NavbarContent() {
             </div>
           </div>
         </div>
+      )}
+      {/* =================================================================
+          MOBILE: Thumb-Friendly Bottom Navigation Bar
+         ================================================================= */}
+      {!pathname?.startsWith('/watch') && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090D]/90 backdrop-blur-xl border-t border-white/10 px-2 py-1.5 flex items-center justify-around">
+          <Link
+            href="/"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
+              pathname === '/' ? 'text-[#A18BFF]' : 'text-[#92929F]'
+            }`}
+          >
+            <Home className="w-5 h-5" />
+            <span>{t.home}</span>
+          </Link>
+          <Link
+            href="/catalog"
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
+              pathname?.startsWith('/catalog') ? 'text-[#A18BFF]' : 'text-[#92929F]'
+            }`}
+          >
+            <Compass className="w-5 h-5" />
+            <span>{t.catalog}</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
+            className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold text-[#92929F] active:scale-95 transition-transform"
+          >
+            <Search className="w-5 h-5" />
+            <span>Поиск</span>
+          </button>
+          <Link
+            href="/messages"
+            className={`relative flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
+              pathname?.startsWith('/messages') ? 'text-[#A18BFF]' : 'text-[#92929F]'
+            }`}
+          >
+            <MessageCircle className="w-5 h-5" />
+            <span>{t.chat}</span>
+            {unreadMessages > 0 && (
+              <span className="absolute top-0.5 right-1.5 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                {unreadMessages > 9 ? '9+' : unreadMessages}
+              </span>
+            )}
+          </Link>
+          <Link
+            href={user ? '/profile' : '/auth'}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
+              pathname?.startsWith('/profile') ? 'text-[#A18BFF]' : 'text-[#92929F]'
+            }`}
+          >
+            <UserIcon className="w-5 h-5" />
+            <span>{user ? 'Профиль' : t.signIn}</span>
+          </Link>
+        </nav>
       )}
     </>
   );

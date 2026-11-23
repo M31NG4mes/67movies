@@ -1,7 +1,23 @@
 import { create } from 'zustand';
 
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'dark' | 'midnight' | 'oled' | 'cinema' | 'light';
 export type AppLanguage = 'ru' | 'en';
+
+export interface ThemePreset {
+  id: ThemeMode;
+  nameRu: string;
+  nameEn: string;
+  bg: string;
+  card: string;
+}
+
+export const THEME_PRESETS: ThemePreset[] = [
+  { id: 'dark', nameRu: 'Тёмная', nameEn: 'Dark', bg: '#09090D', card: '#111119' },
+  { id: 'midnight', nameRu: 'Полночь', nameEn: 'Midnight', bg: '#070B16', card: '#0E1526' },
+  { id: 'oled', nameRu: 'OLED Чёрная', nameEn: 'OLED Black', bg: '#000000', card: '#0A0A0E' },
+  { id: 'cinema', nameRu: 'Кинозал', nameEn: 'Cinema', bg: '#11090E', card: '#1B1016' },
+  { id: 'light', nameRu: 'Светлая', nameEn: 'Light', bg: '#E4E6EE', card: '#F4F5F8' },
+];
 
 export interface AccentPreset {
   id: string;
@@ -52,6 +68,30 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     main: '#3B82F6',
     light: '#60A5FA',
     glow: 'rgba(59, 130, 246, 0.5)',
+  },
+  {
+    id: 'cyan',
+    nameRu: 'Неон Циан',
+    nameEn: 'Neon Cyan',
+    main: '#06B6D4',
+    light: '#22D3EE',
+    glow: 'rgba(6, 182, 212, 0.5)',
+  },
+  {
+    id: 'coral',
+    nameRu: 'Коралловый',
+    nameEn: 'Coral',
+    main: '#FF6B4A',
+    light: '#FF8A70',
+    glow: 'rgba(255, 107, 74, 0.5)',
+  },
+  {
+    id: 'gold',
+    nameRu: 'Золотой',
+    nameEn: 'Gold',
+    main: '#EAB308',
+    light: '#FACC15',
+    glow: 'rgba(234, 179, 8, 0.5)',
   },
 ];
 
@@ -242,8 +282,9 @@ function applyPreferencesToDom(
   const root = document.documentElement;
   root.setAttribute('data-theme', theme);
   root.setAttribute('data-newyear', newYearMode ? 'true' : 'false');
-  root.classList.toggle('dark', theme === 'dark');
-  root.classList.toggle('light', theme === 'light');
+  const isLight = theme === 'light';
+  root.classList.toggle('dark', !isLight);
+  root.classList.toggle('light', isLight);
   root.lang = language;
 
   const preset =
@@ -286,7 +327,8 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
       const raw = localStorage.getItem(PREFS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        const theme: ThemeMode = parsed.theme === 'light' ? 'light' : 'dark';
+        const validThemes: ThemeMode[] = ['dark', 'midnight', 'oled', 'cinema', 'light'];
+        const theme: ThemeMode = validThemes.includes(parsed.theme) ? parsed.theme : 'dark';
         const accentColor: string = parsed.accentColor || '#8065FF';
         const language: AppLanguage = parsed.language === 'en' ? 'en' : 'ru';
         const newYearMode = Boolean(parsed.newYearMode);
@@ -363,7 +405,10 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   },
 
   syncFromServer: (s) => {
-    const theme: ThemeMode = s.theme === 'light' ? 'light' : get().theme;
+    const validThemes: ThemeMode[] = ['dark', 'midnight', 'oled', 'cinema', 'light'];
+    const theme: ThemeMode = validThemes.includes(s.theme as ThemeMode)
+      ? (s.theme as ThemeMode)
+      : get().theme;
     const accentColor = s.accentColor || get().accentColor;
     const language: AppLanguage = s.language === 'en' ? 'en' : s.language === 'ru' ? 'ru' : get().language;
     const { newYearMode, ageVerified18 } = get();

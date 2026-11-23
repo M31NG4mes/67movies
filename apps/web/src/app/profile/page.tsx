@@ -34,6 +34,7 @@ import { authFetch, useAuthStore } from '../../stores/auth.store';
 import { useLibraryStore } from '../../stores/library.store';
 import {
   ACCENT_PRESETS,
+  THEME_PRESETS,
   TRANSLATIONS,
   usePreferencesStore,
 } from '../../stores/preferences.store';
@@ -1208,6 +1209,37 @@ export default function ProfilePage() {
                   English
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Theme Mode Picker */}
+          <div className="p-4 rounded-2xl bg-[#181821] border border-[#292936] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <span className="text-sm font-medium text-white">{t.themeLabel}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {THEME_PRESETS.map((tp) => {
+                const isSelected = theme === tp.id;
+                return (
+                  <button
+                    key={tp.id}
+                    type="button"
+                    onClick={() => {
+                      setTheme(tp.id);
+                      handleUpdateSetting({ theme: tp.id });
+                    }}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                      isSelected
+                        ? 'border-[#8065FF] bg-[#8065FF]/15 text-white'
+                        : 'border-[#292936] bg-[#09090D] text-[#92929F] hover:text-white'
+                    }`}
+                  >
+                    <span
+                      className="w-3.5 h-3.5 rounded-full border border-white/25 shrink-0"
+                      style={{ backgroundColor: tp.bg }}
+                    />
+                    <span>{language === 'en' ? tp.nameEn : tp.nameRu}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
