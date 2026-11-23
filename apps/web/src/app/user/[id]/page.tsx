@@ -5,7 +5,14 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Star, Heart, Film, ArrowLeft, ListPlus } from 'lucide-react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const PROD_API_FALLBACK = 'https://six7movies-api.onrender.com/api';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:4000/api'
+      : PROD_API_FALLBACK
+    : PROD_API_FALLBACK);
 
 interface ShowcaseRating {
   id: string;
@@ -277,30 +284,40 @@ export default function PublicUserProfilePage() {
             Оценок пока нет.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {showcase.ratings.map((item) => (
               <Link
                 key={item.id}
                 href={`/movie/${item.tmdbId}?type=${item.mediaType === 'SERIES' ? 'tv' : 'movie'}`}
-                className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-[#111119] border border-[#292936] hover:border-[#8065FF] transition-all"
+                className="group rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-[#8065FF] brand-card-hover transition-all"
               >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  {item.posterPath && (
+                <div className="aspect-[2/3] relative bg-[#111119] overflow-hidden">
+                  {item.posterPath ? (
                     <img
                       src={item.posterPath}
                       alt={item.title}
-                      className="w-11 h-16 rounded-lg object-cover shrink-0"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[#92929F]">
+                      <Film className="w-8 h-8" />
+                    </div>
                   )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{item.title}</p>
+                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-xs font-bold text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                    <span>{item.rating}/10</span>
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/95 via-black/65 to-transparent flex flex-col justify-end p-2.5">
+                    <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
+                      {item.title}
+                    </p>
                     {item.review && (
-                      <p className="text-xs text-[#92929F] line-clamp-2 mt-1">{item.review}</p>
+                      <p className="text-[11px] text-white/75 line-clamp-2 mt-1 italic">
+                        «{item.review}»
+                      </p>
                     )}
                   </div>
-                </div>
-                <div className="px-3 py-1.5 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-sm font-black text-[#A18BFF] shrink-0">
-                  ★ {item.rating}/10
                 </div>
               </Link>
             ))}

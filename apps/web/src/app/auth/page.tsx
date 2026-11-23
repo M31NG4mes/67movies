@@ -10,6 +10,7 @@ import {
   AlertCircle,
   KeyRound,
   CheckCircle2,
+  Check,
   Eye,
   EyeOff,
   Sparkles,
@@ -21,7 +22,118 @@ import {
 import { useAuthStore } from '../../stores/auth.store';
 import { ACCENT_PRESETS, usePreferencesStore } from '../../stores/preferences.store';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const PROD_API_FALLBACK = 'https://six7movies-api.onrender.com/api';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:4000/api'
+      : PROD_API_FALLBACK
+    : PROD_API_FALLBACK);
+
+const FORBIDDEN_NICK_ROOTS = [
+  'хуй',
+  'хуя',
+  'хуе',
+  'хуи',
+  'пизд',
+  'еба',
+  'ебл',
+  'ебн',
+  'ебу',
+  'ебт',
+  'бляд',
+  'блять',
+  'блят',
+  'сука',
+  'сучк',
+  'мудак',
+  'мудил',
+  'гандон',
+  'гондон',
+  'пидор',
+  'пидар',
+  'педик',
+  'шлюх',
+  'шалав',
+  'мраз',
+  'ублюд',
+  'залуп',
+  'манда',
+  'дроч',
+  'сперм',
+  'порно',
+  'даун',
+  'дебил',
+  'fuck',
+  'shit',
+  'bitch',
+  'cunt',
+  'dick',
+  'cock',
+  'pussy',
+  'asshole',
+  'whore',
+  'slut',
+  'nigger',
+  'nigga',
+  'faggot',
+  'retard',
+  'hitler',
+  'nazi',
+  'porn',
+  'admin',
+  'administrator',
+  'moderator',
+  'support',
+  '67movies',
+  'админ',
+  'модератор',
+];
+
+function validateNicknameClient(rawName: string): string | null {
+  const clean = (rawName || '').trim();
+  if (clean.length < 2) return 'Никнейм должен содержать минимум 2 символа';
+  if (clean.length > 32) return 'Никнейм не должен превышать 32 символа';
+  if (clean.includes('@')) return 'Никнейм не может содержать символ @';
+  if (!/^[a-zA-Zа-яА-ЯёЁ0-9 _.-]+$/.test(clean)) {
+    return 'Никнейм может содержать только буквы, цифры, пробел, дефис, точку и _';
+  }
+  const leet: Record<string, string> = {
+    '0': 'o',
+    '1': 'i',
+    '3': 'e',
+    '4': 'a',
+    '5': 's',
+    '6': 'б',
+    '7': 't',
+    '@': 'a',
+    '$': 's',
+    'ё': 'е',
+    'й': 'и',
+  };
+  let mapped = '';
+  for (const ch of clean.toLowerCase()) mapped += leet[ch] ?? ch;
+  const collapsed = mapped.replace(/[^a-zа-я0-9]+/gi, '');
+  const cyr = collapsed
+    .replace(/x/g, 'х')
+    .replace(/y/g, 'у')
+    .replace(/p/g, 'р')
+    .replace(/c/g, 'с')
+    .replace(/a/g, 'а')
+    .replace(/e/g, 'е')
+    .replace(/o/g, 'о')
+    .replace(/k/g, 'к')
+    .replace(/m/g, 'м')
+    .replace(/b/g, 'в');
+
+  for (const root of FORBIDDEN_NICK_ROOTS) {
+    if (collapsed.includes(root) || cyr.includes(root)) {
+      return 'Этот никнейм содержит запрещённые слова или недопустим';
+    }
+  }
+  return null;
+}
 
 type AuthMode = 'register' | 'login' | 'forgot' | 'reset';
 
@@ -74,6 +186,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [devCodeHint, setDevCodeHint] = useState<string | null>(null);
@@ -204,11 +317,30 @@ export default function AuthPage() {
         return;
       }
 
+      if (mode === 'register') {
+        const nickErr = validateNicknameClient(name);
+        if (nickErr) {
+          throw new Error(nickErr);
+        }
+      }
+
       const endpoint = mode === 'register' ? '/auth/register' : '/auth/login';
       const body =
         mode === 'register'
-          ? { name: name.trim(), email: email.trim(), password, deviceName: 'Web Browser' }
-          : { email: email.trim(), password, deviceName: 'Web Browser' };
+          ? {
+              name: name.trim(),
+              email: email.trim(),
+              password,
+              deviceName: 'Web Browser',
+              rememberDevice,
+            }
+          : {
+              email: email.trim(),
+              login: email.trim(),
+              password,
+              deviceName: 'Web Browser',
+              rememberDevice,
+            };
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
@@ -237,6 +369,7 @@ export default function AuthPage() {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
         profiles,
+        rememberDevice,
       });
 
       router.push('/');
@@ -512,15 +645,24 @@ export default function AuthPage() {
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-[#92929F] mb-1.5">Email</label>
+                <label className="block text-xs font-semibold text-[#92929F] mb-1.5">
+                  {mode === 'login' ? 'Email или никнейм' : 'Email'}
+                </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-[#92929F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  {mode === 'login' && !email.includes('@') ? (
+                    <User className="w-4 h-4 text-[#92929F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  ) : (
+                    <Mail className="w-4 h-4 text-[#92929F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  )}
                   <input
-                    type="email"
+                    type={mode === 'login' ? 'text' : 'email'}
                     required
+                    minLength={2}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder={
+                      mode === 'login' ? 'you@example.com или ваш ник' : 'you@example.com'
+                    }
                     className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#09090D]/90 border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF] transition-colors"
                   />
                 </div>
@@ -590,6 +732,31 @@ export default function AuthPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Remember This Device toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setRememberDevice((v) => !v)}
+                    className="mt-3 w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-[#09090D]/70 hover:bg-[#09090D] border border-[#292936] hover:border-[#8065FF]/50 transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${
+                          rememberDevice
+                            ? 'bg-[#8065FF] border-[#8065FF] text-white'
+                            : 'bg-transparent border-[#92929F]/60 group-hover:border-white'
+                        }`}
+                      >
+                        {rememberDevice && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                      <span className="text-xs font-semibold text-white/90">
+                        Запомнить это устройство
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[#92929F]">
+                      {rememberDevice ? 'На 30 дней' : 'Только сессия'}
+                    </span>
+                  </button>
                 </div>
               )}
 
@@ -627,6 +794,18 @@ export default function AuthPage() {
                         placeholder="••••••••"
                         className="w-full pl-10 pr-11 py-3 rounded-xl bg-[#09090D]/90 border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        aria-label="Показать пароль"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[#92929F] hover:text-white transition-colors"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
                     </div>
                   </div>
                 </>

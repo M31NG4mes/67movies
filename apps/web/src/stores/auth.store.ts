@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const PROD_API_FALLBACK = 'https://six7movies-api.onrender.com/api';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:4000/api'
+      : PROD_API_FALLBACK
+    : process.env.NODE_ENV === 'production'
+    ? PROD_API_FALLBACK
+    : 'http://localhost:4000/api');
 const STORAGE_KEY = '67movies_auth_v1';
 
 export interface AuthUser {
@@ -25,6 +34,7 @@ interface AuthStore {
   refreshToken: string | null;
   profiles: AccountProfile[];
   activeProfileId: string | null;
+  rememberDevice: boolean;
   hydrated: boolean;
 
   hydrate: () => void;
@@ -33,25 +43,34 @@ interface AuthStore {
     accessToken: string;
     refreshToken: string;
     profiles?: AccountProfile[];
+    rememberDevice?: boolean;
   }) => void;
   setProfiles: (profiles: AccountProfile[]) => void;
   setActiveProfileId: (id: string) => void;
   logout: () => Promise<void>;
 }
 
-function saveToStorage(state: {
-  user: AuthUser | null;
-  accessToken: string | null;
-  refreshToken: string | null;
-  profiles: AccountProfile[];
-  activeProfileId: string | null;
-}) {
+function saveToStorage(
+  state: {
+    user: AuthUser | null;
+    accessToken: string | null;
+    refreshToken: string | null;
+    profiles: AccountProfile[];
+    activeProfileId: string | null;
+  },
+  rememberDevice = true
+) {
   if (typeof window === 'undefined') return;
   try {
     if (!state.accessToken) {
       localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
+    } else if (rememberDevice) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, rememberDevice: true }));
+      sessionStorage.removeItem(STORAGE_KEY);
     } else {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, rememberDevice: false }));
+      localStorage.removeItem(STORAGE_KEY);
     }
   } catch {
     // ignore storage errors
@@ -64,12 +83,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   refreshToken: null,
   profiles: [],
   activeProfileId: null,
+  rememberDevice: true,
   hydrated: false,
 
   hydrate: () => {
     if (typeof window === 'undefined' || get().hydrated) return;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const localRaw = localStorage.getItem(STORAGE_KEY);
+      const sessionRaw = sessionStorage.getItem(STORAGE_KEY);
+      const raw = localRaw || sessionRaw;
+      const rememberDevice = Boolean(localRaw) || !sessionRaw;
       if (raw) {
         const parsed = JSON.parse(raw);
         set({
@@ -78,6 +101,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           refreshToken: parsed.refreshToken || null,
           profiles: parsed.profiles || [],
           activeProfileId: parsed.activeProfileId || parsed.profiles?.[0]?.id || null,
+          rememberDevice: parsed.rememberDevice ?? rememberDevice,
           hydrated: true,
         });
         return;
@@ -88,12 +112,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ hydrated: true });
   },
 
-  setSession: ({ user, accessToken, refreshToken, profiles }) => {
+  setSession: ({ user, accessToken, refreshToken, profiles, rememberDevice }) => {
     const nextProfiles = profiles || get().profiles;
     const activeProfileId = get().activeProfileId || nextProfiles?.[0]?.id || null;
+    const nextRemember = rememberDevice ?? get().rememberDevice ?? true;
     const next = { user, accessToken, refreshToken, profiles: nextProfiles, activeProfileId };
-    saveToStorage(next);
-    set({ ...next, hydrated: true });
+    saveToStorage(next, nextRemember);
+    set({ ...next, rememberDevice: nextRemember, hydrated: true });
   },
 
   setProfiles: (profiles) => {
@@ -107,7 +132,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       profiles,
       activeProfileId,
     };
-    saveToStorage(next);
+    saveToStorage(next, get().rememberDevice);
     set({ profiles, activeProfileId });
   },
 
@@ -119,7 +144,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       profiles: get().profiles,
       activeProfileId: id,
     };
-    saveToStorage(next);
+    saveToStorage(next, get().rememberDevice);
     set({ activeProfileId: id });
   },
 
@@ -187,6 +212,7 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
           user: refData.user || store.user!,
           accessToken: refData.accessToken,
           refreshToken: refData.refreshToken,
+          rememberDevice: store.rememberDevice,
         });
         res = await makeRequest(refData.accessToken);
       } else {

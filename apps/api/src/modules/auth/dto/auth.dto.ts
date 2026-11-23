@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'Укажите корректный email' })
@@ -10,19 +10,32 @@ export class RegisterDto {
   password: string;
 
   @IsString()
-  @MinLength(2, { message: 'Имя должно содержать минимум 2 символа' })
-  @MaxLength(64)
+  @MinLength(2, { message: 'Никнейм должен содержать минимум 2 символа' })
+  @MaxLength(32, { message: 'Никнейм не должен превышать 32 символа' })
   name: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
   deviceName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  rememberDevice?: boolean;
 }
 
 export class LoginDto {
-  @IsEmail({}, { message: 'Укажите корректный email' })
-  email: string;
+  @IsOptional()
+  @IsString()
+  @MinLength(2, { message: 'Введите email или никнейм' })
+  @MaxLength(120)
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2, { message: 'Введите email или никнейм' })
+  @MaxLength(120)
+  login?: string;
 
   @IsString()
   @MinLength(1, { message: 'Введите пароль' })
@@ -32,6 +45,10 @@ export class LoginDto {
   @IsString()
   @MaxLength(120)
   deviceName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  rememberDevice?: boolean;
 }
 
 export class RefreshTokenDto {

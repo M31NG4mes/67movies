@@ -27,9 +27,11 @@ import {
   X,
   MessageCircle,
   Sparkles,
+  Bookmark,
   Check,
 } from 'lucide-react';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
+import { useLibraryStore } from '../../stores/library.store';
 import {
   ACCENT_PRESETS,
   TRANSLATIONS,
@@ -98,9 +100,16 @@ export default function ProfilePage() {
   const [status, setStatus] = useState<string | null>(null);
   const [showMediaPicker, setShowMediaPicker] = useState<'avatar' | 'banner' | null>(null);
 
+  const {
+    watchlist,
+    hydrate: hydrateLibrary,
+    removeFromWatchlist,
+  } = useLibraryStore();
+
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    hydrateLibrary();
+  }, [hydrate, hydrateLibrary]);
 
   useEffect(() => {
     if (hydrated && !accessToken) {
@@ -323,21 +332,24 @@ export default function ProfilePage() {
 
   if (!hydrated || !user) return null;
 
+  const favoriteMovies = myRatings.filter((r) => Boolean(r.isFavorite));
+  const isEn = language === 'en';
+
   const avgRating =
     myRatings.length > 0
       ? (myRatings.reduce((s, r) => s + Number(r.rating || 0), 0) / myRatings.length).toFixed(1)
       : '—';
 
   const tabs: { id: ProfileTab; label: string; icon: any; badge?: number }[] = [
-    { id: 'overview', label: 'Витрина и подборки', icon: Sparkles },
+    { id: 'overview', label: isEn ? 'Showcase & Lists' : 'Витрина и подборки', icon: Sparkles },
     {
       id: 'friends',
-      label: 'Друзья',
+      label: isEn ? 'Friends' : 'Друзья',
       icon: Users,
       badge: friendsData.incomingRequests.length,
     },
-    { id: 'settings', label: 'Настройки', icon: Sliders },
-    { id: 'security', label: 'Сессии', icon: Shield },
+    { id: 'settings', label: isEn ? 'Settings' : 'Настройки', icon: Sliders },
+    { id: 'security', label: isEn ? 'Sessions' : 'Сессии', icon: Shield },
   ];
 
   return (
@@ -485,22 +497,36 @@ export default function ProfilePage() {
           </div>
 
           {/* Stats Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
+            <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
+              <p className="text-xl font-black text-rose-400">{favoriteMovies.length}</p>
+              <p className="text-[11px] font-medium text-[#92929F]">
+                {isEn ? 'Favorite Titles' : 'Любимых фильмов'}
+              </p>
+            </div>
             <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
               <p className="text-xl font-black text-white">{myRatings.length}</p>
-              <p className="text-[11px] font-medium text-[#92929F]">Оценённых тайтлов</p>
+              <p className="text-[11px] font-medium text-[#92929F]">
+                {isEn ? 'Rated Titles' : 'Моих оценок'}
+              </p>
             </div>
             <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
               <p className="text-xl font-black text-[#A18BFF]">{avgRating}</p>
-              <p className="text-[11px] font-medium text-[#92929F]">Средняя оценка</p>
+              <p className="text-[11px] font-medium text-[#92929F]">
+                {isEn ? 'Average Rating' : 'Средняя оценка'}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
+              <p className="text-xl font-black text-white">{watchlist.length}</p>
+              <p className="text-[11px] font-medium text-[#92929F]">
+                {isEn ? 'In Watchlist' : 'В вотчлисте'}
+              </p>
             </div>
             <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
               <p className="text-xl font-black text-white">{myCollections.length}</p>
-              <p className="text-[11px] font-medium text-[#92929F]">Подборок</p>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-[#181821] border border-[#292936]">
-              <p className="text-xl font-black text-white">{friendsData.friends.length}</p>
-              <p className="text-[11px] font-medium text-[#92929F]">Друзей</p>
+              <p className="text-[11px] font-medium text-[#92929F]">
+                {isEn ? 'Collections' : 'Подборок'}
+              </p>
             </div>
           </div>
         </div>
@@ -590,19 +616,276 @@ export default function ProfilePage() {
       </div>
 
       {/* =================================================================
-          TAB 1: OVERVIEW (Ratings + Custom Collections)
+          TAB 1: OVERVIEW (Favorite Movies, Watchlist, My Ratings, Collections)
          ================================================================= */}
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-fadeIn">
-          {/* My Custom Movie Collections */}
+          {/* 1. Favorite Movies (Separated from Ratings) */}
+          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+                <Heart className="w-5 h-5 text-rose-400 fill-rose-400" />
+                <span>
+                  {isEn ? 'Favorite Movies & Series' : 'Любимые фильмы и сериалы'} (
+                  {favoriteMovies.length})
+                </span>
+              </div>
+              <span className="text-xs text-[#92929F]">
+                {isEn
+                  ? 'Titles marked as Favorite when rating (or rated 8+)'
+                  : 'Фильмы, отмеченные галочкой «Любимый» при оценке'}
+              </span>
+            </div>
+
+            {favoriteMovies.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-[#181821]/60 border border-[#292936] text-center">
+                <p className="text-xs text-[#92929F]">
+                  {isEn
+                    ? 'No favorite movies yet. Rate any movie and check "Show in Favorite Movies".'
+                    : 'Любимых фильмов пока нет. Оцените любой фильм и отметьте пункт «Показать в Любимых фильмах».'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {favoriteMovies.map((item) => (
+                  <div
+                    key={`fav-${item.id}`}
+                    className="group relative rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-rose-500/60 brand-card-hover transition-all flex flex-col"
+                  >
+                    <Link
+                      href={`/movie/${item.tmdbId}?type=${
+                        item.mediaType === 'SERIES' ? 'tv' : 'movie'
+                      }`}
+                      className="block relative aspect-[2/3] w-full overflow-hidden bg-[#09090D]"
+                    >
+                      {item.posterPath ? (
+                        <img
+                          src={item.posterPath}
+                          alt={item.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-[#1B1A2B] to-[#0D0D14]">
+                          <Film className="w-8 h-8 text-rose-400/70 mb-2" />
+                          <span className="text-xs font-bold text-white/80 line-clamp-2">
+                            {item.title}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-rose-500/90 text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
+                        <Heart className="w-2.5 h-2.5 fill-white" />
+                        <span>{isEn ? 'Fav' : 'Любимый'}</span>
+                      </div>
+
+                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-[#A18BFF] border border-white/10">
+                        ★ {item.rating}/10
+                      </div>
+
+                      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col justify-end p-2.5">
+                        <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
+                          {item.title}
+                        </p>
+                      </div>
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRating(item.tmdbId, item.mediaType)}
+                      title={isEn ? 'Remove' : 'Удалить'}
+                      className="absolute bottom-2.5 right-2.5 p-1.5 rounded-lg bg-black/75 hover:bg-red-500 text-white/80 hover:text-white opacity-0 group-hover:opacity-100 transition-all z-10"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 2. User Watchlist in Profile */}
+          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+                <Bookmark className="w-5 h-5 text-[#A18BFF] fill-[#A18BFF]/20" />
+                <span>
+                  {isEn ? 'My Watchlist' : 'Мой вотчлист'} ({watchlist.length})
+                </span>
+              </div>
+              <Link
+                href="/watchlist"
+                className="text-xs font-semibold text-[#A18BFF] hover:underline"
+              >
+                {isEn ? 'Open full watchlist →' : 'Открыть весь вотчлист →'}
+              </Link>
+            </div>
+
+            {watchlist.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-[#181821]/60 border border-[#292936] text-center">
+                <p className="text-xs text-[#92929F]">
+                  {isEn
+                    ? 'Your watchlist is empty. Click the heart/bookmark button on any movie or anime.'
+                    : 'Ваш вотчлист пока пуст. Нажмите на сердечко на странице любого фильма, сериала или аниме.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {watchlist.map((item) => (
+                  <div
+                    key={`wl-${item.id}`}
+                    className="group relative rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-[#8065FF] brand-card-hover transition-all flex flex-col"
+                  >
+                    <Link
+                      href={`/movie/${item.id}?type=${item.type || 'movie'}`}
+                      className="block relative aspect-[2/3] w-full overflow-hidden bg-[#09090D]"
+                    >
+                      {item.posterPath ? (
+                        <img
+                          src={item.posterPath}
+                          alt={item.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-[#1B1A2B] to-[#0D0D14]">
+                          <Film className="w-8 h-8 text-[#8065FF]/70 mb-2" />
+                          <span className="text-xs font-bold text-white/80 line-clamp-2">
+                            {item.title}
+                          </span>
+                        </div>
+                      )}
+
+                      {item.voteAverage && item.voteAverage > 0 ? (
+                        <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-[#A18BFF] border border-white/10">
+                          ★ {Number(item.voteAverage).toFixed(1)}
+                        </div>
+                      ) : null}
+
+                      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col justify-end p-2.5">
+                        <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
+                          {item.title}
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] text-white/70 mt-1">
+                          <span>{item.releaseYear || ''}</span>
+                          <span className="uppercase">
+                            {item.type === 'tv' ? t.seriesBadge : t.movieBadge}
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => removeFromWatchlist(item.id)}
+                      title={isEn ? 'Remove from Watchlist' : 'Убрать из вотчлиста'}
+                      className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/75 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all z-10"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 3. My Ratings & Reviews (Separated from Favorite Movies) */}
+          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
+                <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                <span>
+                  {isEn ? 'My Ratings & Reviews' : 'Мои оценки и отзывы'} ({myRatings.length})
+                </span>
+              </div>
+              <span className="text-xs text-[#92929F]">
+                {isEn
+                  ? 'All titles you have rated from 1 to 10'
+                  : 'Все фильмы, сериалы и аниме, которым вы поставили оценку 1–10'}
+              </span>
+            </div>
+
+            {myRatings.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-[#181821]/60 border border-[#292936] text-center">
+                <p className="text-xs text-[#92929F]">
+                  {isEn
+                    ? 'No ratings yet. Open any movie and click "Rate" (1–10).'
+                    : 'Оценок пока нет. Откройте любой фильм и нажмите «Оценить» (1–10).'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {myRatings.map((item) => (
+                  <div
+                    key={`rate-${item.id}`}
+                    className="group relative rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-[#8065FF] brand-card-hover transition-all flex flex-col"
+                  >
+                    <Link
+                      href={`/movie/${item.tmdbId}?type=${
+                        item.mediaType === 'SERIES' ? 'tv' : 'movie'
+                      }`}
+                      className="block relative aspect-[2/3] w-full overflow-hidden bg-[#09090D]"
+                    >
+                      {item.posterPath ? (
+                        <img
+                          src={item.posterPath}
+                          alt={item.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-[#1B1A2B] to-[#0D0D14]">
+                          <Film className="w-8 h-8 text-[#8065FF]/70 mb-2" />
+                          <span className="text-xs font-bold text-white/80 line-clamp-2">
+                            {item.title}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                        <span>{item.rating}/10</span>
+                      </div>
+
+                      <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/95 via-black/65 to-transparent flex flex-col justify-end p-2.5">
+                        <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
+                          {item.title}
+                        </p>
+                        {item.review && (
+                          <p className="text-[11px] text-white/75 line-clamp-2 mt-1 italic">
+                            «{item.review}»
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRating(item.tmdbId, item.mediaType)}
+                      title={isEn ? 'Delete rating' : 'Удалить оценку'}
+                      className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/75 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all z-10"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 4. My Custom Movie Collections */}
           <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 text-white font-bold text-lg">
                 <ListPlus className="w-5 h-5 text-[#A18BFF]" />
-                <span>Мои подборки ({myCollections.length})</span>
+                <span>
+                  {isEn ? 'My Collections' : 'Мои подборки'} ({myCollections.length})
+                </span>
               </div>
               <span className="text-xs text-[#92929F]">
-                Собирайте тематические списки — они видны друзьям на вашей витрине
+                {isEn
+                  ? 'Create themed lists — visible to friends on your public showcase'
+                  : 'Собирайте тематические списки — они видны друзьям на вашей витрине'}
               </span>
             </div>
 
@@ -612,14 +895,14 @@ export default function ProfilePage() {
                 required
                 value={newColTitle}
                 onChange={(e) => setNewColTitle(e.target.value)}
-                placeholder="Название (напр. Топ киберпанка)..."
+                placeholder={isEn ? 'Collection title...' : 'Название (напр. Топ киберпанка)...'}
                 className="px-4 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
               />
               <input
                 type="text"
                 value={newColDesc}
                 onChange={(e) => setNewColDesc(e.target.value)}
-                placeholder="Описание (необязательно)..."
+                placeholder={isEn ? 'Description (optional)...' : 'Описание (необязательно)...'}
                 className="px-4 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
               />
               <button
@@ -627,27 +910,29 @@ export default function ProfilePage() {
                 className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl brand-btn text-white text-xs font-bold transition-all"
               >
                 <Plus className="w-4 h-4" />
-                <span>Создать подборку</span>
+                <span>{isEn ? 'Create Collection' : 'Создать подборку'}</span>
               </button>
             </form>
 
             {myCollections.length === 0 ? (
               <p className="text-xs text-[#92929F]">
-                Подборок пока нет. Создайте первую выше или нажмите «В подборку» на странице любого фильма.
+                {isEn
+                  ? 'No collections yet. Create one above or click "+ Collection" on any movie page.'
+                  : 'Подборок пока нет. Создайте первую выше или нажмите «В подборку» на странице любого фильма.'}
               </p>
             ) : (
               <div className="space-y-4">
                 {myCollections.map((col) => (
                   <div
                     key={col.id}
-                    className="p-4 rounded-2xl bg-[#181821] border border-[#292936] space-y-3"
+                    className="p-5 rounded-2xl bg-[#181821] border border-[#292936] space-y-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-base font-bold text-white flex items-center gap-2">
                           <span>{col.title}</span>
                           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-[#8065FF]/15 text-[#A18BFF]">
-                            {col.items?.length || 0} шт.
+                            {col.items?.length || 0} {isEn ? 'items' : 'шт.'}
                           </span>
                         </h3>
                         {col.description && (
@@ -657,7 +942,7 @@ export default function ProfilePage() {
                       <button
                         type="button"
                         onClick={() => handleDeleteCollection(col.id)}
-                        title="Удалить подборку"
+                        title={isEn ? 'Delete collection' : 'Удалить подборку'}
                         className="p-1.5 text-[#92929F] hover:text-red-400 rounded-lg shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -666,121 +951,55 @@ export default function ProfilePage() {
 
                     {!col.items || col.items.length === 0 ? (
                       <p className="text-xs text-[#92929F] italic">
-                        Пока пусто — откройте любой фильм и нажмите «В подборку».
+                        {isEn
+                          ? 'Empty — open any movie and click "Add to Collection".'
+                          : 'Пока пусто — откройте любой фильм и нажмите «В подборку».'}
                       </p>
                     ) : (
-                      <div className="flex items-center gap-3 overflow-x-auto pb-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
                         {col.items.map((item: any) => (
                           <div
                             key={item.id}
-                            className="relative group w-24 shrink-0 rounded-xl overflow-hidden bg-[#111119] border border-[#292936] hover:border-[#8065FF] transition-all"
+                            className="relative group rounded-2xl overflow-hidden bg-[#111119] border border-[#292936] hover:border-[#8065FF] brand-card-hover transition-all"
                           >
                             <Link
                               href={`/movie/${item.tmdbId}?type=${
                                 item.mediaType === 'SERIES' ? 'tv' : 'movie'
                               }`}
-                              className="block"
+                              className="block relative aspect-[2/3] w-full overflow-hidden bg-[#09090D]"
                             >
-                              <div className="aspect-[2/3] bg-[#09090D] flex items-center justify-center">
-                                {item.posterPath ? (
-                                  <img
-                                    src={item.posterPath}
-                                    alt={item.title}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <Film className="w-5 h-5 text-[#92929F]" />
-                                )}
+                              {item.posterPath ? (
+                                <img
+                                  src={item.posterPath}
+                                  alt={item.title}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <Film className="w-7 h-7 text-[#92929F]" />
+                                </div>
+                              )}
+                              <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/95 via-black/55 to-transparent flex flex-col justify-end p-2.5">
+                                <p className="text-xs font-bold text-white line-clamp-2 leading-snug">
+                                  {item.title}
+                                </p>
                               </div>
-                              <p className="p-1.5 text-[10px] font-semibold text-white line-clamp-1">
-                                {item.title}
-                              </p>
                             </Link>
                             <button
                               type="button"
                               onClick={() =>
                                 handleRemoveCollectionItem(col.id, item.tmdbId, item.mediaType)
                               }
-                              title="Убрать из подборки"
-                              className="absolute top-1 right-1 p-1 rounded-full bg-black/75 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all"
+                              title={isEn ? 'Remove from collection' : 'Убрать из подборки'}
+                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/75 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all z-10"
                             >
-                              <X className="w-3 h-3" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         ))}
                       </div>
                     )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* My Shared Favorite Movies & Ratings Showcase */}
-          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
-                <Heart className="w-5 h-5 text-rose-400 fill-rose-400" />
-                <span>Мои оценки и любимые фильмы ({myRatings.length})</span>
-              </div>
-              <span className="text-xs text-[#92929F]">
-                Оценивайте тайтлы на их страницах — они появятся здесь
-              </span>
-            </div>
-
-            {myRatings.length === 0 ? (
-              <p className="text-xs text-[#92929F]">
-                Пока пусто. Откройте любой фильм и нажмите «Оценить» (1–10).
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {myRatings.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#181821] border border-[#292936] hover:border-[#8065FF]/50 transition-all"
-                  >
-                    <Link
-                      href={`/movie/${item.tmdbId}?type=${
-                        item.mediaType === 'SERIES' ? 'tv' : 'movie'
-                      }`}
-                      className="flex items-center gap-3 min-w-0 flex-1"
-                    >
-                      {item.posterPath ? (
-                        <img
-                          src={item.posterPath}
-                          alt={item.title}
-                          className="w-11 h-16 rounded-xl object-cover shrink-0"
-                        />
-                      ) : (
-                        <div className="w-11 h-16 rounded-xl bg-[#09090D] flex items-center justify-center shrink-0">
-                          <Film className="w-4 h-4 text-[#92929F]" />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-white truncate">{item.title}</p>
-                        <p className="text-xs text-[#A18BFF] font-semibold flex items-center gap-1 mt-0.5">
-                          <Star className="w-3 h-3 fill-[#A18BFF]" />
-                          <span>{item.rating}/10</span>
-                          {item.isFavorite && (
-                            <span className="text-rose-400 ml-1">• Любимый</span>
-                          )}
-                        </p>
-                        {item.review && (
-                          <p className="text-[11px] text-[#92929F] line-clamp-1 mt-0.5">
-                            {item.review}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRating(item.tmdbId, item.mediaType)}
-                      title="Удалить оценку"
-                      className="p-1.5 text-[#92929F] hover:text-red-400 rounded-lg shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 ))}
               </div>
@@ -1066,10 +1285,13 @@ export default function ProfilePage() {
           {/* 18+ Age Restriction Toggle */}
           <label className="flex items-center justify-between p-4 rounded-2xl bg-[#181821] border border-[#292936] cursor-pointer">
             <div>
-              <span className="text-sm font-medium text-white">🔞 Доступ к контенту 18+</span>
+              <span className="text-sm font-medium text-white">
+                🔞 {language === 'en' ? '18+ Adult Content Access' : 'Доступ к контенту 18+'}
+              </span>
               <p className="text-xs text-[#92929F] mt-0.5">
-                Если выключено — постеры 18+ размываются, а при открытии фильма требуется
-                подтверждение возраста
+                {language === 'en'
+                  ? 'When disabled, 18+ posters are blurred and opening an adult title requires age confirmation'
+                  : 'Если выключено — постеры 18+ размываются, а при открытии фильма требуется подтверждение возраста'}
               </p>
             </div>
             <input

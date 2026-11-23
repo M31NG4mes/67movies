@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { LocalStoreService } from '../../common/storage/local-store.service';
 import { hashPassword } from '../auth/password.util';
+import { validateNickname } from '../../common/security/security.util';
 import {
   AddFavoriteDto,
   CreateProfileDto,
@@ -110,6 +111,10 @@ export class UsersService {
   }
 
   async createProfile(userId: string, dto: CreateProfileDto) {
+    const nickError = validateNickname(dto.name);
+    if (nickError) {
+      throw new BadRequestException(nickError);
+    }
     const existing = await this.listProfiles(userId);
     if (existing.length >= UsersService.MAX_PROFILES_PER_USER) {
       throw new BadRequestException(
@@ -160,6 +165,12 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, profileId: string, dto: UpdateProfileDto) {
+    if (dto.name !== undefined) {
+      const nickError = validateNickname(dto.name);
+      if (nickError) {
+        throw new BadRequestException(nickError);
+      }
+    }
     await this.assertProfileOwnership(userId, profileId);
 
     if (this.db) {

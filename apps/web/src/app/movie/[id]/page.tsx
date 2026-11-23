@@ -174,6 +174,7 @@ export default function MovieDetailPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const ageVerified18 = usePreferencesStore((s) => s.ageVerified18);
   const setAgeVerified18 = usePreferencesStore((s) => s.setAgeVerified18);
+  const language = usePreferencesStore((s) => s.language);
 
   const [communityStats, setCommunityStats] = useState<{
     averageRating: number;
@@ -570,11 +571,20 @@ export default function MovieDetailPage() {
           </div>
           <div className="space-y-2">
             <h1 className="text-xl sm:text-2xl font-black text-white">
-              Возрастное ограничение 18+
+              {language === 'en' ? 'Age Restriction 18+' : 'Возрастное ограничение 18+'}
             </h1>
             <p className="text-xs sm:text-sm text-[#92929F] leading-relaxed">
-              Фильм <strong className="text-white">«{media.title}»</strong> предназначен только для
-              зрителей старше 18 лет. Подтвердите свой возраст, чтобы продолжить.
+              {language === 'en' ? (
+                <>
+                  <strong className="text-white">“{media.title}”</strong> is intended for adult
+                  audiences (18+) only. Please confirm your age to continue.
+                </>
+              ) : (
+                <>
+                  Фильм <strong className="text-white">«{media.title}»</strong> предназначен только
+                  для зрителей старше 18 лет. Подтвердите свой возраст, чтобы продолжить.
+                </>
+              )}
             </p>
           </div>
           <div className="flex flex-col gap-2.5 pt-2">
@@ -583,14 +593,16 @@ export default function MovieDetailPage() {
               onClick={() => setAgeVerified18(true)}
               className="w-full py-3.5 rounded-xl brand-btn text-white text-sm font-bold"
             >
-              Мне есть 18 лет — Открыть фильм
+              {language === 'en'
+                ? 'I am 18 or older — Open Title'
+                : 'Мне есть 18 лет — Открыть фильм'}
             </button>
             <button
               type="button"
               onClick={() => router.back()}
               className="w-full py-3 rounded-xl bg-[#181821] hover:bg-[#20202C] border border-[#292936] text-xs font-semibold text-[#92929F] hover:text-white transition-all"
             >
-              ← Вернуться назад
+              {language === 'en' ? '← Go Back' : '← Вернуться назад'}
             </button>
           </div>
         </div>

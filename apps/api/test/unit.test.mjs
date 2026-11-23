@@ -8,6 +8,7 @@ const {
   sanitizeProxyHeaders,
   sanitizeText,
   isAllowedOrigin,
+  validateNickname,
 } = require('../dist/apps/api/src/common/security/security.util.js');
 const { AppCacheService } = require('../dist/apps/api/src/common/cache/cache.service.js');
 const { MetricsService } = require('../dist/apps/api/src/common/monitoring/metrics.service.js');
@@ -304,4 +305,16 @@ test('Unit: Poster URL validator rejects broken hotlink/placeholder URLs and fil
 
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, 'mal-2');
+});
+
+test('Unit: Nickname censorship blocks Russian/English profanity, leetspeak, and reserved names', () => {
+  assert.equal(validateNickname('AlexCinema'), null);
+  assert.equal(validateNickname('Киноман_2026'), null);
+  assert.equal(validateNickname('A'), 'Никнейм должен содержать минимум 2 символа');
+  assert.equal(validateNickname('user@mail.ru'), 'Никнейм не может содержать символ @');
+  assert.notEqual(validateNickname('сука123'), null);
+  assert.notEqual(validateNickname('х_у_й'), null);
+  assert.notEqual(validateNickname('f.u.c.k_you'), null);
+  assert.notEqual(validateNickname('SuperAdmin'), null);
+  assert.notEqual(validateNickname('Админ сайта'), null);
 });

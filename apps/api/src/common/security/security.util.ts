@@ -109,3 +109,130 @@ export function isAllowedOrigin(origin: string | undefined, configuredOrigins?: 
 
   return false;
 }
+
+const FORBIDDEN_NICKNAME_ROOTS = [
+  // Russian profanity & slurs
+  'хуй',
+  'хуя',
+  'хуе',
+  'хуи',
+  'пизд',
+  'еба',
+  'ебл',
+  'ебн',
+  'ебу',
+  'ебт',
+  'бляд',
+  'блять',
+  'блят',
+  'сука',
+  'сучк',
+  'мудак',
+  'мудил',
+  'гандон',
+  'гондон',
+  'пидор',
+  'пидар',
+  'педик',
+  'шлюх',
+  'шалав',
+  'мраз',
+  'ублюд',
+  'залуп',
+  'манда',
+  'дроч',
+  'сперм',
+  'порно',
+  'даун',
+  'дебил',
+  // English profanity & slurs
+  'fuck',
+  'shit',
+  'bitch',
+  'cunt',
+  'dick',
+  'cock',
+  'pussy',
+  'asshole',
+  'whore',
+  'slut',
+  'nigger',
+  'nigga',
+  'faggot',
+  'retard',
+  'hitler',
+  'nazi',
+  'porn',
+  // System / impersonation
+  'admin',
+  'administrator',
+  'moderator',
+  'support',
+  '67movies',
+  'админ',
+  'модератор',
+];
+
+const LEET_MAP: Record<string, string> = {
+  '0': 'o',
+  '1': 'i',
+  '3': 'e',
+  '4': 'a',
+  '5': 's',
+  '6': 'б',
+  '7': 't',
+  '@': 'a',
+  '$': 's',
+  'ё': 'е',
+  'й': 'и',
+};
+
+function normalizeForProfanityCheck(raw: string): string {
+  const lower = raw.toLowerCase();
+  let mapped = '';
+  for (const ch of lower) {
+    mapped += LEET_MAP[ch] ?? ch;
+  }
+  return mapped.replace(/[^a-zа-я0-9]+/gi, '');
+}
+
+/**
+ * Validates a user nickname against length, allowed characters, and forbidden/profane words.
+ * Returns null if valid, or a Russian error message if invalid.
+ */
+export function validateNickname(rawName: string): string | null {
+  const name = (rawName || '').trim();
+  if (name.length < 2) {
+    return 'Никнейм должен содержать минимум 2 символа';
+  }
+  if (name.length > 32) {
+    return 'Никнейм не должен превышать 32 символа';
+  }
+  if (name.includes('@')) {
+    return 'Никнейм не может содержать символ @';
+  }
+  if (!/^[a-zA-Zа-яА-ЯёЁ0-9 _.-]+$/.test(name)) {
+    return 'Никнейм может содержать только буквы, цифры, пробел, дефис, точку и _';
+  }
+
+  const collapsed = normalizeForProfanityCheck(name);
+  const cyrCollapsed = collapsed
+    .replace(/x/g, 'х')
+    .replace(/y/g, 'у')
+    .replace(/p/g, 'р')
+    .replace(/c/g, 'с')
+    .replace(/a/g, 'а')
+    .replace(/e/g, 'е')
+    .replace(/o/g, 'о')
+    .replace(/k/g, 'к')
+    .replace(/m/g, 'м')
+    .replace(/b/g, 'в');
+
+  for (const root of FORBIDDEN_NICKNAME_ROOTS) {
+    if (collapsed.includes(root) || cyrCollapsed.includes(root)) {
+      return 'Этот никнейм содержит запрещённые слова или недопустим';
+    }
+  }
+
+  return null;
+}

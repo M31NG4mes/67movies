@@ -18,12 +18,14 @@ import {
   hashToken,
   verifyPassword,
 } from './password.util';
+import { validateNickname } from '../../common/security/security.util';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 
 export interface SessionMeta {
   deviceName?: string;
   userAgent?: string;
   ipAddress?: string;
+  rememberDevice?: boolean;
 }
 
 interface InMemoryUser {
@@ -108,6 +110,12 @@ export class AuthService {
 
   async register(dto: RegisterDto, meta: SessionMeta) {
     const email = dto.email.trim().toLowerCase();
+    const cleanName = dto.name.trim();
+    const nickError = validateNickname(cleanName);
+    if (nickError) {
+      throw new BadRequestException(nickError);
+    }
+
     const passwordHash = await hashPassword(dto.password);
 
     if (this.db) {
@@ -116,14 +124,21 @@ export class AuthService {
         throw new ConflictException('Пользователь с таким email уже существует');
       }
 
+      const existingNick = await this.db.user.findFirst({
+        where: { name: { equals: cleanName, mode: 'insensitive' } },
+      });
+      if (existingNick) {
+        throw new ConflictException('Этот никнейм уже занят другим пользователем');
+      }
+
       const user = await this.db.user.create({
         data: {
           email,
           passwordHash,
-          name: dto.name.trim(),
+          name: cleanName,
           profiles: {
             create: {
-              name: dto.name.trim(),
+              name: cleanName,
               language: 'ru',
               isKidsMode: false,
             },
@@ -144,6 +159,7 @@ export class AuthService {
       const tokens = await this.createSessionAndTokens(user, {
         ...meta,
         deviceName: dto.deviceName || meta.deviceName,
+        rememberDevice: dto.rememberDevice ?? true,
       });
 
       return { user: this.sanitizeUser(user), ...tokens };
@@ -154,13 +170,16 @@ export class AuthService {
       if (u.email === email) {
         throw new ConflictException('Пользователь с таким email уже существует');
       }
+      if (u.name.toLowerCase() === cleanName.toLowerCase()) {
+        throw new ConflictException('Этот никнейм уже занят другим пользователем');
+      }
     }
 
     const user: InMemoryUser = {
       id: crypto.randomUUID(),
       email,
       passwordHash,
-      name: dto.name.trim(),
+      name: cleanName,
       role: 'USER',
       isActive: true,
       createdAt: new Date(),
@@ -171,23 +190,42 @@ export class AuthService {
     const tokens = await this.createSessionAndTokens(user, {
       ...meta,
       deviceName: dto.deviceName || meta.deviceName,
+      rememberDevice: dto.rememberDevice ?? true,
     });
 
     return { user: this.sanitizeUser(user), ...tokens };
   }
 
   async login(dto: LoginDto, meta: SessionMeta) {
-    const email = dto.email.trim().toLowerCase();
+    const rawIdentifier = (dto.email || dto.login || '').trim();
+    if (!rawIdentifier) {
+      throw new BadRequestException('Введите email или никнейм');
+    }
+    const lowerIdentifier = rawIdentifier.toLowerCase();
     let user: any = null;
 
     if (this.db) {
-      user = await this.db.user.findUnique({
-        where: { email },
-        include: { profiles: true, settings: true },
-      });
+      if (rawIdentifier.includes('@')) {
+        user = await this.db.user.findUnique({
+          where: { email: lowerIdentifier },
+          include: { profiles: true, settings: true },
+        });
+      }
+      if (!user) {
+        user = await this.db.user.findFirst({
+          where: {
+            OR: [
+              { email: lowerIdentifier },
+              { name: { equals: rawIdentifier, mode: 'insensitive' } },
+              { profiles: { some: { name: { equals: rawIdentifier, mode: 'insensitive' } } } },
+            ],
+          },
+          include: { profiles: true, settings: true },
+        });
+      }
     } else {
       for (const u of this.memUsers.values()) {
-        if (u.email === email) {
+        if (u.email === lowerIdentifier || u.name.toLowerCase() === lowerIdentifier) {
           user = u;
           break;
         }
@@ -195,12 +233,12 @@ export class AuthService {
     }
 
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Неверный email или пароль');
+      throw new UnauthorizedException('Неверный email/никнейм или пароль');
     }
 
     const valid = await verifyPassword(dto.password, user.passwordHash);
     if (!valid) {
-      throw new UnauthorizedException('Неверный email или пароль');
+      throw new UnauthorizedException('Неверный email/никнейм или пароль');
     }
 
     if (user.isActive === false) {
@@ -210,6 +248,7 @@ export class AuthService {
     const tokens = await this.createSessionAndTokens(user, {
       ...meta,
       deviceName: dto.deviceName || meta.deviceName,
+      rememberDevice: dto.rememberDevice ?? true,
     });
 
     return { user: this.sanitizeUser(user), ...tokens };
@@ -549,7 +588,8 @@ export class AuthService {
   private async createSessionAndTokens(user: any, meta: SessionMeta) {
     const refreshToken = generateOpaqueToken();
     const refreshTokenHash = hashToken(refreshToken);
-    const expiresAt = new Date(Date.now() + this.refreshTtlDays * 86400 * 1000);
+    const ttlDays = meta.rememberDevice === false ? 1 : this.refreshTtlDays;
+    const expiresAt = new Date(Date.now() + ttlDays * 86400 * 1000);
 
     let sessionId: string;
 
