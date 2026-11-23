@@ -21,6 +21,7 @@ import {
   Youtube,
   FolderPlus,
   Award,
+  Bookmark,
 } from 'lucide-react';
 import { api } from '../../../lib/api-client';
 import { MediaItem, Season } from '@cinemaflow/types';
@@ -169,7 +170,17 @@ export default function MovieDetailPage() {
     };
   }, [mediaId, mediaTypeParam]);
 
-  const { watchlist, hydrate: hydrateLibrary, toggleWatchlist, addToHistory } = useLibraryStore();
+  const {
+    watchlist,
+    favorites,
+    hydrate: hydrateLibrary,
+    toggleWatchlist,
+    isInWatchlist,
+    toggleFavorite,
+    setFavoriteState,
+    isInFavorites,
+    addToHistory,
+  } = useLibraryStore();
   const authUser = useAuthStore((s) => s.user);
   const accessToken = useAuthStore((s) => s.accessToken);
   const ageVerified18 = usePreferencesStore((s) => s.ageVerified18);
@@ -238,6 +249,9 @@ export default function MovieDetailPage() {
             setModalRating(mine.rating);
             setModalReview(mine.review || '');
             setModalFavorite(Boolean(mine.isFavorite));
+            if (mine.isFavorite && media) {
+              setFavoriteState({ ...media, routeId: mediaId }, true);
+            }
           }
         }
       }
@@ -252,7 +266,7 @@ export default function MovieDetailPage() {
 
   useEffect(() => {
     if (media && media.title) {
-      addToHistory(media);
+      addToHistory({ ...media, routeId: mediaId });
       loadCommunityReviews();
 
       // Load trailers, OMDb, KinopoiskDev, and Jikan/MAL extras
@@ -400,6 +414,7 @@ export default function MovieDetailPage() {
   const saveRatingToServer = async (ratingVal: number, reviewText: string, favFlag: boolean) => {
     if (!media) return;
     setUserRating(ratingVal);
+    setFavoriteState({ ...media, routeId: mediaId }, favFlag);
 
     if (useAuthStore.getState().accessToken) {
       setSavingReview(true);
@@ -421,6 +436,51 @@ export default function MovieDetailPage() {
         setSavingReview(false);
       }
     }
+  };
+
+  const handleInstantToggleFavorite = async () => {
+    if (!media) return;
+    const added = toggleFavorite({ ...media, routeId: mediaId });
+    setModalFavorite(added);
+    setCollectionToast(
+      added ? '❤️ Добавлено в «Любимые фильмы» в профиле' : 'Убрано из «Любимых фильмов»'
+    );
+    setTimeout(() => setCollectionToast(null), 3000);
+
+    // Sync to server in the background without requiring any review or modal
+    if (useAuthStore.getState().accessToken) {
+      const tmdbNum = getNumericMediaId(media) || 1;
+      const mediaType = media.type === 'tv' ? 'SERIES' : 'MOVIE';
+      if (added || userRating || modalReview.trim()) {
+        await authFetch('/social/ratings', {
+          method: 'POST',
+          body: JSON.stringify({
+            tmdbId: tmdbNum,
+            mediaType,
+            title: media.title,
+            posterPath: media.posterPath || media.backdropPath || undefined,
+            rating: userRating || modalRating || 10,
+            review: modalReview.trim() || undefined,
+            isFavorite: added,
+          }),
+        }).catch(() => {});
+      } else {
+        await authFetch(`/social/ratings/${tmdbNum}?mediaType=${mediaType}`, {
+          method: 'DELETE',
+        }).catch(() => {});
+      }
+      loadCommunityReviews();
+    }
+  };
+
+  const handleInstantToggleWatchlist = () => {
+    if (!media) return;
+    const added = toggleWatchlist({ ...media, routeId: mediaId });
+    setIsFavorite(added);
+    setCollectionToast(
+      added ? '🔖 Добавлено в «Мой вотчлист»' : 'Убрано из «Моего вотчлиста»'
+    );
+    setTimeout(() => setCollectionToast(null), 3000);
   };
 
   const handleDeleteOwnReview = async () => {
@@ -837,28 +897,61 @@ export default function MovieDetailPage() {
                 <span>{userRating ? `Ваша оценка: ${userRating}/10` : 'Оценить'}</span>
               </button>
 
-              {/* Button: «В вотчлист» */}
-              <button
-                onClick={() => {
-                  const added = toggleWatchlist(media);
-                  setIsFavorite(added);
-                }}
-                data-nav-item="true"
-                aria-label="В вотчлист"
-                className={`flex items-center gap-2 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-sm font-semibold ${
-                  watchlist.some((w) => String(w.id) === String(media.tmdbId || media.id))
-                    ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF]'
-                    : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white hover:border-brand-main/50'
-                }`}
-              >
-                <Heart
-                  className={`w-5 h-5 ${
-                    watchlist.some((w) => String(w.id) === String(media.tmdbId || media.id))
-                      ? 'fill-[#A18BFF] text-[#A18BFF]'
-                      : ''
-                  }`}
-                />
-              </button>
+              {/* Button: «❤️ В любимые» (instant 1-click favorite without requiring a review) */}
+              {(() => {
+                const isFavNow =
+                  favorites.length >= 0 &&
+                  isInFavorites({ ...media, routeId: mediaId });
+                return (
+                  <button
+                    type="button"
+                    onClick={handleInstantToggleFavorite}
+                    data-nav-item="true"
+                    aria-label="В любимые фильмы"
+                    title="Добавить в «Любимые фильмы» в профиле одним нажатием"
+                    className={`flex items-center gap-2 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-sm font-semibold ${
+                      isFavNow
+                        ? 'bg-rose-500/20 border-rose-500 text-rose-300 shadow-[0_0_20px_rgba(244,63,94,0.25)]'
+                        : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-rose-300 hover:border-rose-500/50'
+                    }`}
+                  >
+                    <Heart
+                      className={`w-5 h-5 transition-transform ${
+                        isFavNow ? 'fill-rose-500 text-rose-500 scale-110' : ''
+                      }`}
+                    />
+                    <span>{isFavNow ? 'В любимых' : 'В любимые'}</span>
+                  </button>
+                );
+              })()}
+
+              {/* Button: «🔖 В вотчлист» */}
+              {(() => {
+                const inWatchlistNow =
+                  watchlist.length >= 0 &&
+                  isInWatchlist({ ...media, routeId: mediaId });
+                return (
+                  <button
+                    type="button"
+                    onClick={handleInstantToggleWatchlist}
+                    data-nav-item="true"
+                    aria-label="В вотчлист"
+                    title="Добавить в «Мой вотчлист» (посмотреть позже)"
+                    className={`flex items-center gap-2 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-sm font-semibold ${
+                      inWatchlistNow
+                        ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF] shadow-[0_0_20px_rgba(128,101,255,0.25)]'
+                        : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white hover:border-brand-main/50'
+                    }`}
+                  >
+                    <Bookmark
+                      className={`w-5 h-5 ${
+                        inWatchlistNow ? 'fill-[#A18BFF] text-[#A18BFF]' : ''
+                      }`}
+                    />
+                    <span>{inWatchlistNow ? 'В вотчлисте' : 'В вотчлист'}</span>
+                  </button>
+                );
+              })()}
             </div>
 
             {collectionToast && (

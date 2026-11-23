@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Check, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaItem } from '@cinemaflow/types';
 import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
 import { useLibraryStore } from '../../stores/library.store';
@@ -17,7 +17,15 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const language = usePreferencesStore((s) => s.language);
   const t = TRANSLATIONS[language];
-  const { watchlist, hydrate, toggleWatchlist } = useLibraryStore();
+  const {
+    watchlist,
+    favorites,
+    hydrate,
+    toggleWatchlist,
+    isInWatchlist,
+    toggleFavorite,
+    isInFavorites,
+  } = useLibraryStore();
 
   useEffect(() => {
     hydrate();
@@ -42,11 +50,13 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
   if (activeList.length === 0) return null;
 
   const currentMedia = activeList[currentIndex];
-  const isSaved = watchlist.some(
-    (w) => String(w.id) === String(currentMedia.tmdbId || currentMedia.id)
-  );
+  const isSaved = watchlist.length >= 0 && isInWatchlist(currentMedia);
+  const isFav = favorites.length >= 0 && isInFavorites(currentMedia);
   const toggleSave = () => {
     toggleWatchlist(currentMedia);
+  };
+  const toggleFav = () => {
+    toggleFavorite(currentMedia);
   };
 
   return (
@@ -124,6 +134,20 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
             >
               {t.watch}
             </Link>
+
+            <button
+              type="button"
+              onClick={toggleFav}
+              title={isFav ? 'В любимых фильмах' : 'Добавить в любимые фильмы'}
+              aria-label="В любимые фильмы"
+              className={`inline-flex items-center justify-center px-3.5 h-11 sm:h-12 rounded-xl border text-xs sm:text-sm font-semibold transition-all backdrop-blur-sm ${
+                isFav
+                  ? 'border-rose-500 bg-rose-500/25 text-rose-300'
+                  : 'border-white/25 bg-white/10 hover:border-rose-500 text-white'
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${isFav ? 'fill-rose-500 text-rose-500' : ''}`} />
+            </button>
 
             <button
               type="button"

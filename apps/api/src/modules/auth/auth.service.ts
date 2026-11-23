@@ -54,7 +54,7 @@ interface InMemorySession {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly accessTtlSeconds = 7 * 24 * 60 * 60; // 7 days
+  private readonly accessTtlSeconds = 30 * 24 * 60 * 60; // 30 days
   private readonly refreshTtlDays = 30;
 
   // In-memory fallback stores when PostgreSQL is offline
@@ -312,6 +312,7 @@ export class AuthService {
     found.refreshTokenHash = hashToken(newRefreshToken);
     found.lastUsedAt = new Date();
     found.expiresAt = new Date(Date.now() + this.refreshTtlDays * 86400 * 1000);
+    this.persistLocalAuth();
 
     const accessToken = await this.signAccessToken(user, found.id);
     return {

@@ -102,8 +102,10 @@ export default function ProfilePage() {
 
   const {
     watchlist,
+    favorites,
     hydrate: hydrateLibrary,
     removeFromWatchlist,
+    removeFromFavorites,
   } = useLibraryStore();
 
   useEffect(() => {
@@ -112,7 +114,8 @@ export default function ProfilePage() {
   }, [hydrate, hydrateLibrary]);
 
   useEffect(() => {
-    if (hydrated && !accessToken) {
+    const latestToken = useAuthStore.getState().accessToken;
+    if (useAuthStore.getState().hydrated && !latestToken) {
       router.replace('/auth');
     }
   }, [hydrated, accessToken, router]);
@@ -254,6 +257,7 @@ export default function ProfilePage() {
   };
 
   const handleDeleteRating = async (tmdbId: number, mediaType: string) => {
+    removeFromFavorites(tmdbId);
     if (!accessToken) return;
     const res = await authFetch(
       `/social/ratings/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`,
@@ -261,6 +265,47 @@ export default function ProfilePage() {
     );
     if (res.ok) {
       showToast('Оценка удалена из витрины профиля');
+      await loadAccountData();
+    }
+  };
+
+  const handleRemoveFavoriteMovie = async (item: {
+    id: string | number;
+    tmdbId?: number;
+    mediaType?: string;
+    review?: string | null;
+    rating?: number;
+    title: string;
+    posterPath?: string | null;
+  }) => {
+    removeFromFavorites(item.id);
+    if (item.tmdbId) {
+      removeFromFavorites(item.tmdbId);
+    }
+    showToast('Убрано из «Любимых фильмов»');
+
+    if (accessToken && item.tmdbId) {
+      const mType = item.mediaType || 'MOVIE';
+      if (item.review && item.review.trim()) {
+        // Keep the user's review in My Ratings, just uncheck isFavorite
+        await authFetch('/social/ratings', {
+          method: 'POST',
+          body: JSON.stringify({
+            tmdbId: item.tmdbId,
+            mediaType: mType,
+            title: item.title,
+            posterPath: item.posterPath || undefined,
+            rating: item.rating || 9,
+            review: item.review,
+            isFavorite: false,
+          }),
+        }).catch(() => {});
+      } else {
+        await authFetch(
+          `/social/ratings/${item.tmdbId}?mediaType=${encodeURIComponent(mType)}`,
+          { method: 'DELETE' }
+        ).catch(() => {});
+      }
       await loadAccountData();
     }
   };
@@ -332,7 +377,59 @@ export default function ProfilePage() {
 
   if (!hydrated || !user) return null;
 
-  const favoriteMovies = myRatings.filter((r) => Boolean(r.isFavorite));
+  // Combine instant 1-click favorites (from Heart button) + backend favorite ratings (deduplicated)
+  const favoriteMovies = (() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        routeId: string;
+        tmdbId: number;
+        mediaType: 'MOVIE' | 'SERIES';
+        title: string;
+        posterPath: string | null;
+        rating?: number;
+        review?: string | null;
+      }
+    >();
+
+    for (const f of favorites) {
+      const key = f.tmdbId ? `num:${f.tmdbId}` : `id:${f.id}`;
+      map.set(key, {
+        id: String(f.id),
+        routeId: String(f.id),
+        tmdbId: Number(f.tmdbId) || 0,
+        mediaType: f.type === 'tv' ? 'SERIES' : 'MOVIE',
+        title: f.title,
+        posterPath: f.posterPath || null,
+        rating: f.voteAverage ? Math.round(Number(f.voteAverage)) : undefined,
+      });
+    }
+
+    for (const r of myRatings) {
+      if (!r.isFavorite) continue;
+      const key = r.tmdbId ? `num:${r.tmdbId}` : `id:${r.id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.rating = r.rating || existing.rating;
+        existing.review = r.review || existing.review;
+        if (!existing.posterPath && r.posterPath) existing.posterPath = r.posterPath;
+      } else {
+        map.set(key, {
+          id: String(r.id || r.tmdbId),
+          routeId: String(r.tmdbId),
+          tmdbId: Number(r.tmdbId) || 0,
+          mediaType: r.mediaType === 'SERIES' ? 'SERIES' : 'MOVIE',
+          title: r.title,
+          posterPath: r.posterPath || null,
+          rating: r.rating,
+          review: r.review,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  })();
   const isEn = language === 'en';
 
   const avgRating =
@@ -632,8 +729,8 @@ export default function ProfilePage() {
               </div>
               <span className="text-xs text-[#92929F]">
                 {isEn
-                  ? 'Titles marked as Favorite when rating (or rated 8+)'
-                  : 'Фильмы, отмеченные галочкой «Любимый» при оценке'}
+                  ? 'Titles added with the ❤️ Heart button on any movie, series, or anime page'
+                  : 'Тайтлы, добавленные нажатием на сердечко ❤️ на странице фильма, сериала или аниме'}
               </span>
             </div>
 
@@ -641,8 +738,8 @@ export default function ProfilePage() {
               <div className="p-6 rounded-2xl bg-[#181821]/60 border border-[#292936] text-center">
                 <p className="text-xs text-[#92929F]">
                   {isEn
-                    ? 'No favorite movies yet. Rate any movie and check "Show in Favorite Movies".'
-                    : 'Любимых фильмов пока нет. Оцените любой фильм и отметьте пункт «Показать в Любимых фильмах».'}
+                    ? 'No favorite movies yet. Click the ❤️ "В любимые" button on any movie or anime page!'
+                    : 'Любимых фильмов пока нет. Нажмите кнопку ❤️ «В любимые» на странице любого фильма, сериала или аниме!'}
                 </p>
               </div>
             ) : (
@@ -653,7 +750,7 @@ export default function ProfilePage() {
                     className="group relative rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-rose-500/60 brand-card-hover transition-all flex flex-col"
                   >
                     <Link
-                      href={`/movie/${item.tmdbId}?type=${
+                      href={`/movie/${item.routeId || item.tmdbId}?type=${
                         item.mediaType === 'SERIES' ? 'tv' : 'movie'
                       }`}
                       className="block relative aspect-[2/3] w-full overflow-hidden bg-[#09090D]"
@@ -679,9 +776,11 @@ export default function ProfilePage() {
                         <span>{isEn ? 'Fav' : 'Любимый'}</span>
                       </div>
 
-                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-[#A18BFF] border border-white/10">
-                        ★ {item.rating}/10
-                      </div>
+                      {item.rating && (
+                        <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-[#A18BFF] border border-white/10">
+                          ★ {item.rating}/10
+                        </div>
+                      )}
 
                       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col justify-end p-2.5">
                         <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
@@ -692,8 +791,8 @@ export default function ProfilePage() {
 
                     <button
                       type="button"
-                      onClick={() => handleDeleteRating(item.tmdbId, item.mediaType)}
-                      title={isEn ? 'Remove' : 'Удалить'}
+                      onClick={() => handleRemoveFavoriteMovie(item)}
+                      title={isEn ? 'Remove from Favorites' : 'Убрать из любимых'}
                       className="absolute bottom-2.5 right-2.5 p-1.5 rounded-lg bg-black/75 hover:bg-red-500 text-white/80 hover:text-white opacity-0 group-hover:opacity-100 transition-all z-10"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

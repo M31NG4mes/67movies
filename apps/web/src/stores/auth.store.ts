@@ -50,6 +50,39 @@ interface AuthStore {
   logout: () => Promise<void>;
 }
 
+function readFromStorage(): {
+  user: AuthUser | null;
+  accessToken: string | null;
+  refreshToken: string | null;
+  profiles: AccountProfile[];
+  activeProfileId: string | null;
+  rememberDevice: boolean;
+} | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const localRaw = localStorage.getItem(STORAGE_KEY);
+    const sessionRaw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localRaw || sessionRaw;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.accessToken) return null;
+    // Ensure localStorage always has a copy so page refresh never loses login
+    if (!localRaw && sessionRaw) {
+      localStorage.setItem(STORAGE_KEY, sessionRaw);
+    }
+    return {
+      user: parsed.user || null,
+      accessToken: parsed.accessToken || null,
+      refreshToken: parsed.refreshToken || null,
+      profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
+      activeProfileId: parsed.activeProfileId || parsed.profiles?.[0]?.id || null,
+      rememberDevice: parsed.rememberDevice ?? true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function saveToStorage(
   state: {
     user: AuthUser | null;
@@ -65,49 +98,37 @@ function saveToStorage(
     if (!state.accessToken) {
       localStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem(STORAGE_KEY);
-    } else if (rememberDevice) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, rememberDevice: true }));
-      sessionStorage.removeItem(STORAGE_KEY);
     } else {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, rememberDevice: false }));
-      localStorage.removeItem(STORAGE_KEY);
+      const serialized = JSON.stringify({ ...state, rememberDevice });
+      // Always persist to localStorage so page refresh (F5) and browser restart keep the user signed in
+      localStorage.setItem(STORAGE_KEY, serialized);
+      sessionStorage.setItem(STORAGE_KEY, serialized);
     }
   } catch {
     // ignore storage errors
   }
 }
 
+const initialStored = typeof window !== 'undefined' ? readFromStorage() : null;
+
 export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: null,
-  accessToken: null,
-  refreshToken: null,
-  profiles: [],
-  activeProfileId: null,
-  rememberDevice: true,
-  hydrated: false,
+  user: initialStored?.user ?? null,
+  accessToken: initialStored?.accessToken ?? null,
+  refreshToken: initialStored?.refreshToken ?? null,
+  profiles: initialStored?.profiles ?? [],
+  activeProfileId: initialStored?.activeProfileId ?? null,
+  rememberDevice: initialStored?.rememberDevice ?? true,
+  hydrated: typeof window !== 'undefined' && initialStored !== null,
 
   hydrate: () => {
-    if (typeof window === 'undefined' || get().hydrated) return;
-    try {
-      const localRaw = localStorage.getItem(STORAGE_KEY);
-      const sessionRaw = sessionStorage.getItem(STORAGE_KEY);
-      const raw = localRaw || sessionRaw;
-      const rememberDevice = Boolean(localRaw) || !sessionRaw;
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        set({
-          user: parsed.user || null,
-          accessToken: parsed.accessToken || null,
-          refreshToken: parsed.refreshToken || null,
-          profiles: parsed.profiles || [],
-          activeProfileId: parsed.activeProfileId || parsed.profiles?.[0]?.id || null,
-          rememberDevice: parsed.rememberDevice ?? rememberDevice,
-          hydrated: true,
-        });
-        return;
-      }
-    } catch {
-      // ignore invalid JSON
+    if (typeof window === 'undefined') return;
+    const stored = readFromStorage();
+    if (stored) {
+      set({
+        ...stored,
+        hydrated: true,
+      });
+      return;
     }
     set({ hydrated: true });
   },
@@ -181,11 +202,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 }));
 
+// Singleton refresh mutex so concurrent 401 responses share a single token refresh call
+let inflightRefreshPromise: Promise<string | null> | null = null;
+
 /**
- * Authenticated fetch wrapper with automatic refresh-token rotation on 401.
+ * Authenticated fetch wrapper with deduplicated refresh-token rotation on 401.
+ * Never force-logs out the user on background refresh failures so page reloads always keep the session.
  */
 export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const store = useAuthStore.getState();
+  let store = useAuthStore.getState();
+  if (!store.hydrated && typeof window !== 'undefined') {
+    store.hydrate();
+    store = useAuthStore.getState();
+  }
+
   const makeRequest = (token: string | null) =>
     fetch(`${API_BASE}${path.startsWith('/') ? path : `/${path}`}`, {
       ...init,
@@ -200,26 +230,40 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
 
   if (res.status === 401 && store.refreshToken) {
     try {
-      const refRes = await fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: store.refreshToken }),
-      });
+      if (!inflightRefreshPromise) {
+        inflightRefreshPromise = (async () => {
+          try {
+            const currentStore = useAuthStore.getState();
+            const refRes = await fetch(`${API_BASE}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken: currentStore.refreshToken }),
+            });
+            if (refRes.ok) {
+              const refData = await refRes.json();
+              currentStore.setSession({
+                user: refData.user || currentStore.user!,
+                accessToken: refData.accessToken,
+                refreshToken: refData.refreshToken,
+                rememberDevice: currentStore.rememberDevice,
+              });
+              return refData.accessToken as string;
+            }
+            return null;
+          } catch {
+            return null;
+          } finally {
+            inflightRefreshPromise = null;
+          }
+        })();
+      }
 
-      if (refRes.ok) {
-        const refData = await refRes.json();
-        store.setSession({
-          user: refData.user || store.user!,
-          accessToken: refData.accessToken,
-          refreshToken: refData.refreshToken,
-          rememberDevice: store.rememberDevice,
-        });
-        res = await makeRequest(refData.accessToken);
-      } else {
-        await store.logout();
+      const newAccessToken = await inflightRefreshPromise;
+      if (newAccessToken) {
+        res = await makeRequest(newAccessToken);
       }
     } catch {
-      // keep original 401
+      // keep original response without logging out user
     }
   }
 

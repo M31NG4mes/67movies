@@ -14,13 +14,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }, [hydrate]);
 
   const isAuthPage = pathname === '/auth';
+  const isFullBleedPage =
+    isAuthPage || pathname.startsWith('/watch') || pathname.startsWith('/admin');
 
   useEffect(() => {
-    if (!hydrated) return;
-    if (!accessToken && !isAuthPage) {
+    if (!hydrated) {
+      hydrate();
+    }
+    const latestToken = useAuthStore.getState().accessToken;
+    if (useAuthStore.getState().hydrated && !latestToken && !isAuthPage) {
       router.replace('/auth');
     }
-  }, [hydrated, accessToken, isAuthPage, router]);
+  }, [hydrated, accessToken, isAuthPage, hydrate, router]);
 
   // Wait for client hydration before revealing protected pages
   if (!hydrated && !isAuthPage) {
@@ -39,7 +44,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  if (isAuthPage) {
+  if (isFullBleedPage) {
     return <main className="flex-1 min-h-screen">{children}</main>;
   }
 
