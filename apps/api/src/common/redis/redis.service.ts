@@ -72,9 +72,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const now = Date.now();
+    if (this.memoryCache.size >= 150 && !this.memoryCache.has(key)) {
+      for (const [k, v] of this.memoryCache.entries()) {
+        if (now > v.expiresAt) this.memoryCache.delete(k);
+      }
+      if (this.memoryCache.size >= 150) {
+        const oldestKey = this.memoryCache.keys().next().value;
+        if (oldestKey !== undefined) this.memoryCache.delete(oldestKey);
+      }
+    }
     this.memoryCache.set(key, {
       value: stringified,
-      expiresAt: Date.now() + ttlSeconds * 1000,
+      expiresAt: now + ttlSeconds * 1000,
     });
   }
 

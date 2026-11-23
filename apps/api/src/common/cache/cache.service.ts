@@ -12,7 +12,7 @@ interface CacheEntry<T> {
 @Injectable()
 export class AppCacheService {
   private readonly store = new Map<string, CacheEntry<any>>();
-  private readonly maxEntries = 500;
+  private readonly maxEntries = 150;
   private hits = 0;
   private misses = 0;
 
@@ -35,15 +35,21 @@ export class AppCacheService {
   }
 
   set<T>(key: string, value: T, ttlSeconds = 300): void {
+    const now = Date.now();
     if (this.store.size >= this.maxEntries && !this.store.has(key)) {
-      const oldestKey = this.store.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.store.delete(oldestKey);
+      for (const [k, v] of this.store.entries()) {
+        if (now > v.expiresAt) this.store.delete(k);
+      }
+      if (this.store.size >= this.maxEntries) {
+        const oldestKey = this.store.keys().next().value;
+        if (oldestKey !== undefined) {
+          this.store.delete(oldestKey);
+        }
       }
     }
     this.store.set(key, {
       value,
-      expiresAt: Date.now() + ttlSeconds * 1000,
+      expiresAt: now + ttlSeconds * 1000,
     });
   }
 

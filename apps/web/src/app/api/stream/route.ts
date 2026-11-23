@@ -224,7 +224,7 @@ export async function GET(req: NextRequest) {
     Accept: '*/*',
   };
 
-  if (targetUrl.includes('kodik')) {
+  if (targetUrl.includes('kodik') || targetUrl.includes('solodcdn')) {
     reqHeaders['Referer'] = 'https://kodik.info/';
   }
 

@@ -4,10 +4,12 @@ services:
     runtime: node
     plan: free
     buildCommand: pnpm install --no-frozen-lockfile --prod=false && pnpm --filter @cinemaflow/api prisma:generate && pnpm --filter @cinemaflow/api build
-    startCommand: pnpm --filter @cinemaflow/api start:prod
+    startCommand: node --max-old-space-size=320 apps/api/dist/apps/api/src/main
     envVars:
       - key: NODE_VERSION
         value: "20.18.0"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=320"
       - key: NODE_ENV
         value: production
       - key: PORT

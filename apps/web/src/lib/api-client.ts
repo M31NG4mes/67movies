@@ -322,7 +322,15 @@ async function fetcher<T>(endpoint: string, options?: RequestInit): Promise<T> {
   if (!isMutation && options?.cache !== 'no-store') {
     fetchInit.next = { revalidate: 60 };
   }
-  const res = await fetch(url, fetchInit);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  if (!isMutation && !fetchInit.signal && typeof AbortController !== 'undefined') {
+    const controller = new AbortController();
+    fetchInit.signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), 8000);
+  }
+  const res = await fetch(url, fetchInit).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 
   if (!res.ok) {
     throw new Error(`API error ${res.status}: ${res.statusText}`);
