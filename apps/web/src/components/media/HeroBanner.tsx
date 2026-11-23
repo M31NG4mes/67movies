@@ -78,7 +78,7 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
   };
 
   return (
-    <section className="relative w-full h-[54vh] sm:h-[74vh] min-h-[340px] sm:min-h-[520px] max-h-[760px] flex items-center overflow-hidden bg-[#09090D]">
+    <section className="relative w-full h-[54vh] sm:h-[74vh] min-h-[340px] sm:min-h-[520px] [@media(max-height:500px)]:h-[86dvh] [@media(max-height:500px)]:min-h-[260px] max-h-[760px] flex items-center overflow-hidden bg-[#09090D]">
       {/* Stacked Crossfading Backdrops (zero flicker!) */}
       {activeList.map((item, idx) => {
         const bg =

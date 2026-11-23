@@ -4,6 +4,12 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Play, Pause, SkipForward, ShieldCheck, X, ExternalLink, Copy, Smartphone } from 'lucide-react';
 import { HlsEngine, isIosDevice, isAndroidDevice, toHttpsUrl } from '../../lib/hls-engine';
+import {
+  EpisodeSkipSegments,
+  SkipInterval,
+  fetchAniSkipTimestamps,
+  resolveMalId,
+} from '../../lib/aniskip';
 import { PlayerControls } from './PlayerControls';
 import { TrackSelectorModal } from './TrackSelectorModal';
 import { SourceSelectorModal, QualitySelectorModal } from './SourceSelectorModal';
@@ -17,6 +23,9 @@ interface VideoPlayerProps {
   mediaId: string;
   title: string;
   subtitle?: string;
+  isAnime?: boolean;
+  malId?: number;
+  originalTitle?: string;
   sourceGroups: StreamSourceGroup[];
   initialStream?: VideoStream;
   seasonNumber?: number;
@@ -35,6 +44,9 @@ export function VideoPlayer({
   mediaId,
   title,
   subtitle,
+  isAnime = false,
+  malId,
+  originalTitle,
   sourceGroups,
   initialStream,
   seasonNumber,
@@ -63,6 +75,8 @@ export function VideoPlayer({
   const [isExternalPlayerModalOpen, setIsExternalPlayerModalOpen] = useState(false);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [failedVoiceKeys, setFailedVoiceKeys] = useState<string[]>([]);
+  const [skipSegments, setSkipSegments] = useState<EpisodeSkipSegments>({ op: null, ed: null });
+  const autoTriggeredSkipRef = useRef<Set<string>>(new Set());
 
   // Zustand Store
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -73,6 +87,9 @@ export function VideoPlayer({
   const audioBoost = usePlayerStore((s) => s.audioBoost);
   const playbackRate = usePlayerStore((s) => s.playbackRate);
   const autoPlayNext = usePlayerStore((s) => s.autoPlayNext);
+  const autoSkipIntro = usePlayerStore((s) => s.autoSkipIntro);
+  const autoSkipOutro = usePlayerStore((s) => s.autoSkipOutro);
+  const showManualSkipButtons = usePlayerStore((s) => s.showManualSkipButtons);
   const useSafeProxy = usePlayerStore((s) => s.useSafeProxy);
   const osdMessage = usePlayerStore((s) => s.osdMessage);
   const centerActionIcon = usePlayerStore((s) => s.centerActionIcon);
@@ -109,11 +126,35 @@ export function VideoPlayer({
   const setError = usePlayerStore((s) => s.setError);
   const reset = usePlayerStore((s) => s.reset);
 
+  const lockLandscapeOrientation = useCallback(async () => {
+    try {
+      const orientation = (window.screen as any)?.orientation;
+      if (orientation && typeof orientation.lock === 'function') {
+        await orientation.lock('landscape');
+      }
+    } catch {
+      // Orientation lock is unsupported or disallowed by browser (e.g. iOS Safari / desktop)
+    }
+  }, []);
+
+  const unlockOrientation = useCallback(() => {
+    try {
+      const orientation = (window.screen as any)?.orientation;
+      if (orientation && typeof orientation.unlock === 'function') {
+        orientation.unlock();
+      }
+    } catch {
+      // Ignore unlock errors
+    }
+  }, []);
+
   // Fullscreen handler (targets player container so overlays, episodes, and controls stay visible)
   const handleToggleFullscreen = useCallback(async () => {
     try {
       const doc = document as any;
-      const isFs = Boolean(doc.fullscreenElement || doc.webkitFullscreenElement);
+      const isFs = Boolean(
+        doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement
+      );
       if (!isFs) {
         const container = containerRef.current as any;
         const video = videoRef.current as any;
@@ -121,33 +162,50 @@ export function VideoPlayer({
           await container.requestFullscreen();
         } else if (container?.webkitRequestFullscreen) {
           container.webkitRequestFullscreen();
+        } else if (container?.msRequestFullscreen) {
+          container.msRequestFullscreen();
         } else if (video?.webkitEnterFullscreen) {
           video.webkitEnterFullscreen();
         }
         setIsFullscreen(true);
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+          await lockLandscapeOrientation();
+        }
         showOsd('⛶ Полноэкранный режим');
       } else {
         if (doc.exitFullscreen) {
           await doc.exitFullscreen();
         } else if (doc.webkitExitFullscreen) {
           doc.webkitExitFullscreen();
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen();
         }
+        unlockOrientation();
         setIsFullscreen(false);
         showOsd('⛶ Обычный режим');
       }
     } catch {
       // ignore fullscreen permission errors
     }
-  }, [setIsFullscreen, showOsd]);
+  }, [lockLandscapeOrientation, unlockOrientation, setIsFullscreen, showOsd]);
 
   // Keep fullscreen state synced with browser fullscreenchange & iOS webkitbeginfullscreen/webkitendfullscreen
   useEffect(() => {
     const onFsChange = () => {
       const doc = document as any;
-      setIsFullscreen(Boolean(doc.fullscreenElement || doc.webkitFullscreenElement));
+      const fsActive = Boolean(
+        doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement
+      );
+      setIsFullscreen(fsActive);
+      if (!fsActive) {
+        unlockOrientation();
+      }
     };
     const onIosBeginFs = () => setIsFullscreen(true);
-    const onIosEndFs = () => setIsFullscreen(false);
+    const onIosEndFs = () => {
+      setIsFullscreen(false);
+      unlockOrientation();
+    };
 
     document.addEventListener('fullscreenchange', onFsChange);
     document.addEventListener('webkitfullscreenchange', onFsChange);
@@ -159,8 +217,9 @@ export function VideoPlayer({
       document.removeEventListener('webkitfullscreenchange', onFsChange);
       videoEl?.removeEventListener('webkitbeginfullscreen', onIosBeginFs);
       videoEl?.removeEventListener('webkitendfullscreen', onIosEndFs);
+      unlockOrientation();
     };
-  }, [setIsFullscreen]);
+  }, [setIsFullscreen, unlockOrientation]);
 
   // Keyboard hotkeys (Left/Right arrows to seek ±10s, Up/Down arrows for volume, F for fullscreen, N/P for episodes)
   usePlayerHotkeys(videoRef, {
@@ -368,6 +427,82 @@ export function VideoPlayer({
     }, 1000);
     return () => clearTimeout(timer);
   }, [autoNextCountdown, hasNextEpisode, onNextEpisode, showOsd]);
+
+  // Load AniSkip OP/ED timestamps per anime episode
+  useEffect(() => {
+    setSkipSegments({ op: null, ed: null });
+    autoTriggeredSkipRef.current.clear();
+
+    const effectiveEpisode = episodeNumber || activeStream?.episode || 1;
+    const looksLikeAnime =
+      isAnime ||
+      Boolean(malId) ||
+      /^al-\d+$/i.test(mediaId) ||
+      /^mal-\d+$/i.test(mediaId) ||
+      activeStream?.providerId === 'aniliberty';
+
+    if (!looksLikeAnime || !effectiveEpisode) return;
+
+    let cancelled = false;
+    (async () => {
+      const resolvedMalId = await resolveMalId({
+        malId,
+        title,
+        originalTitle,
+      });
+      if (cancelled || !resolvedMalId) return;
+
+      const segments = await fetchAniSkipTimestamps(resolvedMalId, effectiveEpisode);
+      if (!cancelled) {
+        setSkipSegments(segments);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAnime, malId, mediaId, title, originalTitle, episodeNumber, activeStream?.episode, activeStream?.providerId]);
+
+  // Active OP/ED segment based on real video currentTime
+  const activeSkipSegment: SkipInterval | null =
+    skipSegments.op &&
+    currentTime >= skipSegments.op.startTime &&
+    currentTime < skipSegments.op.endTime - 0.5
+      ? skipSegments.op
+      : skipSegments.ed &&
+        currentTime >= skipSegments.ed.startTime &&
+        currentTime < skipSegments.ed.endTime - 0.5
+      ? skipSegments.ed
+      : null;
+
+  const handleSkipSegment = useCallback(
+    (segment: SkipInterval) => {
+      if (!videoRef.current) return;
+      const targetTime = Math.min(
+        Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0
+          ? videoRef.current.duration
+          : segment.endTime,
+        segment.endTime
+      );
+      videoRef.current.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      autoTriggeredSkipRef.current.add(segment.skipId);
+      showOsd(segment.skipType === 'op' ? '⏭️ Опенинг пропущен' : '⏭️ Эндинг пропущен');
+    },
+    [setCurrentTime, showOsd]
+  );
+
+  // Auto-Skip OP / ED when enabled in settings (once per segment per episode)
+  useEffect(() => {
+    if (!activeSkipSegment || !videoRef.current) return;
+    const shouldAuto =
+      (activeSkipSegment.skipType === 'op' && autoSkipIntro) ||
+      (activeSkipSegment.skipType === 'ed' && autoSkipOutro);
+    if (!shouldAuto) return;
+    if (autoTriggeredSkipRef.current.has(activeSkipSegment.skipId)) return;
+
+    handleSkipSegment(activeSkipSegment);
+  }, [activeSkipSegment, autoSkipIntro, autoSkipOutro, handleSkipSegment]);
 
   // Video event listeners
   const onTimeUpdate = () => {
@@ -610,6 +745,32 @@ export function VideoPlayer({
         </div>
       )}
 
+      {/* AniSkip OP / ED Manual Skip Button (Bottom-Right, Netflix-style, Android TV & Mobile friendly) */}
+      {showManualSkipButtons && activeSkipSegment && autoNextCountdown === null && !error && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-24 sm:bottom-28 right-4 sm:right-6 z-40 animate-fadeIn"
+        >
+          <button
+            type="button"
+            tabIndex={0}
+            data-nav-item="true"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSkipSegment(activeSkipSegment);
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl bg-[#111119]/90 hover:bg-brand-main border border-brand-main/70 text-white text-xs sm:text-sm font-bold shadow-2xl backdrop-blur-xl transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-brand-light"
+          >
+            <SkipForward className="w-4 h-4 text-brand-light shrink-0" />
+            <span>
+              {activeSkipSegment.skipType === 'op'
+                ? 'Пропустить опенинг'
+                : 'Пропустить эндинг'}
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Auto-Next Episode Countdown Card */}
       {autoNextCountdown !== null && hasNextEpisode && onNextEpisode && (
         <div
@@ -714,7 +875,18 @@ export function VideoPlayer({
         <PlayerControls
           title={title}
           subtitle={subtitle}
-          onBack={() => router.back()}
+          onBack={async () => {
+            try {
+              const doc = document as any;
+              if (doc.fullscreenElement && doc.exitFullscreen) {
+                await doc.exitFullscreen();
+              } else if (doc.webkitFullscreenElement && doc.webkitExitFullscreen) {
+                doc.webkitExitFullscreen();
+              }
+            } catch {}
+            unlockOrientation();
+            router.back();
+          }}
           onSeek={handleSeek}
           onTogglePlay={handleTogglePlay}
           onSkip={handleSkip}

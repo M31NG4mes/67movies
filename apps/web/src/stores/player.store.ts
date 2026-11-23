@@ -24,6 +24,9 @@ interface PlayerStore {
   isFullscreen: boolean;
   isControlsVisible: boolean;
   autoPlayNext: boolean;
+  autoSkipIntro: boolean;
+  autoSkipOutro: boolean;
+  showManualSkipButtons: boolean;
   useSafeProxy: boolean | undefined;
   isUsingProxy: boolean;
   osdMessage: string | null;
@@ -57,6 +60,9 @@ interface PlayerStore {
   setIsFullscreen: (isFullscreen: boolean) => void;
   setIsControlsVisible: (visible: boolean) => void;
   setAutoPlayNext: (autoPlayNext: boolean) => void;
+  setAutoSkipIntro: (autoSkipIntro: boolean) => void;
+  setAutoSkipOutro: (autoSkipOutro: boolean) => void;
+  setShowManualSkipButtons: (show: boolean) => void;
   setUseSafeProxy: (useSafeProxy: boolean | undefined) => void;
   setIsUsingProxy: (isUsingProxy: boolean) => void;
   showOsd: (msg: string) => void;
@@ -88,6 +94,14 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   isFullscreen: false,
   isControlsVisible: true,
   autoPlayNext: true,
+  autoSkipIntro:
+    typeof window !== 'undefined' && localStorage.getItem('67m_auto_skip_op') === '1',
+  autoSkipOutro:
+    typeof window !== 'undefined' && localStorage.getItem('67m_auto_skip_ed') === '1',
+  showManualSkipButtons:
+    typeof window !== 'undefined'
+      ? localStorage.getItem('67m_show_skip_btns') !== '0'
+      : true,
   useSafeProxy: undefined,
   isUsingProxy: false,
   osdMessage: null,
@@ -126,6 +140,24 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   setIsFullscreen: (isFullscreen) => set({ isFullscreen }),
   setIsControlsVisible: (isControlsVisible) => set({ isControlsVisible }),
   setAutoPlayNext: (autoPlayNext) => set({ autoPlayNext }),
+  setAutoSkipIntro: (autoSkipIntro) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('67m_auto_skip_op', autoSkipIntro ? '1' : '0');
+    }
+    set({ autoSkipIntro });
+  },
+  setAutoSkipOutro: (autoSkipOutro) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('67m_auto_skip_ed', autoSkipOutro ? '1' : '0');
+    }
+    set({ autoSkipOutro });
+  },
+  setShowManualSkipButtons: (showManualSkipButtons) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('67m_show_skip_btns', showManualSkipButtons ? '1' : '0');
+    }
+    set({ showManualSkipButtons });
+  },
   setUseSafeProxy: (useSafeProxy) => set({ useSafeProxy }),
   setIsUsingProxy: (isUsingProxy) => set({ isUsingProxy }),
   showOsd: (msg) => {

@@ -628,11 +628,11 @@ function NavbarContent() {
       {isSearchOpen && (
         <div
           onClick={() => setIsSearchOpen(false)}
-          className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-start justify-center pt-4 sm:pt-20 px-4 pb-4 overflow-y-auto bg-black/80 backdrop-blur-md animate-fadeIn"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl bg-[#111119] border border-[#292936] rounded-2xl shadow-2xl p-4 sm:p-6 text-white animate-scaleIn"
+            className="w-full max-w-2xl max-h-[90dvh] overflow-y-auto bg-[#111119] border border-[#292936] rounded-2xl shadow-2xl p-4 sm:p-6 text-white animate-scaleIn"
           >
             <div className="flex items-center justify-between pb-4 border-b border-[#292936]">
               <div className="flex items-center gap-3 flex-1 mr-4">

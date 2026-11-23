@@ -31,6 +31,12 @@ export function TrackSelectorModal({
   const setAudioBoost = usePlayerStore((s) => s.setAudioBoost);
   const autoPlayNext = usePlayerStore((s) => s.autoPlayNext);
   const setAutoPlayNext = usePlayerStore((s) => s.setAutoPlayNext);
+  const autoSkipIntro = usePlayerStore((s) => s.autoSkipIntro);
+  const setAutoSkipIntro = usePlayerStore((s) => s.setAutoSkipIntro);
+  const autoSkipOutro = usePlayerStore((s) => s.autoSkipOutro);
+  const setAutoSkipOutro = usePlayerStore((s) => s.setAutoSkipOutro);
+  const showManualSkipButtons = usePlayerStore((s) => s.showManualSkipButtons);
+  const setShowManualSkipButtons = usePlayerStore((s) => s.setShowManualSkipButtons);
   const useSafeProxy = usePlayerStore((s) => s.useSafeProxy);
   const isUsingProxy = usePlayerStore((s) => s.isUsingProxy);
   const setUseSafeProxy = usePlayerStore((s) => s.setUseSafeProxy);
@@ -198,6 +204,60 @@ export function TrackSelectorModal({
               >
                 {isUsingProxy ? 'HTTPS Прокси' : 'Прямой CDN'}
               </button>
+            </div>
+
+            <div className="bg-cinema-card border border-cinema-border rounded-xl p-4 space-y-3">
+              <div className="text-sm font-bold text-white">
+                Пропуск опенинга и эндинга (AniSkip)
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-cinema-muted">
+                  Автоматически пропускать опенинг
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAutoSkipIntro(!autoSkipIntro)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex-shrink-0 ${
+                    autoSkipIntro
+                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                      : 'bg-cinema-surface border-cinema-border text-cinema-muted'
+                  }`}
+                >
+                  {autoSkipIntro ? 'ВКЛ' : 'ВЫКЛ'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-cinema-muted">
+                  Автоматически пропускать эндинг
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAutoSkipOutro(!autoSkipOutro)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex-shrink-0 ${
+                    autoSkipOutro
+                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                      : 'bg-cinema-surface border-cinema-border text-cinema-muted'
+                  }`}
+                >
+                  {autoSkipOutro ? 'ВКЛ' : 'ВЫКЛ'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-cinema-muted">
+                  Всегда показывать кнопку ручного пропуска
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowManualSkipButtons(!showManualSkipButtons)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex-shrink-0 ${
+                    showManualSkipButtons
+                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                      : 'bg-cinema-surface border-cinema-border text-cinema-muted'
+                  }`}
+                >
+                  {showManualSkipButtons ? 'ВКЛ' : 'ВЫКЛ'}
+                </button>
+              </div>
             </div>
           </div>
 

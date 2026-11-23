@@ -102,7 +102,7 @@ export function PlayerControls({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute inset-0 flex flex-col justify-between p-3 sm:p-6 bg-gradient-to-t from-cinema-dark/95 via-cinema-dark/15 to-cinema-dark/80 pointer-events-auto transition-opacity duration-300"
+      className="absolute inset-0 flex flex-col justify-between p-3 sm:p-6 [@media(max-height:500px)]:p-2.5 pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] bg-gradient-to-t from-cinema-dark/95 via-cinema-dark/15 to-cinema-dark/80 pointer-events-auto transition-opacity duration-300"
     >
       {/* Top Header (Back + Title/Subtitle + External Player button) */}
       <div className="flex items-center justify-between gap-2 sm:gap-3">
@@ -244,9 +244,9 @@ export function PlayerControls({
               </button>
             )}
 
-            {/* 6. Minimalist Volume (Hidden slider on mobile; hardware buttons used on phones) */}
+            {/* 6. Minimalist Volume (Mute button always accessible, hover slider on desktop) */}
             <div
-              className="hidden sm:flex items-center"
+              className="flex items-center"
               onMouseEnter={() => setIsVolumeHovered(true)}
               onMouseLeave={() => setIsVolumeHovered(false)}
             >
@@ -255,19 +255,19 @@ export function PlayerControls({
                 onClick={toggleMute}
                 aria-label={isMuted ? 'Включить звук' : 'Выключить звук'}
                 title="Звук (M / Колёсико мыши / ↑↓)"
-                className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
+                className="p-1.5 sm:p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="w-5 h-5 text-red-400" />
+                  <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
                 ) : volume < 0.5 ? (
-                  <Volume1 className="w-5 h-5" />
+                  <Volume1 className="w-4 h-4 sm:w-5 sm:h-5" />
                 ) : (
-                  <Volume2 className="w-5 h-5" />
+                  <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
                 )}
               </button>
 
               <div
-                className={`overflow-hidden transition-all duration-200 flex items-center ${
+                className={`hidden sm:flex overflow-hidden transition-all duration-200 items-center ${
                   isVolumeHovered ? 'w-20 ml-1.5 opacity-100' : 'w-0 ml-0 opacity-0'
                 }`}
               >
