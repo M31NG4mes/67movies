@@ -217,7 +217,7 @@ function NavbarContent() {
           DESKTOP: All Controls Consolidated into Left Slim Sidebar
           (with sleek hover tooltips sliding out to the right)
          ================================================================= */}
-      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-16 z-50 bg-[#09090D]/95 border-r border-white/[0.06] flex-col items-center justify-between py-5 select-none">
+      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-16 z-50 bg-[#09090D]/95 border-r border-white/[0.06] flex-col items-center justify-between py-5">
         {/* Top: Brand Logo */}
         <Link
           href="/"

@@ -7,6 +7,7 @@ import { KinopoiskProviderService } from './providers/kinopoisk.provider';
 import { AnimeProviderService } from './providers/anime.provider';
 import { TvMazeProviderService } from './providers/tvmaze.provider';
 import { OmdbProviderService } from './providers/omdb.provider';
+import { AniLibertyProviderService } from './providers/aniliberty.provider';
 
 @Module({
   controllers: [MediaController],
@@ -18,6 +19,7 @@ import { OmdbProviderService } from './providers/omdb.provider';
     AnimeProviderService,
     TvMazeProviderService,
     OmdbProviderService,
+    AniLibertyProviderService,
   ],
   exports: [
     MediaService,
@@ -27,6 +29,7 @@ import { OmdbProviderService } from './providers/omdb.provider';
     AnimeProviderService,
     TvMazeProviderService,
     OmdbProviderService,
+    AniLibertyProviderService,
   ],
 })
 export class MediaModule {}

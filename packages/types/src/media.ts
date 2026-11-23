@@ -1,5 +1,12 @@
 export type MediaType = 'movie' | 'tv';
-export type MediaSourceProvider = 'tmdb' | 'kinopoisk' | 'shikimori' | 'jikan' | 'tvmaze' | 'omdb';
+export type MediaSourceProvider =
+  | 'tmdb'
+  | 'kinopoisk'
+  | 'shikimori'
+  | 'jikan'
+  | 'tvmaze'
+  | 'omdb'
+  | 'aniliberty';
 
 export interface Genre {
   id: number;
@@ -37,14 +44,24 @@ export interface Season {
   episodes?: Episode[];
 }
 
+export interface VoiceoverMember {
+  name: string;
+  role: string; // e.g. 'Озвучка', 'Тайминг', 'Звукорежиссёр'
+}
+
 export interface MediaItem {
-  id: string; // Internal string ID, numeric TMDB ID, or prefixed ID (kp-*, mal-*, tvmaze-*, omdb-*)
+  id: string; // Internal string ID, numeric TMDB ID, or prefixed ID (kp-*, mal-*, tvmaze-*, omdb-*, al-*)
   tmdbId?: number;
   imdbId?: string;
   kinopoiskId?: number;
   malId?: number;
   tvmazeId?: number;
+  anilibertyId?: number;
   source?: MediaSourceProvider;
+  voiceovers?: VoiceoverMember[]; // AniLiberty dubbing team
+  voiceTeamName?: string;
+  isOngoing?: boolean;
+  episodesTotal?: number;
   type: MediaType;
   title: string;
   originalTitle?: string;

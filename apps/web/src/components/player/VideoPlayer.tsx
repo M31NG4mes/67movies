@@ -202,7 +202,7 @@ export function VideoPlayer({
       ref={containerRef}
       onMouseMove={showControlsTemporarily}
       onClick={showControlsTemporarily}
-      className={`relative w-screen h-screen bg-black overflow-hidden select-none ${
+      className={`relative w-screen h-screen bg-black overflow-hidden ${
         !isControlsVisible && isPlaying ? 'cursor-none' : 'cursor-default'
       }`}
     >

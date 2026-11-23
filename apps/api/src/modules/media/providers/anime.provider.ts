@@ -3,24 +3,140 @@ import { Episode, Genre, MediaItem, MediaType, Season } from '@cinemaflow/types'
 import { RedisService } from '../../../common/redis/redis.service';
 import { DiscoverProviderOptions, stripHtml } from '../media-aggregator.util';
 
+const ANILIST_URL = 'https://graphql.anilist.co';
 const SHIKIMORI_BASE = 'https://shikimori.one';
 
-const TMDB_TO_JIKAN_GENRE_ID: Record<number, number> = {
-  28: 1, // Action
-  12: 2, // Adventure
-  35: 4, // Comedy
-  18: 8, // Drama
-  14: 10, // Fantasy
-  27: 14, // Horror
-  9648: 7, // Mystery
-  10749: 22, // Romance
-  878: 24, // Sci-Fi
-  53: 41, // Suspense
-  36: 13, // Historical
-  10402: 19, // Music
-  10759: 1,
-  10765: 24,
+const TMDB_TO_ANILIST_GENRE: Record<number, string> = {
+  28: 'Action',
+  12: 'Adventure',
+  35: 'Comedy',
+  18: 'Drama',
+  14: 'Fantasy',
+  27: 'Horror',
+  9648: 'Mystery',
+  10749: 'Romance',
+  878: 'Sci-Fi',
+  53: 'Thriller',
+  10402: 'Music',
+  10759: 'Action',
+  10765: 'Fantasy',
 };
+
+const ANILIST_GENRE_RU: Record<string, string> = {
+  Action: 'Боевик',
+  Adventure: 'Приключения',
+  Comedy: 'Комедия',
+  Drama: 'Драма',
+  Fantasy: 'Фэнтези',
+  Horror: 'Ужасы',
+  Mystery: 'Детектив',
+  Psychological: 'Психологическое',
+  Romance: 'Мелодрама',
+  'Sci-Fi': 'Фантастика',
+  'Slice of Life': 'Повседневность',
+  Sports: 'Спорт',
+  Supernatural: 'Сверхъестественное',
+  Thriller: 'Триллер',
+  Mecha: 'Меха',
+  Music: 'Музыка',
+};
+
+const ANILIST_LIST_QUERY = `
+query ($page: Int, $perPage: Int, $search: String, $formatIn: [MediaFormat], $sort: [MediaSort], $genre: String, $minScore: Int, $startDateGreater: FuzzyDateInt, $startDateLesser: FuzzyDateInt) {
+  Page(page: $page, perPage: $perPage) {
+    media(
+      type: ANIME,
+      isAdult: false,
+      search: $search,
+      format_in: $formatIn,
+      sort: $sort,
+      genre: $genre,
+      averageScore_greater: $minScore,
+      startDate_greater: $startDateGreater,
+      startDate_lesser: $startDateLesser
+    ) {
+      id
+      idMal
+      format
+      title { romaji english native }
+      description(asHtml: false)
+      coverImage { extraLarge large }
+      bannerImage
+      averageScore
+      popularity
+      episodes
+      duration
+      genres
+      startDate { year month day }
+    }
+  }
+}
+`;
+
+const ANILIST_BY_MAL_IDS_QUERY = `
+query ($malIds: [Int]) {
+  Page(page: 1, perPage: 50) {
+    media(type: ANIME, idMal_in: $malIds, isAdult: false) {
+      id
+      idMal
+      format
+      title { romaji english native }
+      description(asHtml: false)
+      coverImage { extraLarge large }
+      bannerImage
+      averageScore
+      popularity
+      episodes
+      duration
+      genres
+      startDate { year month day }
+    }
+  }
+}
+`;
+
+const ANILIST_DETAIL_QUERY = `
+query ($idMal: Int) {
+  Media(type: ANIME, idMal: $idMal) {
+    id
+    idMal
+    format
+    title { romaji english native }
+    description(asHtml: false)
+    coverImage { extraLarge large }
+    bannerImage
+    averageScore
+    popularity
+    episodes
+    duration
+    genres
+    startDate { year month day }
+    studios(isMain: true) { nodes { name } }
+    characters(perPage: 12, sort: ROLE) {
+      nodes {
+        id
+        name { full }
+        image { medium }
+      }
+    }
+    recommendations(perPage: 8, sort: RATING_DESC) {
+      nodes {
+        mediaRecommendation {
+          id
+          idMal
+          format
+          title { romaji english native }
+          coverImage { extraLarge large }
+          bannerImage
+          averageScore
+          startDate { year }
+          genres
+        }
+      }
+    }
+  }
+}
+`;
 
 @Injectable()
 export class AnimeProviderService {
@@ -61,73 +177,143 @@ export class AnimeProviderService {
     }
   }
 
+  private async fetchAniList<T>(
+    query: string,
+    variables: Record<string, any>,
+    cacheKey: string,
+    ttlSeconds = 1800,
+    timeoutMs = 5000,
+  ): Promise<T | null> {
+    const cached = await this.redisService.get<T>(cacheKey);
+    if (cached) return cached;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(ANILIST_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': '67movies-cinema/1.0',
+        },
+        body: JSON.stringify({ query, variables }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      const json: any = await res.json();
+      const data = json?.data as T;
+      if (data) {
+        await this.redisService.set(cacheKey, data, ttlSeconds);
+      }
+      return data || null;
+    } catch (err: any) {
+      this.logger.debug(`AniList fetch skipped: ${err?.message || err}`);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // =========================================================================
-  // Public Catalog Methods (Shikimori RU + Jikan/MyAnimeList — 100% free)
+  // Public Catalog Methods (AniList HD posters + Shikimori RU titles — 100% free)
   // =========================================================================
 
   async search(query: string, page = 1): Promise<MediaItem[]> {
     const q = query.trim();
     if (!q) return [];
 
-    const [shikiRaw, jikanRaw] = await Promise.all([
+    const [aniRes, shikiRaw] = await Promise.all([
+      this.fetchAniList<any>(
+        ANILIST_LIST_QUERY,
+        { page, perPage: 16, search: q, sort: ['SEARCH_MATCH', 'POPULARITY_DESC'] },
+        `anilist:search:${q.toLowerCase()}:${page}`,
+        600,
+      ),
       this.fetchJson<any[]>(
-        `${SHIKIMORI_BASE}/api/animes?search=${encodeURIComponent(q)}&limit=10&page=${page}&censored=true`,
+        `${SHIKIMORI_BASE}/api/animes?search=${encodeURIComponent(q)}&limit=14&page=${page}&censored=true`,
         `shiki:search:${q.toLowerCase()}:${page}`,
         600,
       ),
-      this.fetchJson<any>(
-        `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(q)}&limit=10&page=${page}&sfw=true`,
-        `jikan:search:${q.toLowerCase()}:${page}`,
-        600,
-      ),
     ]);
 
-    return this.combineShikiAndJikan(shikiRaw || [], jikanRaw?.data || []);
+    return this.mergeAniListAndShikimori(aniRes?.Page?.media || [], shikiRaw || []);
   }
 
   async getPopular(type: MediaType, page = 1): Promise<MediaItem[]> {
+    const formatIn = type === 'movie' ? ['MOVIE'] : ['TV', 'ONA', 'OVA'];
     const shikiKind = type === 'movie' ? 'movie' : 'tv';
-    const jikanType = type === 'movie' ? 'movie' : 'tv';
 
-    const [shikiRaw, jikanRaw] = await Promise.all([
+    const [aniRes, shikiRaw] = await Promise.all([
+      this.fetchAniList<any>(
+        ANILIST_LIST_QUERY,
+        { page, perPage: 18, formatIn, sort: ['POPULARITY_DESC'] },
+        `anilist:pop:${type}:${page}`,
+        1800,
+      ),
       this.fetchJson<any[]>(
-        `${SHIKIMORI_BASE}/api/animes?order=popularity&kind=${shikiKind}&limit=12&page=${page}&censored=true`,
+        `${SHIKIMORI_BASE}/api/animes?order=popularity&kind=${shikiKind}&limit=18&page=${page}&censored=true`,
         `shiki:pop:${type}:${page}`,
         1800,
       ),
-      this.fetchJson<any>(
-        `https://api.jikan.moe/v4/top/anime?type=${jikanType}&filter=bypopularity&limit=12&page=${page}&sfw=true`,
-        `jikan:pop:${type}:${page}`,
-        1800,
-      ),
     ]);
 
-    return this.combineShikiAndJikan(shikiRaw || [], jikanRaw?.data || []);
+    return this.mergeAniListAndShikimori(aniRes?.Page?.media || [], shikiRaw || []);
   }
 
   async getNew(type: MediaType, page = 1): Promise<MediaItem[]> {
+    const formatIn = type === 'movie' ? ['MOVIE'] : ['TV', 'ONA'];
     const shikiKind = type === 'movie' ? 'movie' : 'tv';
 
-    const [shikiRaw, jikanRaw] = await Promise.all([
+    const [aniRes, shikiRaw] = await Promise.all([
+      this.fetchAniList<any>(
+        ANILIST_LIST_QUERY,
+        { page, perPage: 16, formatIn, sort: ['TRENDING_DESC', 'START_DATE_DESC'] },
+        `anilist:new:${type}:${page}`,
+        1800,
+      ),
       this.fetchJson<any[]>(
-        `${SHIKIMORI_BASE}/api/animes?order=aired_on&status=ongoing,released&kind=${shikiKind}&score=6&limit=10&page=${page}&censored=true`,
+        `${SHIKIMORI_BASE}/api/animes?order=aired_on&status=ongoing,released&kind=${shikiKind}&score=6&limit=14&page=${page}&censored=true`,
         `shiki:new:${type}:${page}`,
         1800,
       ),
-      type === 'tv'
-        ? this.fetchJson<any>(
-            `https://api.jikan.moe/v4/seasons/now?limit=10&page=${page}&sfw=true`,
-            `jikan:new:tv:${page}`,
-            1800,
-          )
-        : Promise.resolve(null),
     ]);
 
-    return this.combineShikiAndJikan(shikiRaw || [], jikanRaw?.data || []);
+    return this.mergeAniListAndShikimori(aniRes?.Page?.media || [], shikiRaw || []);
   }
 
   async discover(options: DiscoverProviderOptions): Promise<MediaItem[]> {
     const isMovie = options.category === 'cartoons' || options.type === 'movie';
+    const formatIn = isMovie ? ['MOVIE'] : ['TV', 'ONA', 'OVA'];
+
+    const aniSort =
+      options.sort === 'rating'
+        ? ['SCORE_DESC']
+        : options.sort === 'date'
+        ? ['START_DATE_DESC']
+        : ['POPULARITY_DESC'];
+
+    const aniVars: Record<string, any> = {
+      page: options.page,
+      perPage: 26,
+      formatIn,
+      sort: aniSort,
+    };
+
+    if (options.genreId && TMDB_TO_ANILIST_GENRE[options.genreId]) {
+      aniVars.genre = TMDB_TO_ANILIST_GENRE[options.genreId];
+    }
+    if (options.minRating && options.minRating > 0) {
+      // AniList uses 0..100 scale
+      aniVars.minScore = Math.max(10, Math.round(options.minRating * 10) - 1);
+    }
+    if (options.yearFrom && options.yearFrom >= 1900) {
+      aniVars.startDateGreater = options.yearFrom * 10000;
+    }
+    if (options.yearTo && options.yearTo >= 1900) {
+      aniVars.startDateLesser = options.yearTo * 10000 + 1232;
+    }
+
     const shikiOrder =
       options.sort === 'rating'
         ? 'ranked'
@@ -138,7 +324,7 @@ export class AnimeProviderService {
     const shikiParams = new URLSearchParams({
       order: shikiOrder,
       kind: isMovie ? 'movie' : 'tv',
-      limit: '14',
+      limit: '24',
       page: String(options.page),
       censored: 'true',
     });
@@ -151,66 +337,49 @@ export class AnimeProviderService {
       shikiParams.set('season', `${options.yearFrom}_${new Date().getFullYear()}`);
     }
 
-    const jikanParams = new URLSearchParams({
-      type: isMovie ? 'movie' : 'tv',
-      limit: '14',
-      page: String(options.page),
-      sfw: 'true',
-      order_by:
-        options.sort === 'rating'
-          ? 'score'
-          : options.sort === 'date'
-          ? 'start_date'
-          : options.sort === 'votes'
-          ? 'scored_by'
-          : 'members',
-      sort: 'desc',
-    });
-    if (options.minRating && options.minRating > 0) {
-      jikanParams.set('min_score', String(options.minRating));
-    }
-    if (options.yearFrom) {
-      jikanParams.set('start_date', `${options.yearFrom}-01-01`);
-    }
-    if (options.yearTo) {
-      jikanParams.set('end_date', `${options.yearTo}-12-31`);
-    }
-    if (options.genreId && TMDB_TO_JIKAN_GENRE_ID[options.genreId]) {
-      jikanParams.set('genres', String(TMDB_TO_JIKAN_GENRE_ID[options.genreId]));
-    }
-
-    const [shikiRaw, jikanRaw] = await Promise.all([
+    const [aniRes, shikiRaw] = await Promise.all([
+      this.fetchAniList<any>(
+        ANILIST_LIST_QUERY,
+        aniVars,
+        `anilist:disc:${JSON.stringify(aniVars)}`,
+        1200,
+      ),
       this.fetchJson<any[]>(
         `${SHIKIMORI_BASE}/api/animes?${shikiParams.toString()}`,
         `shiki:disc:${shikiParams.toString()}`,
         1200,
       ),
-      this.fetchJson<any>(
-        `https://api.jikan.moe/v4/anime?${jikanParams.toString()}`,
-        `jikan:disc:${jikanParams.toString()}`,
-        1200,
-      ),
     ]);
 
-    return this.combineShikiAndJikan(shikiRaw || [], jikanRaw?.data || []);
+    return this.mergeAniListAndShikimori(aniRes?.Page?.media || [], shikiRaw || []);
   }
 
   async getDetails(malId: number): Promise<MediaItem | null> {
     if (!malId) return null;
 
-    const [shiki, jikan, episodesRes] = await Promise.all([
+    const [aniRes, shiki, episodesRes] = await Promise.all([
+      this.fetchAniList<any>(ANILIST_DETAIL_QUERY, { idMal: malId }, `anilist:detail:${malId}`, 7200),
       this.fetchJson<any>(`${SHIKIMORI_BASE}/api/animes/${malId}`, `shiki:detail:${malId}`, 7200),
-      this.fetchJson<any>(`https://api.jikan.moe/v4/anime/${malId}/full`, `jikan:detail:${malId}`, 7200),
-      this.fetchJson<any>(`https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`, `jikan:ep:${malId}:1`, 7200),
+      this.fetchJson<any>(
+        `https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`,
+        `jikan:ep:${malId}:1`,
+        7200,
+        3500,
+      ),
     ]);
 
-    const jData = jikan?.data;
-    if (!shiki && !jData) return null;
+    const ani = aniRes?.Media;
+    if (!ani && !shiki) return null;
 
-    const kind = String(shiki?.kind || jData?.type || 'tv').toLowerCase();
-    const type: MediaType = kind === 'movie' ? 'movie' : 'tv';
-    const title = shiki?.russian || shiki?.name || jData?.title || `Anime #${malId}`;
-    const originalTitle = shiki?.name || jData?.title_japanese || jData?.title || undefined;
+    const format = String(ani?.format || shiki?.kind || 'tv').toUpperCase();
+    const type: MediaType = format === 'MOVIE' ? 'movie' : 'tv';
+    const title =
+      shiki?.russian ||
+      ani?.title?.english ||
+      ani?.title?.romaji ||
+      shiki?.name ||
+      `Anime #${malId}`;
+    const originalTitle = ani?.title?.romaji || ani?.title?.native || shiki?.name || undefined;
 
     const shikiDesc = stripHtml(shiki?.description_html || shiki?.description || '').replace(
       /\[[^\]]+\]/g,
@@ -218,38 +387,52 @@ export class AnimeProviderService {
     );
     const overview =
       shikiDesc ||
-      stripHtml(jData?.synopsis) ||
+      stripHtml(ani?.description) ||
       'Описание аниме временно отсутствует.';
 
-    const posterPath = this.resolveShikiImage(shiki?.image?.original) ||
-      jData?.images?.jpg?.large_image_url ||
-      jData?.images?.jpg?.image_url ||
-      null;
+    // Always prefer reliable AniList CDN images over Shikimori hotlink-protected URLs
+    const posterPath = ani?.coverImage?.extraLarge || ani?.coverImage?.large || null;
+    const backdropPath = ani?.bannerImage || posterPath;
 
-    const backdropPath =
-      (Array.isArray(shiki?.screenshots) && shiki.screenshots[0]?.original
-        ? this.resolveShikiImage(shiki.screenshots[0].original)
-        : null) ||
-      jData?.trailer?.images?.maximum_image_url ||
-      posterPath;
+    const year =
+      Number(ani?.startDate?.year) ||
+      (shiki?.aired_on ? new Date(shiki.aired_on).getFullYear() : 2024);
 
-    const airedStr = shiki?.aired_on || jData?.aired?.from || '';
-    const year = airedStr ? new Date(airedStr).getFullYear() : 2024;
-    const score = parseFloat(String(shiki?.score || jData?.score || 0)) || 0;
+    const score =
+      shiki?.score && parseFloat(String(shiki.score)) > 0
+        ? parseFloat(String(shiki.score))
+        : ani?.averageScore
+        ? ani.averageScore / 10
+        : 0;
 
-    const genres: Genre[] = Array.isArray(shiki?.genres) && shiki.genres.length > 0
-      ? shiki.genres.map((g: any, idx: number) => ({
-          id: Number(g.id) || 8000 + idx,
-          name: g.russian || g.name,
+    const genres: Genre[] =
+      Array.isArray(shiki?.genres) && shiki.genres.length > 0
+        ? shiki.genres.map((g: any, idx: number) => ({
+            id: Number(g.id) || 8000 + idx,
+            name: g.russian || g.name,
+          }))
+        : Array.isArray(ani?.genres)
+        ? ani.genres.map((g: string, idx: number) => ({
+            id: 8000 + idx,
+            name: ANILIST_GENRE_RU[g] || g,
+          }))
+        : [{ id: 16, name: 'Аниме' }];
+
+    const cast = Array.isArray(ani?.characters?.nodes)
+      ? ani.characters.nodes.slice(0, 12).map((c: any, idx: number) => ({
+          id: Number(c.id) || 90000 + idx,
+          name: c.name?.full || 'Персонаж',
+          profilePath: c.image?.medium || null,
         }))
-      : Array.isArray(jData?.genres)
-      ? jData.genres.map((g: any, idx: number) => ({
-          id: Number(g.mal_id) || 8000 + idx,
-          name: g.name,
-        }))
-      : [{ id: 16, name: 'Аниме' }];
+      : [];
 
-    const episodeCount = Number(shiki?.episodes || jData?.episodes || 0);
+    const recommendations: MediaItem[] = Array.isArray(ani?.recommendations?.nodes)
+      ? ani.recommendations.nodes
+          .map((n: any) => this.mapAniListItem(n?.mediaRecommendation))
+          .filter(Boolean) as MediaItem[]
+      : [];
+
+    const episodeCount = Number(ani?.episodes || shiki?.episodes || 0);
     const episodes: Episode[] = Array.isArray(episodesRes?.data)
       ? episodesRes.data.map((ep: any, idx: number) => ({
           id: `mal-${malId}-e${ep.mal_id || idx + 1}`,
@@ -258,7 +441,7 @@ export class AnimeProviderService {
           name: ep.title || `Серия ${ep.mal_id || idx + 1}`,
           airDate: ep.aired ? String(ep.aired).slice(0, 10) : undefined,
           voteAverage: ep.score ? Number(ep.score) : undefined,
-          durationMinutes: Number(shiki?.duration) || 24,
+          durationMinutes: Number(ani?.duration || shiki?.duration) || 24,
         }))
       : [];
 
@@ -279,20 +462,22 @@ export class AnimeProviderService {
     return {
       id: `mal-${malId}`,
       malId,
-      source: shiki ? 'shikimori' : 'jikan',
+      source: 'jikan',
       type,
       title,
       originalTitle,
       overview,
       posterPath,
       backdropPath,
-      releaseDate: airedStr ? String(airedStr).slice(0, 10) : undefined,
+      releaseDate: shiki?.aired_on || (year ? `${year}-01-01` : undefined),
       releaseYear: isNaN(year) ? 2024 : year,
       voteAverage: Number(score.toFixed(1)),
-      voteCount: Number(jData?.scored_by) || undefined,
-      durationMinutes: Number(shiki?.duration) || (type === 'movie' ? 105 : 24),
-      ageRating: this.mapAnimeAgeRating(shiki?.rating || jData?.rating),
+      voteCount: Number(ani?.popularity) || undefined,
+      durationMinutes: Number(ani?.duration || shiki?.duration) || (type === 'movie' ? 105 : 24),
+      ageRating: this.mapAnimeAgeRating(shiki?.rating),
       genres,
+      cast,
+      recommendations,
       seasons,
     };
   }
@@ -303,6 +488,7 @@ export class AnimeProviderService {
       `https://api.jikan.moe/v4/anime/${malId}/episodes?page=1`,
       `jikan:ep:${malId}:1`,
       7200,
+      3500,
     );
     if (!Array.isArray(episodesRes?.data) || episodesRes.data.length === 0) return null;
 
@@ -326,36 +512,61 @@ export class AnimeProviderService {
   }
 
   // =========================================================================
-  // Internal Mappers & Combiners
+  // Internal Combiner: AniList HD posters (s4.anilist.co) + Shikimori RU titles
   // =========================================================================
 
-  private combineShikiAndJikan(shikiList: any[], jikanList: any[]): MediaItem[] {
+  private async mergeAniListAndShikimori(aniList: any[], shikiList: any[]): Promise<MediaItem[]> {
     const byMalId = new Map<number, MediaItem>();
 
-    for (const s of shikiList) {
-      const item = this.mapShikiItem(s);
-      if (item && item.malId) {
+    // 1. Add all AniList items first (they ALWAYS have reliable s4.anilist.co posters!)
+    for (const raw of aniList) {
+      const item = this.mapAniListItem(raw);
+      if (item && item.malId && item.posterPath) {
         byMalId.set(item.malId, item);
       }
     }
 
-    for (const j of jikanList) {
-      const item = this.mapJikanItem(j);
-      if (!item || !item.malId) continue;
+    // 2. Attach Shikimori Russian titles to matched AniList items, and collect unmatched Shikimori IDs
+    const missingMalIds: number[] = [];
+    const shikiById = new Map<number, any>();
 
-      const existing = byMalId.get(item.malId);
+    for (const s of shikiList) {
+      const malId = Number(s?.id);
+      if (!malId) continue;
+      shikiById.set(malId, s);
+
+      const existing = byMalId.get(malId);
       if (existing) {
-        // Enrich Shikimori Russian entry with Jikan synopsis/votes/genres
-        if (existing.overview.includes('временно отсутствует') && item.overview) {
-          existing.overview = item.overview;
+        if (s?.russian) {
+          existing.title = String(s.russian);
         }
-        if (!existing.voteCount && item.voteCount) existing.voteCount = item.voteCount;
-        if (!existing.posterPath && item.posterPath) existing.posterPath = item.posterPath;
-        if (!existing.backdropPath && item.backdropPath) existing.backdropPath = item.backdropPath;
-        if ((!existing.genres || existing.genres.length <= 1) && item.genres.length > 0) {
-          existing.genres = item.genres;
+        const shikiScore = parseFloat(String(s?.score || 0));
+        if (!existing.voteAverage && shikiScore > 0) {
+          existing.voteAverage = Number(shikiScore.toFixed(1));
         }
       } else {
+        missingMalIds.push(malId);
+      }
+    }
+
+    // 3. Batch-fetch reliable AniList HD posters for remaining Shikimori anime in 1 fast GraphQL call
+    if (missingMalIds.length > 0) {
+      const batchIds = missingMalIds.slice(0, 25);
+      const batchRes = await this.fetchAniList<any>(
+        ANILIST_BY_MAL_IDS_QUERY,
+        { malIds: batchIds },
+        `anilist:batch:${batchIds.slice().sort((a, b) => a - b).join(',')}`,
+        3600,
+        3500,
+      );
+
+      for (const raw of batchRes?.Page?.media || []) {
+        const item = this.mapAniListItem(raw);
+        if (!item || !item.malId || !item.posterPath) continue;
+        const shiki = shikiById.get(item.malId);
+        if (shiki?.russian) {
+          item.title = String(shiki.russian);
+        }
         byMalId.set(item.malId, item);
       }
     }
@@ -363,51 +574,22 @@ export class AnimeProviderService {
     return Array.from(byMalId.values());
   }
 
-  private resolveShikiImage(path?: string | null): string | null {
-    if (!path) return null;
-    if (path.startsWith('http')) return path;
-    return `${SHIKIMORI_BASE}${path.startsWith('/') ? path : `/${path}`}`;
-  }
+  private mapAniListItem(a: any): MediaItem | null {
+    const malId = Number(a?.idMal);
+    if (!malId) return null;
 
-  private mapShikiItem(s: any): MediaItem | null {
-    const malId = Number(s?.id);
-    const title = s?.russian || s?.name;
-    if (!malId || !title) return null;
+    const title = a?.title?.english || a?.title?.romaji || a?.title?.native;
+    if (!title) return null;
 
-    const type: MediaType = String(s?.kind || '').toLowerCase() === 'movie' ? 'movie' : 'tv';
-    const aired = s?.aired_on || '';
-    const year = aired ? new Date(aired).getFullYear() : 2024;
-    const score = parseFloat(String(s?.score || 0)) || 0;
-    const posterPath = this.resolveShikiImage(s?.image?.original || s?.image?.preview);
+    const posterPath = a?.coverImage?.extraLarge || a?.coverImage?.large || null;
+    if (!posterPath) return null;
 
-    return {
-      id: `mal-${malId}`,
-      malId,
-      source: 'shikimori',
-      type,
-      title: String(title),
-      originalTitle: s?.name || undefined,
-      overview: 'Описание аниме временно отсутствует.',
-      posterPath,
-      backdropPath: posterPath,
-      releaseDate: aired || undefined,
-      releaseYear: isNaN(year) ? 2024 : year,
-      voteAverage: Number(score.toFixed(1)),
-      ageRating: '16+',
-      genres: [{ id: 16, name: 'Аниме' }],
-    };
-  }
-
-  private mapJikanItem(j: any): MediaItem | null {
-    const malId = Number(j?.mal_id);
-    const title = j?.title || j?.title_english;
-    if (!malId || !title) return null;
-
-    const type: MediaType = String(j?.type || '').toLowerCase() === 'movie' ? 'movie' : 'tv';
-    const aired = j?.aired?.from ? String(j.aired.from).slice(0, 10) : undefined;
-    const year = Number(j?.year) || (aired ? new Date(aired).getFullYear() : 2024);
-    const posterPath = j?.images?.jpg?.large_image_url || j?.images?.jpg?.image_url || null;
-    const backdropPath = j?.trailer?.images?.maximum_image_url || posterPath;
+    const format = String(a?.format || 'TV').toUpperCase();
+    const type: MediaType = format === 'MOVIE' ? 'movie' : 'tv';
+    const year = Number(a?.startDate?.year) || 2024;
+    const month = String(a?.startDate?.month || 1).padStart(2, '0');
+    const day = String(a?.startDate?.day || 1).padStart(2, '0');
+    const score = a?.averageScore ? Number((a.averageScore / 10).toFixed(1)) : 0;
 
     return {
       id: `mal-${malId}`,
@@ -415,19 +597,20 @@ export class AnimeProviderService {
       source: 'jikan',
       type,
       title: String(title),
-      originalTitle: j?.title_japanese || j?.title || undefined,
-      overview: stripHtml(j?.synopsis) || 'Описание аниме временно отсутствует.',
+      originalTitle: a?.title?.romaji || a?.title?.native || undefined,
+      overview: stripHtml(a?.description) || 'Описание аниме временно отсутствует.',
       posterPath,
-      backdropPath,
-      releaseDate: aired,
-      releaseYear: isNaN(year) ? 2024 : year,
-      voteAverage: Number((Number(j?.score) || 0).toFixed(1)),
-      voteCount: Number(j?.scored_by) || undefined,
-      ageRating: this.mapAnimeAgeRating(j?.rating),
-      genres: Array.isArray(j?.genres)
-        ? j.genres.map((g: any, idx: number) => ({
-            id: Number(g.mal_id) || 8000 + idx,
-            name: g.name,
+      backdropPath: a?.bannerImage || posterPath,
+      releaseDate: `${year}-${month}-${day}`,
+      releaseYear: year,
+      voteAverage: score,
+      voteCount: Number(a?.popularity) || undefined,
+      durationMinutes: Number(a?.duration) || (type === 'movie' ? 105 : 24),
+      ageRating: '16+',
+      genres: Array.isArray(a?.genres)
+        ? a.genres.map((g: string, idx: number) => ({
+            id: 8000 + idx,
+            name: ANILIST_GENRE_RU[g] || g,
           }))
         : [{ id: 16, name: 'Аниме' }],
     };

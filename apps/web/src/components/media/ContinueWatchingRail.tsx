@@ -29,7 +29,7 @@ export function ContinueWatchingRail({ items }: ContinueWatchingRailProps) {
   if (!items || items.length === 0) return null;
 
   return (
-    <section className="relative py-4 select-none">
+    <section className="relative py-4">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <History className="w-5 h-5 text-brand-main" />

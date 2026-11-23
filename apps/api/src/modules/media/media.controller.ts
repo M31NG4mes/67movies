@@ -53,8 +53,16 @@ export class MediaController {
   }
 
   @Get('genres')
-  async getGenres(@Query('type') type: MediaType = 'movie') {
-    return this.mediaService.getGenres(type);
+  async getGenres(@Query('type') type: MediaType = 'movie', @Query('category') category?: string) {
+    return this.mediaService.getGenres(type, category);
+  }
+
+  @Get('anime/:id/streams')
+  async getAnimeStreams(@Param('id') id: string, @Query('episode') episode = '1') {
+    const ep = parseFloat(episode);
+    return {
+      groups: await this.mediaService.getAnimeStreams(id, Number.isFinite(ep) && ep > 0 ? ep : 1),
+    };
   }
 
   @Get('discover')
@@ -67,6 +75,7 @@ export class MediaController {
     @Query('yearTo') yearTo?: string,
     @Query('minRating') minRating?: string,
     @Query('lang') originalLanguage?: string,
+    @Query('q') q?: string,
     @Query('page') page = '1'
   ) {
     return this.mediaService.discoverByGenre(
@@ -80,6 +89,7 @@ export class MediaController {
         yearTo: yearTo ? parseInt(yearTo, 10) : undefined,
         minRating: minRating ? parseFloat(minRating) : undefined,
         originalLanguage: originalLanguage || undefined,
+        query: q ? q.slice(0, 120) : undefined,
       }
     );
   }

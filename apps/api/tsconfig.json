@@ -13,8 +13,7 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@cinemaflow/types": ["../../packages/types/src/index.ts"],
-      "@cinemaflow/lampa-adapter": ["../../packages/lampa-adapter/src/index.ts"]
+      "@cinemaflow/types": ["../../packages/types/src/index.ts"]
     },
     "incremental": true,
     "skipLibCheck": true,

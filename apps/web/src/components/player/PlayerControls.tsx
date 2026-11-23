@@ -201,7 +201,7 @@ export function PlayerControls({
             </div>
 
             {/* Timestamps */}
-            <div className="text-xs md:text-sm font-medium text-cinema-muted font-mono tracking-tight select-none">
+            <div className="text-xs md:text-sm font-medium text-cinema-muted font-mono tracking-tight">
               <span>{formatTime(currentTime)}</span>
               <span className="mx-1 text-cinema-muted/60">/</span>
               <span>{formatTime(duration)}</span>

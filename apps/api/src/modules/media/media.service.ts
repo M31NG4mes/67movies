@@ -4,13 +4,21 @@ import { KinopoiskProviderService } from './providers/kinopoisk.provider';
 import { AnimeProviderService } from './providers/anime.provider';
 import { TvMazeProviderService } from './providers/tvmaze.provider';
 import { OmdbProviderService } from './providers/omdb.provider';
+import { AniLibertyProviderService } from './providers/aniliberty.provider';
 import {
   DiscoverProviderOptions,
   mergeAndDeduplicateMedia,
   parsePrefixedMediaId,
 } from './media-aggregator.util';
 import { AppCacheService } from '../../common/cache/cache.service';
-import { Genre, MediaItem, MediaType, PaginatedResult, Season } from '@cinemaflow/types';
+import {
+  Genre,
+  MediaItem,
+  MediaType,
+  PaginatedResult,
+  Season,
+  StreamSourceGroup,
+} from '@cinemaflow/types';
 
 @Injectable()
 export class MediaService {
@@ -23,6 +31,7 @@ export class MediaService {
     private readonly animeProvider: AnimeProviderService,
     private readonly tvMazeProvider: TvMazeProviderService,
     private readonly omdbProvider: OmdbProviderService,
+    private readonly aniLiberty: AniLibertyProviderService,
     private readonly cache: AppCacheService,
   ) {}
 
@@ -49,7 +58,7 @@ export class MediaService {
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
         [kpMovies, kpTv],
-        { maxItems: 30 },
+        { maxItems: 30, requirePoster: true },
       );
 
       const extraCount = Math.max(0, merged.length - tmdbRes.items.length);
@@ -72,8 +81,8 @@ export class MediaService {
 
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
-        [kpMovies, animeMovies.slice(0, 6)],
-        { maxItems: 30 },
+        [kpMovies, animeMovies.slice(0, 8)],
+        { maxItems: 36, requirePoster: true },
       );
 
       const extraCount = Math.max(0, merged.length - tmdbRes.items.length);
@@ -97,8 +106,8 @@ export class MediaService {
 
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
-        [kpTv, tvMaze, animeTv.slice(0, 6)],
-        { maxItems: 30 },
+        [kpTv, tvMaze, animeTv.slice(0, 8)],
+        { maxItems: 36, requirePoster: true },
       );
 
       const extraCount = Math.max(0, merged.length - tmdbRes.items.length);
@@ -121,7 +130,7 @@ export class MediaService {
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
         [kpNewMovies],
-        { maxItems: 30 },
+        { maxItems: 36, requirePoster: true },
       );
 
       const extraCount = Math.max(0, merged.length - tmdbRes.items.length);
@@ -145,8 +154,8 @@ export class MediaService {
 
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
-        [kpNewTv, tvMazeNew, animeNew.slice(0, 6)],
-        { maxItems: 30 },
+        [kpNewTv, tvMazeNew, animeNew.slice(0, 8)],
+        { maxItems: 36, requirePoster: true },
       );
 
       const extraCount = Math.max(0, merged.length - tmdbRes.items.length);
@@ -167,8 +176,9 @@ export class MediaService {
 
     const key = `media:search:${trimmed.toLowerCase()}:${page}`;
     return this.cache.wrap(key, 180, async () => {
-      const [tmdbRes, kpItems, animeItems, tvMazeItems, omdbItems] = await Promise.all([
+      const [tmdbRes, alRes, kpItems, animeItems, tvMazeItems, omdbItems] = await Promise.all([
         this.tmdbService.searchMulti(trimmed, page),
+        this.aniLiberty.getCatalog({ page, limit: 12, search: trimmed }).catch(() => null),
         this.kinopoiskProvider.search(trimmed, page).catch(() => []),
         this.animeProvider.search(trimmed, page).catch(() => []),
         page === 1 ? this.tvMazeProvider.search(trimmed).catch(() => []) : Promise.resolve([]),
@@ -176,7 +186,7 @@ export class MediaService {
       ]);
 
       const merged = mergeAndDeduplicateMedia(
-        this.tagTmdb(tmdbRes.items),
+        [...(alRes?.items || []), ...this.tagTmdb(tmdbRes.items)],
         [kpItems, animeItems, tvMazeItems, omdbItems],
         { query: trimmed, maxItems: 48 },
       );
@@ -217,12 +227,28 @@ export class MediaService {
       if (parsed.provider === 'omdb') {
         return null;
       }
+      if (parsed.provider === 'aniliberty') {
+        return this.aniLiberty.getSeason(parseInt(parsed.rawId, 10), seasonNumber);
+      }
       return this.tmdbService.getTvSeason(parsed.rawId, seasonNumber);
     });
   }
 
-  async getGenres(type: MediaType = 'movie'): Promise<Genre[]> {
+  async getGenres(type: MediaType = 'movie', category?: string): Promise<Genre[]> {
+    if (category === 'anime') {
+      return this.cache.wrap('media:genres:anime:al', 3600, async () => {
+        const genres = await this.aniLiberty.getGenres();
+        return genres.length > 0 ? genres : this.tmdbService.getGenres('tv');
+      });
+    }
     return this.cache.wrap(`media:genres:${type}`, 3600, () => this.tmdbService.getGenres(type));
+  }
+
+  /** HLS stream groups for an AniLiberty episode (id like `al-1234`). */
+  async getAnimeStreams(id: string, episode = 1): Promise<StreamSourceGroup[]> {
+    const parsed = parsePrefixedMediaId(id);
+    if (parsed.provider !== 'aniliberty') return [];
+    return this.aniLiberty.getStreams(parseInt(parsed.rawId, 10), episode);
   }
 
   async getCalendarReleases(year: number, month: number, type: 'all' | 'movie' | 'tv' = 'all') {
@@ -242,11 +268,26 @@ export class MediaService {
       yearTo?: number;
       minRating?: number;
       originalLanguage?: string;
+      query?: string;
     },
   ): Promise<PaginatedResult<MediaItem>> {
     const key = `media:discover:${type}:${genreId || 'all'}:${page}:${sort}:${JSON.stringify(extra || {})}`;
     return this.cache.wrap(key, 300, async () => {
       const category = extra?.category || type;
+
+      // «Аниме» tab: AniLiberty is the primary source (falls back to legacy path if unreachable)
+      if (category === 'anime') {
+        const anime = await this.aniLiberty.getCatalog({
+          page,
+          search: extra?.query,
+          genreId,
+          sort,
+          yearFrom: extra?.yearFrom,
+          yearTo: extra?.yearTo,
+          minRating: extra?.minRating,
+        });
+        if (anime) return anime;
+      }
       const isTv = category === 'tv' || category === 'anime' || category === 'dorama';
       const resolvedType: MediaType = isTv ? 'tv' : 'movie';
 
@@ -266,7 +307,8 @@ export class MediaService {
         category === 'anime' ||
         category === 'cartoons' ||
         genreId === 16 ||
-        extra?.originalLanguage === 'ja';
+        extra?.originalLanguage === 'ja' ||
+        (category === 'movie' && !extra?.originalLanguage);
       const shouldQueryTvMaze = category === 'tv';
 
       const [tmdbRes, kpItems, animeItems, tvMazeItems] = await Promise.all([
@@ -282,10 +324,15 @@ export class MediaService {
 
       const merged = mergeAndDeduplicateMedia(
         this.tagTmdb(tmdbRes.items),
-        [kpItems, animeItems, tvMazeItems],
+        [
+          kpItems,
+          category === 'movie' ? animeItems.slice(0, 10) : animeItems,
+          tvMazeItems,
+        ],
         {
           sort: sort === 'popularity' ? undefined : sort,
-          maxItems: 36,
+          maxItems: 48,
+          requirePoster: true,
         },
       );
 
@@ -318,6 +365,9 @@ export class MediaService {
     }
     if (parsed.provider === 'omdb') {
       return this.omdbProvider.getDetails(parsed.rawId);
+    }
+    if (parsed.provider === 'aniliberty') {
+      return this.aniLiberty.getDetails(parseInt(parsed.rawId, 10));
     }
 
     if (type === 'tv') {

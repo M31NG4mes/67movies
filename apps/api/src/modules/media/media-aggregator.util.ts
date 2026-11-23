@@ -13,12 +13,15 @@ export interface DiscoverProviderOptions {
 }
 
 export interface ParsedMediaId {
-  provider: 'tmdb' | 'kinopoisk' | 'anime' | 'tvmaze' | 'omdb';
+  provider: 'tmdb' | 'kinopoisk' | 'anime' | 'tvmaze' | 'omdb' | 'aniliberty';
   rawId: string;
 }
 
 export function parsePrefixedMediaId(id: string): ParsedMediaId {
   const trimmed = String(id || '').trim();
+  if (/^al-\d+$/i.test(trimmed)) {
+    return { provider: 'aniliberty', rawId: trimmed.slice(3) };
+  }
   if (/^kp-\d+$/i.test(trimmed)) {
     return { provider: 'kinopoisk', rawId: trimmed.slice(3) };
   }
@@ -68,14 +71,33 @@ function isPlaceholderOverview(overview?: string): boolean {
   );
 }
 
+export function isValidPosterUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const s = String(url).trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  const lower = s.toLowerCase();
+  if (
+    lower.includes('no-poster') ||
+    lower.includes('missing_original') ||
+    lower.includes('shikimori.one/system/')
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function enrichItem(target: MediaItem, incoming: MediaItem): void {
   if (!target.tmdbId && incoming.tmdbId) target.tmdbId = incoming.tmdbId;
   if (!target.imdbId && incoming.imdbId) target.imdbId = incoming.imdbId;
   if (!target.kinopoiskId && incoming.kinopoiskId) target.kinopoiskId = incoming.kinopoiskId;
   if (!target.malId && incoming.malId) target.malId = incoming.malId;
   if (!target.tvmazeId && incoming.tvmazeId) target.tvmazeId = incoming.tvmazeId;
-  if (!target.posterPath && incoming.posterPath) target.posterPath = incoming.posterPath;
-  if (!target.backdropPath && incoming.backdropPath) target.backdropPath = incoming.backdropPath;
+  if (!isValidPosterUrl(target.posterPath) && isValidPosterUrl(incoming.posterPath)) {
+    target.posterPath = incoming.posterPath;
+  }
+  if (!isValidPosterUrl(target.backdropPath) && isValidPosterUrl(incoming.backdropPath)) {
+    target.backdropPath = incoming.backdropPath;
+  }
   if (!target.originalTitle && incoming.originalTitle) target.originalTitle = incoming.originalTitle;
   if (!target.durationMinutes && incoming.durationMinutes) {
     target.durationMinutes = incoming.durationMinutes;
@@ -123,6 +145,7 @@ export function mergeAndDeduplicateMedia(
     query?: string;
     sort?: 'popularity' | 'rating' | 'date' | 'votes';
     maxItems?: number;
+    requirePoster?: boolean;
   },
 ): MediaItem[] {
   const merged: MediaItem[] = [];
@@ -193,10 +216,16 @@ export function mergeAndDeduplicateMedia(
   const addItem = (raw: MediaItem) => {
     if (!raw || !raw.title || !raw.title.trim()) return;
     const item: MediaItem = { ...raw };
+    if (!isValidPosterUrl(item.posterPath)) {
+      item.posterPath = isValidPosterUrl(item.backdropPath) ? item.backdropPath : null;
+    }
     const dup = findDuplicate(item);
     if (dup) {
       enrichItem(dup, item);
       registerKeys(dup);
+      return;
+    }
+    if (options?.requirePoster && !isValidPosterUrl(item.posterPath)) {
       return;
     }
     merged.push(item);

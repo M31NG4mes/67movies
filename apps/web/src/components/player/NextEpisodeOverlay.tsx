@@ -38,7 +38,7 @@ export function NextEpisodeOverlay({
   const progressPercent = ((countdownSeconds - secondsLeft) / countdownSeconds) * 100;
 
   return (
-    <div className="absolute bottom-24 right-6 z-40 max-w-sm w-full bg-cinema-surface/95 border border-cinema-border rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-fadeIn select-none">
+    <div className="absolute bottom-24 right-6 z-40 max-w-sm w-full bg-cinema-surface/95 border border-cinema-border rounded-2xl p-4 shadow-2xl backdrop-blur-md animate-fadeIn">
       <div className="flex items-start justify-between pb-2">
         <div>
           <span className="text-[10px] uppercase font-bold tracking-wider text-brand-light">

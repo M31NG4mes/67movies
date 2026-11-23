@@ -19,6 +19,7 @@ const {
   parsePrefixedMediaId,
   normalizeTitle,
   stripHtml,
+  isValidPosterUrl,
   mergeAndDeduplicateMedia,
 } = require('../dist/apps/api/src/modules/media/media-aggregator.util.js');
 
@@ -126,6 +127,67 @@ test('Unit: Multi-source ID parser routes kp/mal/tvmaze/omdb/tmdb prefixes', () 
   assert.deepEqual(parsePrefixedMediaId('omdb-tt0133093'), { provider: 'omdb', rawId: 'tt0133093' });
   assert.deepEqual(parsePrefixedMediaId('tt0133093'), { provider: 'omdb', rawId: 'tt0133093' });
   assert.deepEqual(parsePrefixedMediaId('693134'), { provider: 'tmdb', rawId: '693134' });
+  assert.deepEqual(parsePrefixedMediaId('al-10306'), { provider: 'aniliberty', rawId: '10306' });
+});
+
+test('Unit: AniLiberty provider maps catalog/release payloads and builds HLS stream groups offline', async () => {
+  const { AniLibertyProviderService } = require('../dist/apps/api/src/modules/media/providers/aniliberty.provider.js');
+  const release = {
+    id: 777,
+    type: { value: 'TV' },
+    year: 2024,
+    name: { main: 'Тестовое аниме', english: 'Test Anime' },
+    poster: { src: '/storage/releases/posters/777/p.jpg' },
+    mal: { id: 55, rating: 8.1, votes: 1000 },
+    age_rating: { label: '16+' },
+    is_ongoing: true,
+    episodes_total: 12,
+    genres: [{ id: 15, name: 'Боевые искусства' }],
+    description: 'Описание\r\nтест',
+    members: [
+      { nickname: 'Voicer', role: { value: 'voicing', description: 'Озвучка' } },
+      { nickname: 'Timer', role: { value: 'timing', description: 'Тайминг' } },
+    ],
+    episodes: [
+      { id: 'e1', ordinal: 1, name: 'Первая', duration: 1440, hls_480: 'https://x/480.m3u8', hls_720: 'https://x/720.m3u8', hls_1080: 'https://x/1080.m3u8' },
+      { id: 'e2', ordinal: 2, name: null, duration: 1440, hls_480: 'https://x/2-480.m3u8', hls_720: null, hls_1080: null },
+    ],
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    const body = u.includes('/anime/releases/777') ? { data: release } : { data: [release], meta: { pagination: { total: 1, current_page: 1, total_pages: 1 } } };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  try {
+    const mem = new Map();
+    const svc = new AniLibertyProviderService(
+      { get: (_k, d) => d },
+      { get: async (k) => mem.get(k) || null, set: async (k, v) => mem.set(k, v) },
+    );
+
+    const cat = await svc.getCatalog({ page: 1, search: 'тест', genreId: 15 });
+    assert.equal(cat.items.length, 1);
+    assert.equal(cat.items[0].id, 'al-777');
+    assert.equal(cat.items[0].source, 'aniliberty');
+    assert.equal(cat.items[0].posterPath, 'https://api.anilibria.app/storage/releases/posters/777/p.jpg');
+    assert.equal(cat.items[0].voteAverage, 8.1);
+
+    const detail = await svc.getDetails(777);
+    assert.equal(detail.seasons[0].episodes.length, 2);
+    assert.equal(detail.voiceovers.length, 2);
+
+    const groups = await svc.getStreams(777, 1);
+    assert.deepEqual(groups[0].streams.map((s) => s.quality), ['1080p', '720p', '480p']);
+    assert.equal(groups[0].streams[0].format, 'hls');
+    assert.match(groups[0].voiceActing, /Voicer/);
+
+    const ep2 = await svc.getStreams(777, 2);
+    assert.deepEqual(ep2[0].streams.map((s) => s.quality), ['480p']);
+    assert.deepEqual(await svc.getStreams(777, 99), []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('Unit: Multi-source aggregator deduplicates by ID/title+year and enriches metadata', () => {
@@ -201,4 +263,44 @@ test('Unit: Multi-source aggregator deduplicates by ID/title+year and enriches m
   assert.equal(merged[0].overview, 'Пол Атрейдес объединяется с Чани и фременами.');
   assert.equal(merged[1].id, 'kp-41519');
   assert.equal(merged[1].title, 'Брат');
+});
+
+test('Unit: Poster URL validator rejects broken hotlink/placeholder URLs and filters posterless items when required', () => {
+  assert.equal(isValidPosterUrl('https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx16498.jpg'), true);
+  assert.equal(isValidPosterUrl('https://image.tmdb.org/t/p/w500/abc.jpg'), true);
+  assert.equal(isValidPosterUrl('https://shikimori.one/system/animes/original/16498.jpg'), false);
+  assert.equal(isValidPosterUrl('https://kinopoiskapiunofficial.tech/images/posters/kp/no-poster.gif'), false);
+  assert.equal(isValidPosterUrl(null), false);
+
+  const filtered = mergeAndDeduplicateMedia(
+    [
+      {
+        id: 'mal-1',
+        malId: 1,
+        type: 'tv',
+        title: 'Broken Poster Anime',
+        overview: 'test',
+        posterPath: 'https://shikimori.one/system/animes/original/1.jpg',
+        releaseYear: 2020,
+        voteAverage: 8.0,
+        genres: [],
+      },
+      {
+        id: 'mal-2',
+        malId: 2,
+        type: 'tv',
+        title: 'Valid Poster Anime',
+        overview: 'test',
+        posterPath: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx2.jpg',
+        releaseYear: 2021,
+        voteAverage: 8.5,
+        genres: [],
+      },
+    ],
+    [],
+    { requirePoster: true },
+  );
+
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, 'mal-2');
 });

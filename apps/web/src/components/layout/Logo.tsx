@@ -14,7 +14,7 @@ export function Logo({ compact = false, className = '' }: LogoProps) {
       href="/"
       data-nav-item="true"
       aria-label="67movies главная"
-      className={`inline-flex items-center gap-2 group select-none focus:outline-none ${className}`}
+      className={`inline-flex items-center gap-2 group focus:outline-none ${className}`}
     >
       {/* Geometric '67' Emblem */}
       <div className="relative flex items-center justify-center">

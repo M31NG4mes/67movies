@@ -50,7 +50,7 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
   };
 
   return (
-    <section className="relative w-full h-[72vh] sm:h-[78vh] min-h-[480px] sm:min-h-[540px] max-h-[780px] flex items-center overflow-hidden select-none bg-[#09090D]">
+    <section className="relative w-full h-[72vh] sm:h-[78vh] min-h-[480px] sm:min-h-[540px] max-h-[780px] flex items-center overflow-hidden bg-[#09090D]">
       {/* Stacked Crossfading Backdrops (zero flicker!) */}
       {activeList.map((item, idx) => {
         const bg =

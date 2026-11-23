@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { Film } from 'lucide-react';
 import { MediaItem } from '@cinemaflow/types';
 import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
 
@@ -14,10 +15,28 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
   const ageVerified18 = usePreferencesStore((s) => s.ageVerified18);
   const language = usePreferencesStore((s) => s.language);
   const t = TRANSLATIONS[language];
-  const poster =
-    media.posterPath ||
-    media.backdropPath ||
-    'https://image.tmdb.org/t/p/w500/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg';
+
+  const primarySrc = media.posterPath || media.backdropPath || '';
+  const secondarySrc =
+    media.posterPath && media.backdropPath && media.backdropPath !== media.posterPath
+      ? media.backdropPath
+      : '';
+
+  const [imgSrc, setImgSrc] = useState<string>(primarySrc);
+  const [imgFailed, setImgFailed] = useState<boolean>(!primarySrc);
+
+  useEffect(() => {
+    setImgSrc(primarySrc);
+    setImgFailed(!primarySrc);
+  }, [primarySrc]);
+
+  const handleImageError = () => {
+    if (secondarySrc && imgSrc !== secondarySrc) {
+      setImgSrc(secondarySrc);
+    } else {
+      setImgFailed(true);
+    }
+  };
 
   const is18Plus =
     media.ageRating === '18+' ||
@@ -37,15 +56,26 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
       }`}
     >
       <div className="aspect-[2/3] w-full relative overflow-hidden">
-        <img
-          src={poster}
-          alt={media.title}
-          loading="lazy"
-          decoding="async"
-          className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
-            is18Plus && !ageVerified18 ? 'blur-md scale-105 brightness-75' : ''
-          }`}
-        />
+        {!imgFailed && imgSrc ? (
+          <img
+            src={imgSrc}
+            alt={media.title}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={handleImageError}
+            className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
+              is18Plus && !ageVerified18 ? 'blur-md scale-105 brightness-75' : ''
+            }`}
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-[#1B1A2B] via-[#14141F] to-[#0D0D14]">
+            <Film className="w-9 h-9 text-[#8065FF]/70 mb-2.5" />
+            <span className="text-xs font-bold text-white/85 line-clamp-3 leading-snug">
+              {media.title}
+            </span>
+          </div>
+        )}
 
         {/* 18+ Age Badge */}
         {is18Plus && (

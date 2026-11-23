@@ -58,6 +58,8 @@ function getNumericMediaId(media: MediaItem | null): number {
   if (tvm) return 1_400_000_000 + (Number(tvm[1]) % 200_000_000);
   const omdb = /^(?:omdb-)?tt(\d+)$/i.exec(raw);
   if (omdb) return 1_600_000_000 + (Number(omdb[1]) % 200_000_000);
+  const al = /^al-(\d+)$/i.exec(raw);
+  if (al) return 1_800_000_000 + (Number(al[1]) % 200_000_000);
   if (media.kinopoiskId) return 1_000_000_000 + (Number(media.kinopoiskId) % 200_000_000);
   return 0;
 }
@@ -67,6 +69,7 @@ export default function MovieDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const mediaId = String(params?.id || '');
+  const isAniLibertyId = /^al-\d+$/i.test(mediaId);
   const rawType = searchParams?.get('type');
   const mediaTypeParam = rawType === 'tv' ? 'tv' : rawType === 'movie' ? 'movie' : undefined;
 
@@ -398,6 +401,13 @@ export default function MovieDetailPage() {
   const handleEpisodeChange = (seasonNum: number, episodeNum: number) => {
     setSelectedSeason(seasonNum);
     setSelectedEpisode(episodeNum);
+
+    // AniLiberty anime: play the episode right in the built-in HLS player
+    if (isAniLibertyId) {
+      router.push(`/watch/${encodeURIComponent(mediaId)}?season=${seasonNum}&episode=${episodeNum}`);
+      return;
+    }
+
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
     const kpParam = media?.kinopoiskId
       ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
@@ -516,7 +526,7 @@ export default function MovieDetailPage() {
   return (
     <div className="bg-cinema-dark min-h-screen text-cinema-text pb-24">
       {/* 1. Backdrop Hero Header with Vignettes */}
-      <div className="relative w-full h-[46vh] sm:h-[60vh] min-h-[340px] sm:min-h-[460px] max-h-[680px] overflow-hidden select-none">
+      <div className="relative w-full h-[46vh] sm:h-[60vh] min-h-[340px] sm:min-h-[460px] max-h-[680px] overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 scale-105"
           style={{
@@ -548,11 +558,19 @@ export default function MovieDetailPage() {
           {/* Left: Poster Card */}
           <div className="w-40 sm:w-56 lg:w-72 flex-shrink-0 mx-auto md:mx-0 rounded-2xl overflow-hidden bg-cinema-card border border-cinema-border shadow-2xl relative group">
             <div className="aspect-[2/3] w-full relative">
-              <img
-                src={media.posterPath || media.backdropPath || ''}
-                alt={media.title}
-                className="w-full h-full object-cover"
-              />
+              {media.posterPath || media.backdropPath ? (
+                <img
+                  src={media.posterPath || media.backdropPath || ''}
+                  alt={media.title}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-[#14141F] text-[#92929F] p-4 text-center">
+                  <Film className="w-10 h-10 text-[#8065FF]/70 mb-2" />
+                  <span className="text-xs font-bold text-white/80">{media.title}</span>
+                </div>
+              )}
               <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-brand-light bg-cinema-dark/80 border border-brand-main/40 rounded backdrop-blur-md">
                 4K Ultra HD
               </span>
@@ -635,17 +653,30 @@ export default function MovieDetailPage() {
 
             {/* Primary Action Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              {/* Button: «Смотреть» -> Kinopoisk */}
-              <a
-                href={kinopoiskUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-nav-item="true"
-                className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
-              >
-                <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                <span>Смотреть на Кинопоиске</span>
-              </a>
+              {/* Button: «Смотреть» -> built-in HLS player (AniLiberty) or Kinopoisk */}
+              {isAniLibertyId ? (
+                <Link
+                  href={`/watch/${encodeURIComponent(mediaId)}?season=1&episode=${selectedEpisode}`}
+                  data-nav-item="true"
+                  className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
+                >
+                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                  <span>
+                    {isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть'}
+                  </span>
+                </Link>
+              ) : (
+                <a
+                  href={kinopoiskUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-nav-item="true"
+                  className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
+                >
+                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                  <span>Смотреть на Кинопоиске</span>
+                </a>
+              )}
 
               {/* Button: «Трейлер» (Official YouTube Trailer) */}
               {extras.trailers.length > 0 && (
@@ -773,52 +804,6 @@ export default function MovieDetailPage() {
                 )}
               </div>
             )}
-
-            {/* Official Streaming Alternatives (Иви, Okko, START, Wink, Premier) */}
-            <div className="pt-2 space-y-2">
-              <p className="text-[11px] uppercase tracking-wider font-bold text-cinema-muted">
-                Если нет на Кинопоиске — открыть на других платформах:
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                {[
-                  {
-                    name: 'Иви',
-                    url: `https://www.ivi.ru/search/?q=${encodeURIComponent(media.title)}`,
-                    badge: 'bg-rose-500/15 border-rose-500/35 text-rose-300 hover:bg-rose-500/25',
-                  },
-                  {
-                    name: 'Okko',
-                    url: `https://okko.tv/search/${encodeURIComponent(media.title)}`,
-                    badge: 'bg-violet-500/15 border-violet-500/35 text-violet-300 hover:bg-violet-500/25',
-                  },
-                  {
-                    name: 'START',
-                    url: `https://start.ru/search?q=${encodeURIComponent(media.title)}`,
-                    badge: 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25',
-                  },
-                  {
-                    name: 'Wink',
-                    url: `https://wink.ru/search?query=${encodeURIComponent(media.title)}`,
-                    badge: 'bg-orange-500/15 border-orange-500/35 text-orange-300 hover:bg-orange-500/25',
-                  },
-                  {
-                    name: 'Premier',
-                    url: `https://premier.one/search?query=${encodeURIComponent(media.title)}`,
-                    badge: 'bg-amber-500/15 border-amber-500/35 text-amber-300 hover:bg-amber-500/25',
-                  },
-                ].map((platform) => (
-                  <a
-                    key={platform.name}
-                    href={platform.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${platform.badge}`}
-                  >
-                    {platform.name} ↗
-                  </a>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -840,6 +825,7 @@ export default function MovieDetailPage() {
                       <img
                         src={person.profilePath}
                         alt={person.name}
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -857,6 +843,29 @@ export default function MovieDetailPage() {
                     </p>
                   )}
                 </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* 3b. Voiceover team (AniLiberty) */}
+        {media.voiceovers && media.voiceovers.length > 0 && (
+          <section className="mt-14 pt-8 border-t border-cinema-border">
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <h2 className="text-xl sm:text-2xl font-bold text-cinema-text">Озвучка</h2>
+              <span className="px-3 py-1 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-bold text-[#A18BFF]">
+                {media.voiceTeamName || 'AniLibria'} • русская озвучка
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {media.voiceovers.map((m, idx) => (
+                <span
+                  key={`${m.name}-${idx}`}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cinema-card border border-cinema-border text-xs"
+                >
+                  <span className="font-bold text-cinema-text">{m.name}</span>
+                  <span className="text-cinema-muted">{m.role}</span>
+                </span>
               ))}
             </div>
           </section>
@@ -1112,7 +1121,7 @@ export default function MovieDetailPage() {
               className="w-full rounded-xl bg-[#09090D] border border-[#292936] p-3 text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF] resize-none"
             />
 
-            <label className="flex items-center gap-2.5 text-xs text-cinema-muted cursor-pointer select-none">
+            <label className="flex items-center gap-2.5 text-xs text-cinema-muted cursor-pointer">
               <input
                 type="checkbox"
                 checked={modalFavorite}

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   SlidersHorizontal,
+  Search,
   X,
   RotateCcw,
   Check,
@@ -32,6 +33,7 @@ export interface CatalogFilterState {
   yearTo: string;
   minRating: string;
   lang: string;
+  q?: string;
 }
 
 interface CatalogFiltersProps {
@@ -55,6 +57,8 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
   const [yearTo, setYearTo] = useState<string>(initial.yearTo);
   const [minRating, setMinRating] = useState<string>(initial.minRating);
   const [lang, setLang] = useState<string>(initial.lang);
+  const [q, setQ] = useState<string>(initial.q || '');
+  const isAnimeCategory = initial.category === 'anime';
 
   const CATEGORIES: Array<{ id: CatalogCategory; label: string; icon: any }> = [
     { id: 'movie', label: t.movies, icon: Film },
@@ -110,6 +114,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
       yearTo,
       minRating,
       lang,
+      q,
       ...next,
     };
     const sp = new URLSearchParams();
@@ -119,7 +124,8 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     if (merged.yearFrom) sp.set('yearFrom', merged.yearFrom);
     if (merged.yearTo) sp.set('yearTo', merged.yearTo);
     if (merged.minRating) sp.set('minRating', merged.minRating);
-    if (merged.lang) sp.set('lang', merged.lang);
+    if (merged.lang && merged.category !== 'anime') sp.set('lang', merged.lang);
+    if (merged.q && merged.category === 'anime') sp.set('q', merged.q.trim());
 
     const qs = sp.toString();
     router.push(qs ? `/catalog?${qs}` : '/catalog');
@@ -130,7 +136,8 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     initial.sort !== 'popularity',
     Boolean(initial.yearFrom || initial.yearTo),
     Boolean(initial.minRating),
-    Boolean(initial.lang),
+    Boolean(initial.lang && !isAnimeCategory),
+    Boolean(initial.q),
   ].filter(Boolean).length;
 
   const handleApply = () => {
@@ -146,6 +153,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     setYearTo('');
     setMinRating('');
     setLang('');
+    setQ('');
     setIsOpen(false);
     router.push('/catalog');
   };
@@ -184,7 +192,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
       },
     });
   }
-  if (initial.lang) {
+  if (initial.lang && !isAnimeCategory) {
     const lName = LANG_OPTIONS.find((l) => l.value === initial.lang)?.label || initial.lang;
     activeChips.push({
       id: 'lang',
@@ -198,6 +206,47 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
 
   return (
     <div className="space-y-3.5 mb-7">
+      {/* Anime search (AniLiberty catalog) */}
+      {isAnimeCategory && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            navigateWith({ q });
+          }}
+          className="flex items-center gap-2"
+        >
+          <div className="relative flex-1 max-w-xl">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#92929F]" />
+            <input
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={isEn ? 'Search anime…' : 'Поиск по аниме…'}
+              maxLength={120}
+              className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-[#111119] border border-[#292936] text-sm text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
+            />
+            {q && (
+              <button
+                type="button"
+                aria-label="Очистить"
+                onClick={() => {
+                  setQ('');
+                  navigateWith({ q: '' });
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#92929F] hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2.5 rounded-xl brand-btn text-white text-xs font-bold shrink-0"
+          >
+            {isEn ? 'Search' : 'Найти'}
+          </button>
+        </form>
+      )}
       {/* Top Row: Category Tabs with Icons + Sort & Filters Controls */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 -mx-5 px-5 lg:mx-0 lg:px-0 scrollbar-none">
@@ -394,7 +443,8 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
               </div>
             </div>
 
-            {/* 3. Country / Language */}
+            {/* 3. Country / Language (not used for the AniLiberty anime catalog) */}
+            {!isAnimeCategory && (
             <div className="space-y-2.5">
               <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-[#A18BFF]" />
@@ -412,6 +462,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                 ))}
               </select>
             </div>
+            )}
           </div>
 
           {/* 4. Year Range */}

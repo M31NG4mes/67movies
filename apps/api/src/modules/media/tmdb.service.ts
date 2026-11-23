@@ -206,33 +206,52 @@ export class TmdbService {
       params['vote_average.gte'] = extra.minRating;
     }
 
-    // Sensible vote_count floor to avoid 1-vote obscure entries
+    // Sensible vote_count floor (relaxed so more movies, anime & regional titles appear)
     if (sort === 'rating') {
-      params['vote_count.gte'] = isTv ? 250 : 500;
+      params['vote_count.gte'] = isTv ? 50 : 100;
     } else if (sort === 'date') {
-      params['vote_count.gte'] = 15;
+      params['vote_count.gte'] = 5;
     } else if (sort === 'popularity') {
       params['vote_count.gte'] =
-        category === 'documentary' || category === 'dorama' ? 30 : isTv ? 100 : 200;
+        category === 'documentary' ||
+        category === 'dorama' ||
+        category === 'anime' ||
+        extra?.originalLanguage === 'ru'
+          ? 10
+          : isTv
+          ? 25
+          : 40;
     }
 
-    const data = await this.fetchTmdb<TmdbPaginatedResponse<any>>(endpoint, params, 1800);
+    // Fetch 2 TMDB pages per catalog page in parallel to double catalog density
+    const tmdbPage1 = Math.max(1, page * 2 - 1);
+    const tmdbPage2 = tmdbPage1 + 1;
 
-    if (!data) {
+    const [data1, data2] = await Promise.all([
+      this.fetchTmdb<TmdbPaginatedResponse<any>>(endpoint, { ...params, page: tmdbPage1 }, 1800),
+      this.fetchTmdb<TmdbPaginatedResponse<any>>(endpoint, { ...params, page: tmdbPage2 }, 1800),
+    ]);
+
+    if (!data1) {
       return isTv ? this.getFallbackSeries(page) : this.getFallbackMovies(page);
     }
 
+    const combinedResults = [
+      ...(data1.results || []),
+      ...(data2?.results || []),
+    ].filter((item) => Boolean(item?.poster_path));
+
     const items = await Promise.all(
-      data.results.map((item) =>
+      combinedResults.map((item) =>
         isTv ? this.mapTvResultToMediaItem(item) : this.mapMovieResultToMediaItem(item)
       )
     );
 
     return {
       items,
-      page: data.page,
-      totalPages: data.total_pages,
-      totalItems: data.total_results,
+      page,
+      totalPages: Math.max(1, Math.ceil((data1.total_pages || 1) / 2)),
+      totalItems: data1.total_results,
     };
   }
 

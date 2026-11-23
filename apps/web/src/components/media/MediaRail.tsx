@@ -24,7 +24,7 @@ export function MediaRail({ title, subtitle, items }: MediaRailProps) {
   if (!items || items.length === 0) return null;
 
   return (
-    <section className="relative py-3 select-none">
+    <section className="relative py-3">
       <div className="max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">

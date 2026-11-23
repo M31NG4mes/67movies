@@ -22,8 +22,14 @@ body {
   background-color: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   overflow-x: hidden;
-  user-select: none;
+  user-select: text;
+  -webkit-user-select: text;
   transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+::selection {
+  background-color: rgba(128, 101, 255, 0.35);
+  color: #FFFFFF;
 }
 
 input,

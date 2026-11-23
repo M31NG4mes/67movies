@@ -21,6 +21,7 @@ interface CatalogPageProps {
     yearTo?: string;
     minRating?: string;
     lang?: string;
+    q?: string;
     page?: string;
   };
 }
@@ -66,6 +67,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     ? parseFloat(searchParams.minRating) || undefined
     : undefined;
   const lang = searchParams?.lang || '';
+  const q = category === 'anime' ? (searchParams?.q || '').trim().slice(0, 120) : '';
   const page = Math.max(1, parseInt(searchParams?.page || '1', 10) || 1);
 
   const [mediaRes, genresRes] = await Promise.all([
@@ -76,13 +78,17 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
         yearTo,
         minRating,
         lang: lang || undefined,
+        q: q || undefined,
       })
       .catch(() => null),
-    api.media.getGenres(resolvedType).catch(() => []),
+    api.media.getGenres(resolvedType, category).catch(() => []),
   ]);
 
+  const hasActiveQuery = Boolean(q);
   const items = mediaRes?.items?.length
     ? mediaRes.items
+    : hasActiveQuery || category === 'anime'
+    ? []
     : isTv
     ? mockSeriesCatalog
     : mockMoviesCatalog;
@@ -101,6 +107,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     if (yearTo) sp.set('yearTo', String(yearTo));
     if (minRating) sp.set('minRating', String(minRating));
     if (lang) sp.set('lang', lang);
+    if (q) sp.set('q', q);
     if (targetPage > 1) sp.set('page', String(targetPage));
     const qs = sp.toString();
     return qs ? `/catalog?${qs}` : '/catalog';
@@ -116,8 +123,11 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
         </h1>
         <p className="text-xs sm:text-sm text-[#92929F] mt-1">
           {[
+            q ? `Поиск: «${q}»` : null,
+            mediaRes?.totalItems ? `Найдено: ${mediaRes.totalItems.toLocaleString('ru-RU')}` : null,
             yearFrom || yearTo ? `Годы: ${yearFrom || '…'}–${yearTo || '…'}` : null,
             minRating ? `Рейтинг от ${minRating}` : null,
+            `Показано: ${items.length}`,
             `Страница ${page}`,
           ]
             .filter(Boolean)
@@ -136,6 +146,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
           yearTo: yearTo ? String(yearTo) : '',
           minRating: minRating ? String(minRating) : '',
           lang,
+          q,
         }}
       />
 
