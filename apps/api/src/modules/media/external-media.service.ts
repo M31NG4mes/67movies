@@ -285,14 +285,48 @@ export class ExternalMediaService {
   }
 
   /**
-   * 6. Live GIF Search (Tenor public API) — thousands of GIFs for chat
+   * 6. Live GIF Search (GIPHY primary + Tenor fallback) — thousands of GIFs for chat
    */
   async searchGifs(query?: string, limit = 32): Promise<Array<{ id: string; title: string; url: string; preview: string }>> {
     const q = (query || '').trim();
     const safeLimit = Math.min(40, Math.max(8, Number(limit) || 32));
-    const cacheKey = `ext:gifs:${q.toLowerCase() || 'trending'}:${safeLimit}`;
+    const cacheKey = `ext:gifs:v2:${q.toLowerCase() || 'trending'}:${safeLimit}`;
     const cached = await this.redisService.get<any[]>(cacheKey);
     if (cached && cached.length > 0) return cached;
+
+    const giphyKeys = [
+      this.configService.get<string>('GIPHY_API_KEY', '').trim(),
+      'GlVGYHkr3WSBnllca54iNt0yFbjz7L65',
+      'sXpGFDGZs0Dv1mmNFvYaGUvYwKX0PWIh',
+    ].filter(Boolean);
+
+    for (const gKey of giphyKeys) {
+      const gEndpoint = q
+        ? `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(gKey)}&q=${encodeURIComponent(q)}&limit=${safeLimit}&rating=pg-13`
+        : `https://api.giphy.com/v1/gifs/trending?api_key=${encodeURIComponent(gKey)}&limit=${safeLimit}&rating=pg-13`;
+      const gData = await this.fetchJson<any>(gEndpoint);
+      const gItems = Array.isArray(gData?.data) ? gData.data : [];
+      if (gItems.length > 0) {
+        const mapped = gItems
+          .map((item: any) => {
+            const images = item?.images || {};
+            const url = images.downsized?.url || images.fixed_height?.url || images.original?.url;
+            const preview = images.fixed_height_small?.url || images.fixed_height?.url || url;
+            if (!url) return null;
+            return {
+              id: String(item.id),
+              title: String(item.title || 'GIPHY GIF'),
+              url: String(url),
+              preview: String(preview),
+            };
+          })
+          .filter(Boolean);
+        if (mapped.length > 0) {
+          await this.redisService.set(cacheKey, mapped, 600);
+          return mapped;
+        }
+      }
+    }
 
     const apiKey = this.configService.get<string>('TENOR_API_KEY') || 'LIVDSRZULELA';
     const endpoint = q

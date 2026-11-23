@@ -25,7 +25,16 @@ import {
 } from 'lucide-react';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const PROD_API_FALLBACK = 'https://six7movies-api.onrender.com/api';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:4000/api'
+      : PROD_API_FALLBACK
+    : process.env.NODE_ENV === 'production'
+    ? PROD_API_FALLBACK
+    : 'http://localhost:4000/api');
 
 interface FriendUser {
   id: string;
@@ -190,10 +199,14 @@ function MessagesContent() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
 
-  // Reply, Edit, Copy & Active Message Actions
+  // Reply, Edit, Copy & Right-Click Context Menu
   const [replyingTo, setReplyingTo] = useState<DirectMessageItem | null>(null);
   const [editingMsg, setEditingMsg] = useState<DirectMessageItem | null>(null);
-  const [activeMsgActionsId, setActiveMsgActionsId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    msg: DirectMessageItem;
+    x: number;
+    y: number;
+  } | null>(null);
   const [chatToast, setChatToast] = useState<string | null>(null);
 
   // Emoji & Live GIF Picker
@@ -318,7 +331,22 @@ function MessagesContent() {
     prevMsgCountRef.current = messages.length;
   }, [messages.length, isFriendTyping]);
 
-  // Live GIF search via backend /api/media/gifs (Tenor API -> thousands of GIFs + fallback)
+  // Close right-click context menu on Escape or outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    const closeMenu = () => setContextMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('click', closeMenu);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu]);
+
+  // Live GIPHY GIF search via same-origin /api/gifs (GIPHY API + Tenor fallback)
   useEffect(() => {
     if (!pickerOpen || pickerTab !== 'gif') return;
     let cancelled = false;
@@ -326,10 +354,22 @@ function MessagesContent() {
 
     const timer = setTimeout(async () => {
       try {
+        const giphyRes = await fetch(
+          `/api/gifs?q=${encodeURIComponent(gifSearch.trim())}&limit=32`,
+          { cache: 'no-store' }
+        ).catch(() => null);
+        if (giphyRes?.ok && !cancelled) {
+          const giphyJson = await giphyRes.json();
+          if (Array.isArray(giphyJson?.items) && giphyJson.items.length > 0) {
+            setGifResults(giphyJson.items);
+            return;
+          }
+        }
+
         const res = await fetch(
           `${API_BASE}/media/gifs?q=${encodeURIComponent(gifSearch.trim())}&limit=32`
-        );
-        if (res.ok && !cancelled) {
+        ).catch(() => null);
+        if (res?.ok && !cancelled) {
           const items = await res.json();
           if (Array.isArray(items) && items.length > 0) {
             setGifResults(items);
@@ -457,13 +497,13 @@ function MessagesContent() {
     } catch {
       showChatToast('Не удалось скопировать');
     }
-    setActiveMsgActionsId(null);
+    setContextMenu(null);
   };
 
   const handleStartReply = (msg: DirectMessageItem) => {
     setEditingMsg(null);
     setReplyingTo(msg);
-    setActiveMsgActionsId(null);
+    setContextMenu(null);
     inputRef.current?.focus();
   };
 
@@ -471,13 +511,13 @@ function MessagesContent() {
     setReplyingTo(null);
     setEditingMsg(msg);
     setDraft(msg.content || '');
-    setActiveMsgActionsId(null);
+    setContextMenu(null);
     inputRef.current?.focus();
   };
 
   const handleToggleReaction = async (messageId: string, emoji: string) => {
     if (!user) return;
-    setActiveMsgActionsId(null);
+    setContextMenu(null);
 
     // Optimistic update for instant feel
     setMessages((prev) =>
@@ -898,7 +938,8 @@ function MessagesContent() {
 
               {/* Messages Feed */}
               <div
-                onClick={() => setActiveMsgActionsId(null)}
+                onClick={() => setContextMenu(null)}
+                onScroll={() => setContextMenu(null)}
                 className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3 bg-[#09090D]/50 scroll-smooth"
               >
                 {loadingChat ? (
@@ -916,7 +957,6 @@ function MessagesContent() {
                   <AnimatePresence initial={false}>
                     {messages.map((msg) => {
                       const isMine = msg.senderId === user.id;
-                      const showActions = activeMsgActionsId === msg.id;
                       const movieHref = msg.movieTmdbId
                         ? `/movie/${msg.movieTmdbId}?type=${
                             msg.movieMediaType === 'SERIES' ? 'tv' : 'movie'
@@ -932,65 +972,26 @@ function MessagesContent() {
                           initial={{ opacity: 0, y: 10, scale: 0.97 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           transition={{ type: 'spring', stiffness: 440, damping: 32 }}
-                          className={`group flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                          className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
                         >
-                          {/* Quick Hover / Tap Action Bar (Reactions + Reply + Copy + Edit) */}
+                          {/* Message Bubble (right-click opens Reactions / Reply / Edit / Copy menu) */}
                           <div
-                            onClick={(e) => e.stopPropagation()}
-                            className={`mb-1 flex items-center gap-1 px-2 py-1 rounded-2xl bg-[#181821]/95 border border-[#292936] shadow-xl backdrop-blur-md transition-all ${
-                              showActions
-                                ? 'opacity-100 scale-100 pointer-events-auto'
-                                : 'opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto'
-                            }`}
-                          >
-                            {QUICK_REACTIONS.map((em) => (
-                              <button
-                                key={em}
-                                type="button"
-                                onClick={() => handleToggleReaction(msg.id, em)}
-                                className="w-6 h-6 rounded-lg hover:bg-white/10 hover:scale-125 active:scale-95 text-sm flex items-center justify-center transition-transform"
-                              >
-                                {em}
-                              </button>
-                            ))}
-                            <span className="w-px h-4 bg-[#292936] mx-0.5" />
-                            <button
-                              type="button"
-                              onClick={() => handleStartReply(msg)}
-                              title="Ответить"
-                              className="p-1.5 rounded-lg text-[#92929F] hover:text-white hover:bg-white/10"
-                            >
-                              <Reply className="w-3.5 h-3.5" />
-                            </button>
-                            {(msg.content || msg.movieTitle) && (
-                              <button
-                                type="button"
-                                onClick={() => handleCopyMessage(msg)}
-                                title="Копировать"
-                                className="p-1.5 rounded-lg text-[#92929F] hover:text-white hover:bg-white/10"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                            {isMine && msg.content && (
-                              <button
-                                type="button"
-                                onClick={() => handleStartEdit(msg)}
-                                title="Редактировать"
-                                className="p-1.5 rounded-lg text-[#92929F] hover:text-[#A18BFF] hover:bg-white/10"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Message Bubble */}
-                          <div
-                            onClick={(e) => {
+                            onContextMenu={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
-                              setActiveMsgActionsId((cur) => (cur === msg.id ? null : msg.id));
+                              const menuW = 240;
+                              const menuH = 195;
+                              const clampedX = Math.min(
+                                Math.max(8, e.clientX),
+                                Math.max(8, window.innerWidth - menuW - 12)
+                              );
+                              const clampedY = Math.min(
+                                Math.max(8, e.clientY),
+                                Math.max(8, window.innerHeight - menuH - 12)
+                              );
+                              setContextMenu({ msg, x: clampedX, y: clampedY });
                             }}
-                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg cursor-pointer ${
+                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg ${
                               isMine
                                 ? 'bg-[#8065FF] text-white rounded-br-md'
                                 : 'bg-[#181821] border border-[#292936] text-white rounded-bl-md'
@@ -1450,6 +1451,69 @@ function MessagesContent() {
           )}
         </section>
       </div>
+
+      {/* Right-Click Context Menu for Reactions, Reply, Edit & Copy */}
+      <AnimatePresence>
+        {contextMenu && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: -4 }}
+            transition={{ duration: 0.14 }}
+            onClick={(e) => e.stopPropagation()}
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            className="fixed z-[80] w-60 rounded-2xl bg-[#181821]/95 border border-[#292936] shadow-2xl backdrop-blur-xl p-2 space-y-1.5"
+          >
+            {/* Quick Reactions Row */}
+            <div className="flex items-center justify-between px-1.5 py-1 bg-[#09090D]/70 rounded-xl border border-[#292936]/70">
+              {QUICK_REACTIONS.map((em) => (
+                <button
+                  key={em}
+                  type="button"
+                  onClick={() => handleToggleReaction(contextMenu.msg.id, em)}
+                  className="w-8 h-8 rounded-lg hover:bg-white/10 hover:scale-125 active:scale-95 text-base flex items-center justify-center transition-transform"
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+
+            {/* Reply */}
+            <button
+              type="button"
+              onClick={() => handleStartReply(contextMenu.msg)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-white hover:bg-[#8065FF]/20 hover:text-[#A18BFF] transition-colors text-left"
+            >
+              <Reply className="w-4 h-4 text-[#A18BFF]" />
+              <span>Ответить</span>
+            </button>
+
+            {/* Edit (own text messages) */}
+            {contextMenu.msg.senderId === user.id && contextMenu.msg.content && (
+              <button
+                type="button"
+                onClick={() => handleStartEdit(contextMenu.msg)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-white hover:bg-[#8065FF]/20 hover:text-[#A18BFF] transition-colors text-left"
+              >
+                <Pencil className="w-4 h-4 text-[#A18BFF]" />
+                <span>Редактировать</span>
+              </button>
+            )}
+
+            {/* Copy */}
+            {(contextMenu.msg.content || contextMenu.msg.movieTitle) && (
+              <button
+                type="button"
+                onClick={() => handleCopyMessage(contextMenu.msg)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-white hover:bg-white/10 transition-colors text-left"
+              >
+                <Copy className="w-4 h-4 text-[#92929F]" />
+                <span>Копировать текст</span>
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Fullscreen Image / GIF Lightbox */}
       <AnimatePresence>
