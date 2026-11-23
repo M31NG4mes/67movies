@@ -26,10 +26,25 @@ export function isMicrosoftEdgeBrowser(): boolean {
   return /Edg\//i.test(navigator.userAgent);
 }
 
+export function isIosDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return (
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (/Macintosh/i.test(ua) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1)
+  );
+}
+
+export function isAndroidDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(navigator.userAgent || '');
+}
+
 export class HlsEngine {
   private hls: Hls | null = null;
   private videoElement: HTMLVideoElement | null = null;
   private hasTriedFallback = false;
+  private cleanupNativeListeners: (() => void) | null = null;
 
   init(
     video: HTMLVideoElement,
@@ -60,6 +75,10 @@ export class HlsEngine {
       this.hls.destroy();
       this.hls = null;
     }
+    if (this.cleanupNativeListeners) {
+      this.cleanupNativeListeners();
+      this.cleanupNativeListeners = null;
+    }
 
     const isLocalApiStream = cleanHttpsUrl.startsWith('/api/stream');
     const isDirectMp4 =
@@ -73,10 +92,55 @@ export class HlsEngine {
         : cleanHttpsUrl;
     callbacks.onProxyModeChange?.(useProxy || isLocalApiStream);
 
-    if (isDirectMp4) {
+    const canPlayNativeHls = Boolean(
+      video.canPlayType('application/vnd.apple.mpegurl') ||
+        video.canPlayType('application/x-mpegURL')
+    );
+
+    const attachNativePlayback = () => {
+      const onLoadedMetadata = () => {
+        callbacks.onQualitiesLoaded([{ quality: 'auto', height: 0 }]);
+        callbacks.onBuffering(false);
+      };
+      const onError = () => {
+        if (!this.hasTriedFallback && !isLocalApiStream) {
+          this.hasTriedFallback = true;
+          console.warn(
+            `[Native Video] Playback error in ${useProxy ? 'proxy' : 'direct'} mode, switching to ${
+              !useProxy ? 'safe HTTPS proxy' : 'direct HTTPS'
+            }...`
+          );
+          this.loadWithMode(video, cleanHttpsUrl, callbacks, !useProxy);
+          const playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {});
+          }
+          return;
+        }
+        callbacks.onBuffering(false);
+        callbacks.onError('Не удалось воспроизвести поток');
+      };
+
+      video.addEventListener('loadedmetadata', onLoadedMetadata);
+      video.addEventListener('error', onError);
+      this.cleanupNativeListeners = () => {
+        video.removeEventListener('loadedmetadata', onLoadedMetadata);
+        video.removeEventListener('error', onError);
+      };
+
       video.src = effectiveUrl;
+      video.load();
       callbacks.onQualitiesLoaded([{ quality: 'auto', height: 0 }]);
-      callbacks.onBuffering(false);
+    };
+
+    if (isDirectMp4) {
+      attachNativePlayback();
+      return;
+    }
+
+    // Prefer native Apple AVPlayer HLS on iOS/iPadOS so AirPlay, native fullscreen, and hardware decoding work reliably
+    if (isIosDevice() && canPlayNativeHls) {
+      attachNativePlayback();
       return;
     }
 
@@ -179,15 +243,12 @@ export class HlsEngine {
           }
         }
       });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    } else if (canPlayNativeHls) {
       // Native Apple Safari HLS support
-      video.src = effectiveUrl;
-      callbacks.onQualitiesLoaded([{ quality: 'auto', height: 0 }]);
-      callbacks.onBuffering(false);
+      attachNativePlayback();
     } else {
       // Direct video playback
-      video.src = effectiveUrl;
-      callbacks.onBuffering(false);
+      attachNativePlayback();
     }
   }
 
@@ -215,6 +276,10 @@ export class HlsEngine {
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
+    }
+    if (this.cleanupNativeListeners) {
+      this.cleanupNativeListeners();
+      this.cleanupNativeListeners = null;
     }
     if (this.videoElement) {
       this.videoElement.removeAttribute('src');

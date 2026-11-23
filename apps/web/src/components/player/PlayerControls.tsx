@@ -19,6 +19,7 @@ import {
   ArrowLeft,
   ListVideo,
   FastForward,
+  ExternalLink,
 } from 'lucide-react';
 import { TimelineScrubber } from './TimelineScrubber';
 import { usePlayerStore } from '../../stores/player.store';
@@ -31,6 +32,8 @@ interface PlayerControlsProps {
   onTogglePlay: () => void;
   onSkip: (seconds: number) => void;
   onToggleFullscreen: () => void;
+  onOpenExternalPlayer?: () => void;
+  onCenterAreaClick?: () => void;
   hasPrevEpisode?: boolean;
   hasNextEpisode?: boolean;
   onPrevEpisode?: () => void;
@@ -48,6 +51,8 @@ export function PlayerControls({
   onTogglePlay,
   onSkip,
   onToggleFullscreen,
+  onOpenExternalPlayer,
+  onCenterAreaClick,
   hasPrevEpisode = false,
   hasNextEpisode = false,
   onPrevEpisode,
@@ -97,46 +102,71 @@ export function PlayerControls({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute inset-0 flex flex-col justify-between p-4 sm:p-6 bg-gradient-to-t from-cinema-dark/95 via-cinema-dark/15 to-cinema-dark/80 pointer-events-auto transition-opacity duration-300"
+      className="absolute inset-0 flex flex-col justify-between p-3 sm:p-6 bg-gradient-to-t from-cinema-dark/95 via-cinema-dark/15 to-cinema-dark/80 pointer-events-auto transition-opacity duration-300"
     >
-      {/* Top Header (Minimalist: only Back icon + Title/Subtitle) */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
+      {/* Top Header (Back + Title/Subtitle + External Player button) */}
+      <div className="flex items-center justify-between gap-2 sm:gap-3">
+        <div className="flex items-center space-x-2.5 sm:space-x-4 min-w-0">
           <button
             type="button"
             onClick={onBack}
             aria-label="Назад"
             title="Назад"
-            className="p-2.5 text-white/85 hover:text-white bg-white/10 hover:bg-white/20 rounded-full backdrop-blur-md transition-all flex-shrink-0"
+            className="p-2 sm:p-2.5 text-white/85 hover:text-white bg-white/10 hover:bg-white/20 rounded-full backdrop-blur-md transition-all flex-shrink-0"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-white drop-shadow-md truncate">
+            <h1 className="text-sm sm:text-xl font-bold text-white drop-shadow-md truncate">
               {title}
             </h1>
             {subtitle && (
-              <p className="text-xs text-white/70 drop-shadow truncate">
+              <p className="text-[11px] sm:text-xs text-white/70 drop-shadow truncate">
                 {subtitle}
               </p>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Center Click Area (Play/Pause on click, Fullscreen on double click) */}
-      <div
-        onClick={onTogglePlay}
-        onDoubleClick={onToggleFullscreen}
-        className="flex-1 w-full flex items-center justify-center cursor-pointer"
-      >
-        {isBuffering && (
-          <div className="w-14 h-14 border-4 border-brand-main border-t-transparent rounded-full animate-spin shadow-brand-glow pointer-events-none" />
+        {onOpenExternalPlayer && (
+          <button
+            type="button"
+            onClick={onOpenExternalPlayer}
+            aria-label="Открыть во внешнем плеере"
+            title="Открыть во внешнем плеере (Apple / VLC / Android)"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-white/90 hover:text-white text-xs font-semibold backdrop-blur-md transition-all flex-shrink-0"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span className="hidden xs:inline sm:inline">Плеер</span>
+          </button>
         )}
       </div>
 
+      {/* Center Click Area (Play/Pause on desktop, toggle controls on mobile tap, big Play button when paused) */}
+      <div
+        onClick={onCenterAreaClick || onTogglePlay}
+        onDoubleClick={onToggleFullscreen}
+        className="flex-1 w-full flex items-center justify-center cursor-pointer"
+      >
+        {isBuffering ? (
+          <div className="w-14 h-14 border-4 border-brand-main border-t-transparent rounded-full animate-spin shadow-brand-glow pointer-events-none" />
+        ) : !isPlaying ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePlay();
+            }}
+            aria-label="Воспроизвести"
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-brand-main/90 hover:bg-brand-light text-white flex items-center justify-center shadow-brand-glow backdrop-blur-md transition-transform active:scale-95 hover:scale-105"
+          >
+            <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 fill-white" />
+          </button>
+        ) : null}
+      </div>
+
       {/* Bottom Controls (Minimalist Icon-Only Bar) */}
-      <div className="space-y-3">
+      <div className="space-y-2 sm:space-y-3 pb-safe">
         {/* Scrubber */}
         <TimelineScrubber
           currentTime={currentTime}
@@ -146,9 +176,9 @@ export function PlayerControls({
         />
 
         {/* Icon Buttons Row */}
-        <div className="flex items-center justify-between gap-2 text-white">
+        <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-1 sm:gap-2 text-white">
           {/* Left Controls: [Prev Ep] [Rewind -10s] [Play/Pause] [Forward +10s] [Next Ep] [Hover Volume] [Time] */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <div className="flex items-center gap-0.5 sm:gap-2.5">
             {/* 1. Previous Episode */}
             {showEpisodeButtons && (
               <button
@@ -157,9 +187,9 @@ export function PlayerControls({
                 disabled={!hasPrevEpisode}
                 aria-label="Предыдущая серия"
                 title="Предыдущая серия (P или Shift + ←)"
-                className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full disabled:opacity-30 disabled:pointer-events-none transition-all"
+                className="p-1.5 sm:p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
-                <SkipBack className="w-5 h-5" />
+                <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             )}
 
@@ -169,9 +199,9 @@ export function PlayerControls({
               onClick={() => onSkip(-10)}
               aria-label="Перемотать назад 10 секунд"
               title="Назад 10 сек (←)"
-              className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
+              className="p-1.5 sm:p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
             >
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* 3. Play / Pause (Center of transport buttons) */}
@@ -180,12 +210,12 @@ export function PlayerControls({
               onClick={onTogglePlay}
               aria-label={isPlaying ? 'Пауза' : 'Воспроизведение'}
               title={isPlaying ? 'Пауза (Space)' : 'Воспроизведение (Space)'}
-              className="p-3 text-white bg-brand-main hover:bg-brand-light rounded-full shadow-brand-glow transition-all transform hover:scale-105 active:scale-95"
+              className="p-2.5 sm:p-3 text-white bg-brand-main hover:bg-brand-light rounded-full shadow-brand-glow transition-all transform hover:scale-105 active:scale-95"
             >
               {isPlaying ? (
-                <Pause className="w-5 h-5" />
+                <Pause className="w-4 h-4 sm:w-5 sm:h-5" />
               ) : (
-                <Play className="w-5 h-5 ml-0.5 fill-white" />
+                <Play className="w-4 h-4 sm:w-5 sm:h-5 ml-0.5 fill-white" />
               )}
             </button>
 
@@ -195,9 +225,9 @@ export function PlayerControls({
               onClick={() => onSkip(10)}
               aria-label="Перемотать вперед 10 секунд"
               title="Вперёд 10 сек (→)"
-              className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
+              className="p-1.5 sm:p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
             >
-              <RotateCw className="w-5 h-5" />
+              <RotateCw className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* 5. Next Episode */}
@@ -208,15 +238,15 @@ export function PlayerControls({
                 disabled={!hasNextEpisode}
                 aria-label="Следующая серия"
                 title="Следующая серия (N или Shift + →)"
-                className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full disabled:opacity-30 disabled:pointer-events-none transition-all"
+                className="p-1.5 sm:p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
-                <SkipForward className="w-5 h-5" />
+                <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             )}
 
-            {/* 6. Minimalist Volume (Speaker icon + hidden slider expanding on hover, no percentages) */}
+            {/* 6. Minimalist Volume (Hidden slider on mobile; hardware buttons used on phones) */}
             <div
-              className="flex items-center"
+              className="hidden sm:flex items-center"
               onMouseEnter={() => setIsVolumeHovered(true)}
               onMouseLeave={() => setIsVolumeHovered(false)}
             >
@@ -255,15 +285,15 @@ export function PlayerControls({
             </div>
 
             {/* 7. Minimalist Timestamps */}
-            <div className="text-xs font-medium text-white/65 font-mono tracking-tight pl-1">
+            <div className="text-[11px] sm:text-xs font-medium text-white/65 font-mono tracking-tight pl-1">
               <span className="text-white/95">{formatTime(currentTime)}</span>
-              <span className="mx-1 text-white/40">/</span>
+              <span className="mx-0.5 sm:mx-1 text-white/40">/</span>
               <span>{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* Right Controls: Icon-Only [Auto-Next] [Episodes] [Voiceover] [Quality] [Audio Settings] [Fullscreen] */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-0.5 sm:gap-2">
             {/* Auto-Next Episode Icon Toggle */}
             {showEpisodeButtons && (
               <button
@@ -283,7 +313,7 @@ export function PlayerControls({
                     ? 'Автопереключение серий: ВКЛ'
                     : 'Автопереключение серий: ВЫКЛ'
                 }
-                className={`p-2.5 rounded-full transition-all ${
+                className={`hidden sm:inline-flex p-2.5 rounded-full transition-all ${
                   autoPlayNext
                     ? 'text-brand-light bg-brand-main/25 hover:bg-brand-main/35'
                     : 'text-white/60 hover:text-white hover:bg-white/10'
@@ -300,13 +330,13 @@ export function PlayerControls({
                 onClick={onToggleEpisodesDrawer}
                 aria-label="Список серий"
                 title={`Список серий (${episodeCount})`}
-                className={`p-2.5 rounded-full transition-all ${
+                className={`p-1.5 sm:p-2.5 rounded-full transition-all ${
                   showEpisodesDrawer
                     ? 'text-white bg-brand-main shadow-brand-glow'
                     : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <ListVideo className="w-5 h-5" />
+                <ListVideo className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             )}
 
@@ -316,9 +346,9 @@ export function PlayerControls({
               onClick={() => openSourceModal(true)}
               aria-label="Выбор озвучки"
               title="Выбор озвучки"
-              className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
+              className="p-1.5 sm:p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
             >
-              <Mic className="w-5 h-5" />
+              <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* Separate Quality Selector Badge Button (1080p / 720p) */}
@@ -327,7 +357,7 @@ export function PlayerControls({
               onClick={() => openQualityModal(true)}
               aria-label="Выбор качества"
               title={`Качество видео: ${currentQualityLabel}`}
-              className="px-2.5 py-1.5 text-xs font-extrabold tracking-tight text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all"
+              className="px-2 py-1 sm:px-2.5 sm:py-1.5 text-[11px] sm:text-xs font-extrabold tracking-tight text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all"
             >
               {currentQualityLabel}
             </button>
@@ -338,9 +368,9 @@ export function PlayerControls({
               onClick={() => openAudioSubsModal(true)}
               aria-label="Настройки звука и скорости"
               title="Настройки звука, усиление и скорость"
-              className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
+              className="p-1.5 sm:p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
             >
-              <Sliders className="w-5 h-5" />
+              <Sliders className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* Fullscreen Icon Button */}
@@ -349,12 +379,12 @@ export function PlayerControls({
               onClick={onToggleFullscreen}
               aria-label="Полноэкранный режим"
               title={isFullscreen ? 'Выйти из полного экрана (F)' : 'Полный экран (F)'}
-              className="p-2.5 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
+              className="p-1.5 sm:p-2.5 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
             >
               {isFullscreen ? (
-                <Minimize className="w-5 h-5" />
+                <Minimize className="w-4 h-4 sm:w-5 sm:h-5" />
               ) : (
-                <Maximize className="w-5 h-5" />
+                <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />
               )}
             </button>
           </div>

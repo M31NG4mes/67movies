@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Play, Pause, SkipForward, ShieldCheck, X } from 'lucide-react';
-import { HlsEngine } from '../../lib/hls-engine';
+import { Play, Pause, SkipForward, ShieldCheck, X, ExternalLink, Copy, Smartphone } from 'lucide-react';
+import { HlsEngine, isIosDevice, isAndroidDevice, toHttpsUrl } from '../../lib/hls-engine';
 import { PlayerControls } from './PlayerControls';
 import { TrackSelectorModal } from './TrackSelectorModal';
 import { SourceSelectorModal, QualitySelectorModal } from './SourceSelectorModal';
@@ -60,6 +60,7 @@ export function VideoPlayer({
   const mediaSourceConnectedRef = useRef<boolean>(false);
 
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
+  const [isExternalPlayerModalOpen, setIsExternalPlayerModalOpen] = useState(false);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [failedVoiceKeys, setFailedVoiceKeys] = useState<string[]>([]);
 
@@ -139,17 +140,25 @@ export function VideoPlayer({
     }
   }, [setIsFullscreen, showOsd]);
 
-  // Keep fullscreen state synced with browser fullscreenchange event (e.g., when user presses Esc)
+  // Keep fullscreen state synced with browser fullscreenchange & iOS webkitbeginfullscreen/webkitendfullscreen
   useEffect(() => {
     const onFsChange = () => {
       const doc = document as any;
       setIsFullscreen(Boolean(doc.fullscreenElement || doc.webkitFullscreenElement));
     };
+    const onIosBeginFs = () => setIsFullscreen(true);
+    const onIosEndFs = () => setIsFullscreen(false);
+
     document.addEventListener('fullscreenchange', onFsChange);
     document.addEventListener('webkitfullscreenchange', onFsChange);
+    const videoEl = videoRef.current;
+    videoEl?.addEventListener('webkitbeginfullscreen', onIosBeginFs);
+    videoEl?.addEventListener('webkitendfullscreen', onIosEndFs);
     return () => {
       document.removeEventListener('fullscreenchange', onFsChange);
       document.removeEventListener('webkitfullscreenchange', onFsChange);
+      videoEl?.removeEventListener('webkitbeginfullscreen', onIosBeginFs);
+      videoEl?.removeEventListener('webkitendfullscreen', onIosEndFs);
     };
   }, [setIsFullscreen]);
 
@@ -429,6 +438,92 @@ export function VideoPlayer({
     }
   };
 
+  const handleCenterAreaClick = () => {
+    const isTouchDevice =
+      typeof window !== 'undefined' &&
+      (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
+    if (isTouchDevice) {
+      if (isControlsVisible && isPlaying) {
+        setIsControlsVisible(false);
+      } else {
+        showControlsTemporarily();
+      }
+      return;
+    }
+    handleTogglePlay();
+  };
+
+  const getAbsoluteStreamUrl = useCallback(() => {
+    if (!activeStream?.streamUrl) return '';
+    const raw = activeStream.streamUrl.trim();
+    if (raw.startsWith('/')) {
+      return typeof window !== 'undefined' ? `${window.location.origin}${raw}` : raw;
+    }
+    return toHttpsUrl(raw);
+  }, [activeStream]);
+
+  const handleOpenAppleNativePlayer = () => {
+    const video = videoRef.current as any;
+    if (video) {
+      video.play?.().catch(() => {});
+      if (typeof video.webkitEnterFullscreen === 'function') {
+        try {
+          video.webkitEnterFullscreen();
+          setIsExternalPlayerModalOpen(false);
+          return;
+        } catch {
+          // fallback below
+        }
+      }
+    }
+    const url = getAbsoluteStreamUrl();
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+    setIsExternalPlayerModalOpen(false);
+  };
+
+  const handleOpenAndroidChooser = () => {
+    const url = getAbsoluteStreamUrl();
+    if (!url) return;
+    const withoutScheme = url.replace(/^https?:\/\//i, '');
+    const scheme = url.startsWith('http://') ? 'http' : 'https';
+    const intentUrl = `intent://${withoutScheme}#Intent;scheme=${scheme};type=video/*;action=android.intent.action.VIEW;S.title=${encodeURIComponent(
+      title
+    )};end`;
+    window.location.href = intentUrl;
+    setIsExternalPlayerModalOpen(false);
+  };
+
+  const handleOpenVlcPlayer = () => {
+    const url = getAbsoluteStreamUrl();
+    if (!url) return;
+    if (isIosDevice()) {
+      window.location.href = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(url)}`;
+    } else if (isAndroidDevice()) {
+      const withoutScheme = url.replace(/^https?:\/\//i, '');
+      const scheme = url.startsWith('http://') ? 'http' : 'https';
+      window.location.href = `intent://${withoutScheme}#Intent;scheme=${scheme};package=org.videolan.vlc;type=video/*;S.title=${encodeURIComponent(
+        title
+      )};end`;
+    } else {
+      window.location.href = `vlc://${url}`;
+    }
+    setIsExternalPlayerModalOpen(false);
+  };
+
+  const handleCopyStreamUrl = async () => {
+    const url = getAbsoluteStreamUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      showOsd('🔗 Ссылка на поток скопирована');
+    } catch {
+      showOsd('⚠️ Не удалось скопировать ссылку');
+    }
+    setIsExternalPlayerModalOpen(false);
+  };
+
   const handleSkip = (seconds: number) => {
     if (videoRef.current) {
       const maxDur =
@@ -472,7 +567,7 @@ export function VideoPlayer({
       onMouseMove={showControlsTemporarily}
       onClick={showControlsTemporarily}
       onWheel={handleWheel}
-      className={`relative w-screen h-screen bg-black overflow-hidden select-none ${
+      className={`fixed inset-0 w-full h-[100dvh] bg-black overflow-hidden select-none ${
         !isControlsVisible && isPlaying ? 'cursor-none' : 'cursor-default'
       }`}
     >
@@ -481,11 +576,17 @@ export function VideoPlayer({
         ref={videoRef}
         className="w-full h-full object-contain"
         playsInline
+        x-webkit-airplay="allow"
         crossOrigin={audioBoost > 1 ? 'anonymous' : undefined}
         onTimeUpdate={onTimeUpdate}
         onLoadedMetadata={onLoadedMetadata}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         onWaiting={() => setIsBuffering(true)}
-        onPlaying={() => setIsBuffering(false)}
+        onPlaying={() => {
+          setIsBuffering(false);
+          setIsPlaying(true);
+        }}
         onEnded={handleVideoEnded}
       />
 
@@ -584,6 +685,14 @@ export function VideoPlayer({
             >
               Выбрать другую озвучку
             </button>
+            <button
+              type="button"
+              onClick={() => setIsExternalPlayerModalOpen(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/15 font-semibold rounded-xl transition-all text-sm"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Открыть во внешнем плеере</span>
+            </button>
           </div>
         </div>
       )}
@@ -592,9 +701,11 @@ export function VideoPlayer({
       <div
         className={`transition-opacity duration-300 ${
           isControlsVisible ||
+          !isPlaying ||
           isAudioSubsModalOpen ||
           isSourceModalOpen ||
           isQualityModalOpen ||
+          isExternalPlayerModalOpen ||
           showEpisodesDrawer
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none'
@@ -608,6 +719,8 @@ export function VideoPlayer({
           onTogglePlay={handleTogglePlay}
           onSkip={handleSkip}
           onToggleFullscreen={handleToggleFullscreen}
+          onOpenExternalPlayer={() => setIsExternalPlayerModalOpen(true)}
+          onCenterAreaClick={handleCenterAreaClick}
           hasPrevEpisode={hasPrevEpisode}
           hasNextEpisode={hasNextEpisode}
           onPrevEpisode={onPrevEpisode}
@@ -690,6 +803,81 @@ export function VideoPlayer({
           showOsd(`✨ Качество: ${quality}`);
         }}
       />
+
+      {/* External Player Picker Modal (Apple AVPlayer / Android Intent / VLC / Direct Link) */}
+      {isExternalPlayerModalOpen && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExternalPlayerModalOpen(false);
+          }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md p-3 sm:p-4 animate-fadeIn"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-cinema-surface border border-cinema-border rounded-2xl p-5 text-white shadow-2xl space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-brand-light" />
+                <h3 className="text-base font-bold">Внешний плеер</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExternalPlayerModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-400">
+              Если встроенный плеер тормозит на телефоне, откройте серию через системный или сторонний плеер:
+            </p>
+
+            <div className="space-y-2 pt-1">
+              {(isIosDevice() || (typeof (videoRef.current as any)?.webkitEnterFullscreen === 'function')) && (
+                <button
+                  type="button"
+                  onClick={handleOpenAppleNativePlayer}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-brand-main hover:bg-brand-light text-white font-semibold text-sm shadow-brand-glow transition-all"
+                >
+                  <span>Плеер Apple (iOS / AirPlay)</span>
+                  <ExternalLink className="w-4 h-4" />
+                </button>
+              )}
+
+              {isAndroidDevice() && (
+                <button
+                  type="button"
+                  onClick={handleOpenAndroidChooser}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-brand-main hover:bg-brand-light text-white font-semibold text-sm shadow-brand-glow transition-all"
+                >
+                  <span>Выбрать плеер Android (MX / системный)</span>
+                  <ExternalLink className="w-4 h-4" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleOpenVlcPlayer}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-semibold text-sm transition-all"
+              >
+                <span>Открыть в VLC Media Player</span>
+                <ExternalLink className="w-4 h-4 text-orange-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopyStreamUrl}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-medium text-sm transition-all"
+              >
+                <span>Скопировать прямую ссылку (.m3u8 / .mp4)</span>
+                <Copy className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

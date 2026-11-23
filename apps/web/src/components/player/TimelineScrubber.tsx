@@ -33,10 +33,15 @@ export function TimelineScrubber({
   const currentPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedPercent = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!progressRef.current || duration <= 0) return;
+  const getPositionFromClientX = (clientX: number) => {
+    if (!progressRef.current || duration <= 0) return null;
     const rect = progressRef.current.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const pos = getPositionFromClientX(e.clientX);
+    if (pos === null) return;
     setHoverPosition(pos * 100);
     setHoverTime(pos * duration);
   };
@@ -46,10 +51,36 @@ export function TimelineScrubber({
   };
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!progressRef.current || duration <= 0) return;
-    const rect = progressRef.current.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pos = getPositionFromClientX(e.clientX);
+    if (pos === null) return;
     onSeek(pos * duration);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    if (!touch) return;
+    const pos = getPositionFromClientX(touch.clientX);
+    if (pos === null) return;
+    setHoverPosition(pos * 100);
+    setHoverTime(pos * duration);
+    onSeek(pos * duration);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    if (!touch) return;
+    const pos = getPositionFromClientX(touch.clientX);
+    if (pos === null) return;
+    setHoverPosition(pos * 100);
+    setHoverTime(pos * duration);
+    onSeek(pos * duration);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setHoverTime(null);
   };
 
   return (
@@ -65,6 +96,9 @@ export function TimelineScrubber({
       onClick={handleClick}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       onKeyDown={(e) => {
         if (e.key === 'ArrowRight') {
           e.preventDefault();
@@ -74,7 +108,7 @@ export function TimelineScrubber({
           onSeek(Math.max(0, currentTime - 10));
         }
       }}
-      className="relative w-full h-3 group cursor-pointer flex items-center select-none focus:outline-none"
+      className="relative w-full h-6 sm:h-4 group cursor-pointer flex items-center select-none touch-none focus:outline-none"
     >
       {/* Background Track */}
       <div className="absolute w-full h-1 group-hover:h-2 bg-white/20 rounded-full transition-all duration-150 overflow-hidden">
@@ -93,7 +127,7 @@ export function TimelineScrubber({
 
       {/* Scrubber thumb */}
       <div
-        className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-brand-glow scale-0 group-hover:scale-100 group-focus:scale-100 transition-transform duration-150 -translate-x-1/2 pointer-events-none"
+        className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-brand-glow scale-100 sm:scale-0 sm:group-hover:scale-100 group-focus:scale-100 transition-transform duration-150 -translate-x-1/2 pointer-events-none"
         style={{ left: `${currentPercent}%` }}
       />
 
