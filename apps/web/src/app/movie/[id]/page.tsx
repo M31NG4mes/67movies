@@ -248,10 +248,6 @@ export default function MovieDetailPage() {
             setUserRating(mine.rating);
             setModalRating(mine.rating);
             setModalReview(mine.review || '');
-            setModalFavorite(Boolean(mine.isFavorite));
-            if (mine.isFavorite && media) {
-              setFavoriteState({ ...media, routeId: mediaId }, true);
-            }
           }
         }
       }
@@ -411,10 +407,9 @@ export default function MovieDetailPage() {
     }
   };
 
-  const saveRatingToServer = async (ratingVal: number, reviewText: string, favFlag: boolean) => {
+  const saveRatingToServer = async (ratingVal: number, reviewText: string) => {
     if (!media) return;
     setUserRating(ratingVal);
-    setFavoriteState({ ...media, routeId: mediaId }, favFlag);
 
     if (useAuthStore.getState().accessToken) {
       setSavingReview(true);
@@ -428,7 +423,7 @@ export default function MovieDetailPage() {
             posterPath: media.posterPath || media.backdropPath || undefined,
             rating: ratingVal,
             review: reviewText.trim() || undefined,
-            isFavorite: favFlag,
+            isFavorite: false,
           }),
         });
         await loadCommunityReviews();
@@ -438,39 +433,13 @@ export default function MovieDetailPage() {
     }
   };
 
-  const handleInstantToggleFavorite = async () => {
+  const handleInstantToggleFavorite = () => {
     if (!media) return;
     const added = toggleFavorite({ ...media, routeId: mediaId });
-    setModalFavorite(added);
     setCollectionToast(
       added ? '❤️ Добавлено в «Любимые фильмы» в профиле' : 'Убрано из «Любимых фильмов»'
     );
     setTimeout(() => setCollectionToast(null), 3000);
-
-    // Sync to server in the background without requiring any review or modal
-    if (useAuthStore.getState().accessToken) {
-      const tmdbNum = getNumericMediaId(media) || 1;
-      const mediaType = media.type === 'tv' ? 'SERIES' : 'MOVIE';
-      if (added || userRating || modalReview.trim()) {
-        await authFetch('/social/ratings', {
-          method: 'POST',
-          body: JSON.stringify({
-            tmdbId: tmdbNum,
-            mediaType,
-            title: media.title,
-            posterPath: media.posterPath || media.backdropPath || undefined,
-            rating: userRating || modalRating || 10,
-            review: modalReview.trim() || undefined,
-            isFavorite: added,
-          }),
-        }).catch(() => {});
-      } else {
-        await authFetch(`/social/ratings/${tmdbNum}?mediaType=${mediaType}`, {
-          method: 'DELETE',
-        }).catch(() => {});
-      }
-      loadCommunityReviews();
-    }
   };
 
   const handleInstantToggleWatchlist = () => {
@@ -577,7 +546,7 @@ export default function MovieDetailPage() {
     e.preventDefault();
     if (!newCommentText.trim()) return;
 
-    await saveRatingToServer(newCommentRating, newCommentText.trim(), newCommentRating >= 8);
+    await saveRatingToServer(newCommentRating, newCommentText.trim());
     setNewCommentText('');
   };
 
@@ -1318,7 +1287,6 @@ export default function MovieDetailPage() {
                     onMouseLeave={() => setHoverRating(0)}
                     onClick={() => {
                       setModalRating(star);
-                      if (star >= 8) setModalFavorite(true);
                     }}
                     className="p-1 transition-transform hover:scale-125 focus:outline-none"
                   >
@@ -1360,21 +1328,11 @@ export default function MovieDetailPage() {
               className="w-full rounded-xl bg-[#09090D] border border-[#292936] p-3 text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF] resize-none"
             />
 
-            <label className="flex items-center gap-2.5 text-xs text-cinema-muted cursor-pointer">
-              <input
-                type="checkbox"
-                checked={modalFavorite}
-                onChange={(e) => setModalFavorite(e.target.checked)}
-                className="w-4 h-4 accent-[#8065FF]"
-              />
-              <span>Показать в «Любимых фильмах» в профиле для друзей</span>
-            </label>
-
             <button
               type="button"
               disabled={savingReview}
               onClick={async () => {
-                await saveRatingToServer(modalRating, modalReview, modalFavorite);
+                await saveRatingToServer(modalRating, modalReview);
                 setIsRatingModalOpen(false);
               }}
               className="w-full py-3 rounded-xl brand-btn text-white text-sm font-bold disabled:opacity-50"

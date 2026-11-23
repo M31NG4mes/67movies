@@ -232,7 +232,9 @@ function MessagesContent() {
   }, [hydrate]);
 
   useEffect(() => {
-    if (hydrated && !accessToken) {
+    const st = useAuthStore.getState();
+    if (!st.hydrated) st.hydrate();
+    if (!useAuthStore.getState().accessToken) {
       router.replace('/auth');
     }
   }, [hydrated, accessToken, router]);

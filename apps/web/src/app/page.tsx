@@ -31,8 +31,8 @@ export default async function HomePage() {
 
   const heroItems: MediaItem[] = (
     trending.length >= 5
-      ? trending.slice(0, 5)
-      : [...popularMovies.slice(0, 3), ...popularSeries.slice(0, 2)]
+      ? trending
+      : [...trending, ...popularMovies, ...popularSeries]
   ).filter((item: MediaItem) => Boolean(item.backdropPath || item.posterPath));
 
   const editorsChoice = [...popularMovies, ...popularSeries]

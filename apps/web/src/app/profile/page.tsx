@@ -188,9 +188,41 @@ export default function ProfilePage() {
 
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        updateActiveProfileMedia({ [field]: reader.result });
+      if (typeof reader.result !== 'string') return;
+      const dataUrl = reader.result;
+
+      // Keep animated GIFs under 1.5 MB intact; compress static images via canvas
+      if (file.type === 'image/gif' && file.size < 1.5 * 1024 * 1024) {
+        updateActiveProfileMedia({ [field]: dataUrl });
+        return;
       }
+
+      const img = new window.Image();
+      img.onload = () => {
+        try {
+          const maxW = field === 'avatarUrl' ? 360 : 1280;
+          const maxH = field === 'avatarUrl' ? 360 : 540;
+          let width = img.width || maxW;
+          let height = img.height || maxH;
+          const ratio = Math.min(maxW / width, maxH / height, 1);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.85);
+            updateActiveProfileMedia({ [field]: compressed });
+            return;
+          }
+        } catch {}
+        updateActiveProfileMedia({ [field]: dataUrl });
+      };
+      img.onerror = () => updateActiveProfileMedia({ [field]: dataUrl });
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -257,7 +289,6 @@ export default function ProfilePage() {
   };
 
   const handleDeleteRating = async (tmdbId: number, mediaType: string) => {
-    removeFromFavorites(tmdbId);
     if (!accessToken) return;
     const res = await authFetch(
       `/social/ratings/${tmdbId}?mediaType=${encodeURIComponent(mediaType)}`,
@@ -269,45 +300,15 @@ export default function ProfilePage() {
     }
   };
 
-  const handleRemoveFavoriteMovie = async (item: {
+  const handleRemoveFavoriteMovie = (item: {
     id: string | number;
     tmdbId?: number;
-    mediaType?: string;
-    review?: string | null;
-    rating?: number;
-    title: string;
-    posterPath?: string | null;
   }) => {
     removeFromFavorites(item.id);
     if (item.tmdbId) {
       removeFromFavorites(item.tmdbId);
     }
     showToast('Убрано из «Любимых фильмов»');
-
-    if (accessToken && item.tmdbId) {
-      const mType = item.mediaType || 'MOVIE';
-      if (item.review && item.review.trim()) {
-        // Keep the user's review in My Ratings, just uncheck isFavorite
-        await authFetch('/social/ratings', {
-          method: 'POST',
-          body: JSON.stringify({
-            tmdbId: item.tmdbId,
-            mediaType: mType,
-            title: item.title,
-            posterPath: item.posterPath || undefined,
-            rating: item.rating || 9,
-            review: item.review,
-            isFavorite: false,
-          }),
-        }).catch(() => {});
-      } else {
-        await authFetch(
-          `/social/ratings/${item.tmdbId}?mediaType=${encodeURIComponent(mType)}`,
-          { method: 'DELETE' }
-        ).catch(() => {});
-      }
-      await loadAccountData();
-    }
   };
 
   const handleCreateCollection = async (e: React.FormEvent) => {
@@ -377,59 +378,16 @@ export default function ProfilePage() {
 
   if (!hydrated || !user) return null;
 
-  // Combine instant 1-click favorites (from Heart button) + backend favorite ratings (deduplicated)
-  const favoriteMovies = (() => {
-    const map = new Map<
-      string,
-      {
-        id: string;
-        routeId: string;
-        tmdbId: number;
-        mediaType: 'MOVIE' | 'SERIES';
-        title: string;
-        posterPath: string | null;
-        rating?: number;
-        review?: string | null;
-      }
-    >();
-
-    for (const f of favorites) {
-      const key = f.tmdbId ? `num:${f.tmdbId}` : `id:${f.id}`;
-      map.set(key, {
-        id: String(f.id),
-        routeId: String(f.id),
-        tmdbId: Number(f.tmdbId) || 0,
-        mediaType: f.type === 'tv' ? 'SERIES' : 'MOVIE',
-        title: f.title,
-        posterPath: f.posterPath || null,
-        rating: f.voteAverage ? Math.round(Number(f.voteAverage)) : undefined,
-      });
-    }
-
-    for (const r of myRatings) {
-      if (!r.isFavorite) continue;
-      const key = r.tmdbId ? `num:${r.tmdbId}` : `id:${r.id}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.rating = r.rating || existing.rating;
-        existing.review = r.review || existing.review;
-        if (!existing.posterPath && r.posterPath) existing.posterPath = r.posterPath;
-      } else {
-        map.set(key, {
-          id: String(r.id || r.tmdbId),
-          routeId: String(r.tmdbId),
-          tmdbId: Number(r.tmdbId) || 0,
-          mediaType: r.mediaType === 'SERIES' ? 'SERIES' : 'MOVIE',
-          title: r.title,
-          posterPath: r.posterPath || null,
-          rating: r.rating,
-          review: r.review,
-        });
-      }
-    }
-
-    return Array.from(map.values());
-  })();
+  // Favorite movies are 100% separate from ratings (added via the ❤️ Heart button without any automatic rating)
+  const favoriteMovies = favorites.map((f) => ({
+    id: String(f.id),
+    routeId: String(f.id),
+    tmdbId: Number(f.tmdbId) || 0,
+    mediaType: (f.type === 'tv' ? 'SERIES' : 'MOVIE') as 'MOVIE' | 'SERIES',
+    title: f.title,
+    posterPath: f.posterPath || null,
+    releaseYear: f.releaseYear,
+  }));
   const isEn = language === 'en';
 
   const avgRating =
@@ -776,16 +734,13 @@ export default function ProfilePage() {
                         <span>{isEn ? 'Fav' : 'Любимый'}</span>
                       </div>
 
-                      {item.rating && (
-                        <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-[#A18BFF] border border-white/10">
-                          ★ {item.rating}/10
-                        </div>
-                      )}
-
                       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col justify-end p-2.5">
                         <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
                           {item.title}
                         </p>
+                        {item.releaseYear && (
+                          <p className="text-[10px] text-white/70 mt-0.5">{item.releaseYear}</p>
+                        )}
                       </div>
                     </Link>
 

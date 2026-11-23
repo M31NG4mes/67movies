@@ -13,7 +13,8 @@ interface HeroBannerProps {
 }
 
 export function HeroBanner({ items, media }: HeroBannerProps) {
-  const activeList = items && items.length > 0 ? items : media ? [media] : [];
+  const rawPool = items && items.length > 0 ? items : media ? [media] : [];
+  const [activeList, setActiveList] = useState<MediaItem[]>(() => rawPool.slice(0, 5));
   const [currentIndex, setCurrentIndex] = useState(0);
   const language = usePreferencesStore((s) => s.language);
   const t = TRANSLATIONS[language];
@@ -30,6 +31,23 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // Pick 5 random items from the full trending pool on every page visit / refresh
+  useEffect(() => {
+    const pool = items && items.length > 0 ? items : media ? [media] : [];
+    if (pool.length <= 5) {
+      setActiveList(pool);
+      setCurrentIndex(0);
+      return;
+    }
+    const shuffled = [...pool];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setActiveList(shuffled.slice(0, 5));
+    setCurrentIndex(0);
+  }, [items, media]);
 
   const nextSlide = useCallback(() => {
     if (activeList.length <= 1) return;

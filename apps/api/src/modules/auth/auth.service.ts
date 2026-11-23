@@ -412,7 +412,12 @@ export class AuthService {
       return this.sanitizeUser(user);
     }
 
-    const user = this.memUsers.get(userId);
+    let user = this.memUsers.get(userId);
+    if (!user && this.localStore.data.users?.[userId]) {
+      const stored = this.localStore.data.users[userId];
+      user = { ...stored, createdAt: new Date(stored.createdAt || Date.now()) };
+      this.memUsers.set(userId, user);
+    }
     if (!user) throw new NotFoundException('Пользователь не найден');
     return this.sanitizeUser(user);
   }
@@ -434,7 +439,12 @@ export class AuthService {
       };
     }
 
-    const user = this.memUsers.get(userId);
+    let user = this.memUsers.get(userId);
+    if (!user && this.localStore.data.users?.[userId]) {
+      const stored = this.localStore.data.users[userId];
+      user = { ...stored, createdAt: new Date(stored.createdAt || Date.now()) };
+      this.memUsers.set(userId, user);
+    }
     if (!user) return null;
     return {
       id: user.id,
@@ -631,11 +641,15 @@ export class AuthService {
     };
   }
 
-  private signAccessToken(user: { id: string; email: string; role: string }, sessionId: string) {
+  private signAccessToken(
+    user: { id: string; email: string; name?: string; role: string },
+    sessionId: string,
+  ) {
     return this.jwtService.signAsync(
       {
         sub: user.id,
         email: user.email,
+        name: user.name || 'Пользователь',
         role: user.role,
         sid: sessionId,
       },
