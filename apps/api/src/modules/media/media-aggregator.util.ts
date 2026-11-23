@@ -87,7 +87,12 @@ export function isValidPosterUrl(url?: string | null): boolean {
 }
 
 function enrichItem(target: MediaItem, incoming: MediaItem): void {
-  if (!target.tmdbId && incoming.tmdbId) target.tmdbId = incoming.tmdbId;
+  if (!target.anilibertyId && incoming.anilibertyId) {
+    target.anilibertyId = incoming.anilibertyId;
+  }
+  if (!target.tmdbId && incoming.tmdbId && target.source !== 'aniliberty') {
+    target.tmdbId = incoming.tmdbId;
+  }
   if (!target.imdbId && incoming.imdbId) target.imdbId = incoming.imdbId;
   if (!target.kinopoiskId && incoming.kinopoiskId) target.kinopoiskId = incoming.kinopoiskId;
   if (!target.malId && incoming.malId) target.malId = incoming.malId;

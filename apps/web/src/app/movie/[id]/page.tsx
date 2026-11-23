@@ -139,12 +139,19 @@ export default function MovieDetailPage() {
         setMedia(currentData);
 
         if (currentData.type === 'tv') {
-          api.media
-            .getTvSeason(mediaId, 1)
-            .then((s) => {
-              if (isMounted && s) setSeasonData(s);
-            })
-            .catch(() => {});
+          if (currentData.seasons?.[0]?.episodes?.length) {
+            setSeasonData(currentData.seasons[0]);
+          } else {
+            const seasonLookupId = currentData.anilibertyId
+              ? `al-${currentData.anilibertyId}`
+              : mediaId;
+            api.media
+              .getTvSeason(seasonLookupId, 1)
+              .then((s) => {
+                if (isMounted && s) setSeasonData(s);
+              })
+              .catch(() => {});
+          }
         }
 
         setIsLoading(false);
@@ -209,7 +216,8 @@ export default function MovieDetailPage() {
 
   const loadCommunityReviews = React.useCallback(async () => {
     if (!media) return;
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    const apiBase =
+    process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
     const tmdbNum = getNumericMediaId(media);
     if (!tmdbNum) return;
     const mediaType = media.type === 'tv' ? 'SERIES' : 'MOVIE';
@@ -246,7 +254,8 @@ export default function MovieDetailPage() {
       loadCommunityReviews();
 
       // Load trailers, OMDb, KinopoiskDev, and Jikan/MAL extras
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+      const apiBase =
+    process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
       const tmdbId = String(media.tmdbId || media.id);
       const isAnime = Boolean(
         media.genres?.some((g) => g.id === 16) ||
@@ -398,17 +407,26 @@ export default function MovieDetailPage() {
       .catch(() => {});
   };
 
+  const anilibertyTargetId = isAniLibertyId
+    ? mediaId
+    : media?.anilibertyId
+    ? `al-${media.anilibertyId}`
+    : null;
+
   const handleEpisodeChange = (seasonNum: number, episodeNum: number) => {
     setSelectedSeason(seasonNum);
     setSelectedEpisode(episodeNum);
 
     // AniLiberty anime: play the episode right in the built-in HLS player
-    if (isAniLibertyId) {
-      router.push(`/watch/${encodeURIComponent(mediaId)}?season=${seasonNum}&episode=${episodeNum}`);
+    if (anilibertyTargetId) {
+      router.push(
+        `/watch/${encodeURIComponent(anilibertyTargetId)}?season=${seasonNum}&episode=${episodeNum}`
+      );
       return;
     }
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    const apiBase =
+      process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
     const kpParam = media?.kinopoiskId
       ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
       : '';
@@ -505,7 +523,8 @@ export default function MovieDetailPage() {
       </div>
     );
   }
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+  const apiBase =
+    process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
   const kpParam = media.kinopoiskId
     ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
     : '';
@@ -654,9 +673,9 @@ export default function MovieDetailPage() {
             {/* Primary Action Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
               {/* Button: «Смотреть» -> built-in HLS player (AniLiberty) or Kinopoisk */}
-              {isAniLibertyId ? (
+              {anilibertyTargetId ? (
                 <Link
-                  href={`/watch/${encodeURIComponent(mediaId)}?season=1&episode=${selectedEpisode}`}
+                  href={`/watch/${encodeURIComponent(anilibertyTargetId)}?season=1&episode=${selectedEpisode}`}
                   data-nav-item="true"
                   className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
                 >

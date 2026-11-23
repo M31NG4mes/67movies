@@ -279,6 +279,50 @@ export class AniLibertyProviderService {
     return [{ providerId: 'aniliberty', providerName: 'AniLiberty', voiceActing, streams }];
   }
 
+  /**
+   * Finds a matching AniLiberty release by MAL ID or Russian/English title
+   * so anime opened via TMDB/MAL IDs (from Home, Search, Watchlist, History)
+   * also get AniLiberty episodes, voiceovers, and direct HLS playback.
+   */
+  async findMatchingRelease(params: {
+    title?: string;
+    originalTitle?: string;
+    malId?: number;
+  }): Promise<MediaItem | null> {
+    const query = (params.title || params.originalTitle || '').trim();
+    if (!query) return null;
+
+    const catalog = await this.getCatalog({
+      page: 1,
+      limit: 8,
+      search: query,
+    });
+    if (!catalog || catalog.items.length === 0) return null;
+
+    const norm = (s?: string) =>
+      String(s || '')
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+
+    const qTitle = norm(params.title);
+    const qOrig = norm(params.originalTitle);
+
+    const matched =
+      (params.malId ? catalog.items.find((i) => i.malId === params.malId) : undefined) ||
+      catalog.items.find(
+        (i) =>
+          (qTitle && norm(i.title) === qTitle) ||
+          (qOrig && norm(i.originalTitle) === qOrig) ||
+          (qTitle && norm(i.title).startsWith(qTitle)),
+      ) ||
+      catalog.items[0];
+
+    if (!matched?.anilibertyId) return null;
+    return this.getDetails(matched.anilibertyId);
+  }
+
   // ---------------------------------------------------------------------------
   // Mappers
   // ---------------------------------------------------------------------------

@@ -45,7 +45,11 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
     media.ageRating === 'TV-MA' ||
     Boolean((media as any).adult);
 
-  const targetId = media.tmdbId || media.id;
+  const targetId = media.anilibertyId
+    ? `al-${media.anilibertyId}`
+    : String(media.id || '').startsWith('al-')
+    ? media.id
+    : media.tmdbId || media.id;
   const targetType = media.type === 'tv' ? 'tv' : 'movie';
 
   return (

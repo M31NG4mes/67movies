@@ -358,7 +358,8 @@ export class MediaService {
       return this.kinopoiskProvider.getDetails(parseInt(parsed.rawId, 10));
     }
     if (parsed.provider === 'anime') {
-      return this.animeProvider.getDetails(parseInt(parsed.rawId, 10));
+      const animeItem = await this.animeProvider.getDetails(parseInt(parsed.rawId, 10));
+      return this.enrichAnimeWithAniLiberty(animeItem);
     }
     if (parsed.provider === 'tvmaze') {
       return this.tvMazeProvider.getDetails(parseInt(parsed.rawId, 10));
@@ -372,17 +373,49 @@ export class MediaService {
 
     if (type === 'tv') {
       const tv = await this.tmdbService.getTvDetails(parsed.rawId);
-      return tv ? { ...tv, source: 'tmdb' } : null;
+      return this.enrichAnimeWithAniLiberty(tv ? { ...tv, source: 'tmdb' } : null);
     }
     if (type === 'movie') {
       const movie = await this.tmdbService.getMovieDetails(parsed.rawId);
-      return movie ? { ...movie, source: 'tmdb' } : null;
+      return this.enrichAnimeWithAniLiberty(movie ? { ...movie, source: 'tmdb' } : null);
     }
 
     const movie = await this.tmdbService.getMovieDetails(parsed.rawId);
-    if (movie) return { ...movie, source: 'tmdb' };
+    if (movie) return this.enrichAnimeWithAniLiberty({ ...movie, source: 'tmdb' });
     const tv = await this.tmdbService.getTvDetails(parsed.rawId);
-    return tv ? { ...tv, source: 'tmdb' } : null;
+    return this.enrichAnimeWithAniLiberty(tv ? { ...tv, source: 'tmdb' } : null);
+  }
+
+  private async enrichAnimeWithAniLiberty(item: MediaItem | null): Promise<MediaItem | null> {
+    if (!item || item.anilibertyId) return item;
+    const isAnime =
+      item.source === 'jikan' ||
+      item.source === 'shikimori' ||
+      Boolean(item.malId) ||
+      Boolean(
+        item.genres?.some((g) => g.id === 16 || /аниме|anime/i.test(g.name)) &&
+          item.originalTitle &&
+          /[\u3040-\u30ff\u4e00-\u9faf]/.test(item.originalTitle),
+      );
+    if (!isAnime) return item;
+
+    try {
+      const alDetail = await this.aniLiberty.findMatchingRelease({
+        title: item.title,
+        originalTitle: item.originalTitle,
+        malId: item.malId,
+      });
+      if (!alDetail?.anilibertyId) return item;
+      return {
+        ...item,
+        anilibertyId: alDetail.anilibertyId,
+        voiceovers: alDetail.voiceovers,
+        voiceTeamName: alDetail.voiceTeamName,
+        seasons: alDetail.seasons && alDetail.seasons.length > 0 ? alDetail.seasons : item.seasons,
+      };
+    } catch {
+      return item;
+    }
   }
 
   /**

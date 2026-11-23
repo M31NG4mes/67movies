@@ -10,7 +10,16 @@ import {
   WatchProgress,
 } from '@cinemaflow/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const PROD_API_FALLBACK = 'https://six7movies-api.onrender.com/api';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:4000/api'
+      : PROD_API_FALLBACK
+    : process.env.NODE_ENV === 'production'
+    ? PROD_API_FALLBACK
+    : 'http://localhost:4000/api');
 const TMDB_KEY = process.env.TMDB_API_KEY || '9cea7e9e78f99a9f9468c4f74f3d7eab';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const ANILIBERTY_BASE = 'https://api.anilibria.app';

@@ -44,6 +44,8 @@ const CATEGORY_TITLES: Record<CatalogCategory, string> = {
   dorama: 'Дорамы',
 };
 
+export const dynamic = 'force-dynamic';
+
 export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   const rawCategory = searchParams?.category || searchParams?.type || 'movie';
   const category: CatalogCategory = VALID_CATEGORIES.includes(rawCategory as CatalogCategory)

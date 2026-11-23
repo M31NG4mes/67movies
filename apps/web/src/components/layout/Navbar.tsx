@@ -432,7 +432,11 @@ function NavbarContent() {
               ) : (
                 <div className="divide-y divide-white/[0.06]">
                   {suggestions.map((item) => {
-                    const targetId = item.tmdbId || item.id;
+                    const targetId = item.anilibertyId
+                      ? `al-${item.anilibertyId}`
+                      : String(item.id || '').startsWith('al-')
+                      ? item.id
+                      : item.tmdbId || item.id;
                     const targetType = item.type === 'tv' ? 'tv' : 'movie';
                     return (
                       <Link

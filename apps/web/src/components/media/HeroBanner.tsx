@@ -111,7 +111,13 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
           {/* Action Buttons */}
           <div className="flex items-center gap-3 pt-2">
             <Link
-              href={`/movie/${currentMedia.tmdbId || currentMedia.id}?type=${
+              href={`/movie/${
+                currentMedia.anilibertyId
+                  ? `al-${currentMedia.anilibertyId}`
+                  : String(currentMedia.id || '').startsWith('al-')
+                  ? currentMedia.id
+                  : currentMedia.tmdbId || currentMedia.id
+              }?type=${
                 currentMedia.type === 'tv' ? 'tv' : 'movie'
               }`}
               className="inline-flex items-center justify-center px-6 sm:px-8 py-3 sm:py-3.5 brand-btn text-white font-semibold rounded-xl text-sm sm:text-base"
