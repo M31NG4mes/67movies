@@ -887,7 +887,7 @@ export const api = {
           const alId = r.id;
           const eps: any[] = Array.isArray(r?.episodes) ? r.episodes : [];
           const ep =
-            eps.find((e) => Number(e?.ordinal) === Number(episode)) ||
+            eps.find((e, idx) => (Number(e?.ordinal) || idx + 1) === Number(episode)) ||
             (eps.length === 1 && Number(episode) === 1 ? eps[0] : null);
           if (ep) {
             const team = Array.isArray(r?.members)

@@ -243,8 +243,8 @@ export class AniLibertyProviderService {
     if (!r || !Array.isArray(r.episodes)) return [];
 
     const ep =
-      r.episodes.find((e: any) => Number(e?.ordinal) === Number(episodeNumber)) ||
-      (r.episodes.length === 1 ? r.episodes[0] : null);
+      r.episodes.find((e: any, idx: number) => (Number(e?.ordinal) || idx + 1) === Number(episodeNumber)) ||
+      (r.episodes.length === 1 && Number(episodeNumber) === 1 ? r.episodes[0] : null);
     if (!ep) return [];
 
     // Minimum 720p: prioritize 1080p and 720p; only fall back to 480p if neither 1080p nor 720p exists
@@ -354,10 +354,18 @@ export class AniLibertyProviderService {
           (i) =>
             (qTitle && norm(i.title) === qTitle) ||
             (qOrig && norm(i.originalTitle) === qOrig) ||
-            (qTitle && norm(i.title).startsWith(qTitle)) ||
-            (qTitle && qTitle.startsWith(norm(i.title))),
+            (qTitle && norm(i.originalTitle) === qTitle) ||
+            (qOrig && norm(i.title) === qOrig)
         ) ||
-        catalog.items[0];
+        catalog.items.find((i) => {
+          const nt = norm(i.title);
+          const no = norm(i.originalTitle);
+          return (
+            (qTitle && qTitle.length >= 5 && nt.startsWith(qTitle) && qTitle.length / nt.length >= 0.7) ||
+            (qTitle && nt.length >= 5 && qTitle.startsWith(nt) && nt.length / qTitle.length >= 0.7) ||
+            (qOrig && qOrig.length >= 5 && no.startsWith(qOrig) && qOrig.length / no.length >= 0.7)
+          );
+        });
 
       if (matched?.anilibertyId) {
         return this.getDetails(matched.anilibertyId);

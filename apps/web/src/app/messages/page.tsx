@@ -1502,7 +1502,7 @@ function MessagesContent() {
                                   longPressTimerRef.current = null;
                                 }
                               }}
-                              className={`max-w-[82vw] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg select-none md:select-text ${
+                              className={`min-w-0 overflow-hidden max-w-[80%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg select-none md:select-text ${
                                 isMine
                                   ? 'bg-[#8065FF] text-white rounded-br-md'
                                   : 'bg-[#181821] border border-[#292936] text-white rounded-bl-md'
@@ -1532,13 +1532,13 @@ function MessagesContent() {
                                   e.stopPropagation();
                                   setLightboxUrl(msg.imageUrl!);
                                 }}
-                                className="block overflow-hidden rounded-xl max-w-[280px] sm:max-w-[320px]"
+                                className="block w-full max-w-[230px] sm:max-w-[300px] overflow-hidden rounded-xl"
                               >
                                 <img
                                   src={msg.imageUrl}
                                   alt="Фото"
                                   decoding="async"
-                                  className="w-full max-h-72 object-cover rounded-xl hover:scale-[1.02] transition-transform duration-200"
+                                  className="block w-full h-auto max-h-64 object-cover rounded-xl hover:scale-[1.02] transition-transform duration-200"
                                 />
                               </button>
                             )}
@@ -1551,14 +1551,14 @@ function MessagesContent() {
                                   e.stopPropagation();
                                   setLightboxUrl(msg.gifUrl!);
                                 }}
-                                className="block overflow-hidden rounded-xl max-w-[260px]"
+                                className="block w-full max-w-[230px] sm:max-w-[280px] overflow-hidden rounded-xl"
                               >
                                 <img
                                   src={msg.gifUrl}
                                   alt="GIF"
                                   loading="lazy"
                                   decoding="async"
-                                  className="w-full max-h-60 object-cover rounded-xl"
+                                  className="block w-full h-auto max-h-56 object-cover rounded-xl"
                                 />
                               </button>
                             )}
@@ -1568,7 +1568,7 @@ function MessagesContent() {
                               <Link
                                 href={movieHref}
                                 onClick={(e) => e.stopPropagation()}
-                                className={`group/card flex items-center gap-3 p-2.5 rounded-xl transition-all ${
+                                className={`group/card w-full min-w-0 max-w-full flex items-center gap-2.5 sm:gap-3 p-2 sm:p-2.5 rounded-xl overflow-hidden transition-all ${
                                   isMine
                                     ? 'bg-black/25 hover:bg-black/35 border border-white/15'
                                     : 'bg-[#111119] hover:border-[#8065FF] border border-[#292936]'

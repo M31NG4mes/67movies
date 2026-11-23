@@ -49,8 +49,8 @@ function titlesStrictlyMatch(
   if (!a || !b) return false;
   if (a === b) return true;
 
-  const isOnePieceA = /^(ван пис|one piece|большой куш)(\s|$)/.test(a);
-  const isOnePieceB = /^(ван пис|one piece|большой куш)(\s|$)/.test(b);
+  const isOnePieceA = /^(ван пис|one piece|большой куш)$/.test(a);
+  const isOnePieceB = /^(ван пис|one piece|большой куш)$/.test(b);
   if (isOnePieceA && isOnePieceB) return true;
 
   const shorter = a.length <= b.length ? a : b;
@@ -58,7 +58,7 @@ function titlesStrictlyMatch(
   if (
     shorter.length >= 5 &&
     longer.startsWith(shorter) &&
-    shorter.length / longer.length >= 0.65
+    shorter.length / longer.length >= 0.72
   ) {
     return true;
   }
@@ -599,7 +599,7 @@ export async function GET(req: NextRequest) {
   const alEpisodesRaw: any[] = Array.isArray(alRelease?.episodes) ? alRelease.episodes : [];
   if (alRelease && alEpisodesRaw.length > 0) {
     const exactAlEp =
-      alEpisodesRaw.find((e) => Number(e?.ordinal) === episode) ||
+      alEpisodesRaw.find((e, idx) => (Number(e?.ordinal) || idx + 1) === episode) ||
       (alEpisodesRaw.length === 1 && episode === 1 ? alEpisodesRaw[0] : null);
 
     if (exactAlEp) {
