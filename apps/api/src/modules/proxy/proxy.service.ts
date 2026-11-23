@@ -111,4 +111,72 @@ export class ProxyService {
       res.status(502).send('Segment proxy failure');
     }
   }
+
+  /**
+   * Proxies TMDB or media poster images with long-lived cache headers for regions where image.tmdb.org is blocked
+   */
+  async proxyImage(targetUrl: string, res: Response) {
+    try {
+      const response = await axios.get(targetUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+        responseType: 'stream',
+        timeout: 12000,
+        validateStatus: () => true,
+      });
+
+      res.status(response.status);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      if (response.headers['content-type']) {
+        res.setHeader('Content-Type', String(response.headers['content-type']));
+      }
+      if (response.headers['content-length']) {
+        res.setHeader('Content-Length', String(response.headers['content-length']));
+      }
+
+      response.data.pipe(res);
+    } catch (err: any) {
+      this.logger.error(`Image proxy failed for [${targetUrl}]: ${err.message}`);
+      res.status(502).send('Image proxy failure');
+    }
+  }
+
+  /**
+   * Proxies TMDB v3 REST API requests so a Russian server (e.g. Timeweb) can fetch TMDB via an external API instance
+   */
+  async proxyTmdb(
+    tmdbPath: string,
+    query: Record<string, any>,
+    authHeader: string | undefined,
+    res: Response
+  ) {
+    const cleanPath = tmdbPath.replace(/^\/+/, '');
+    const targetUrl = `https://api.themoviedb.org/3/${cleanPath}`;
+    try {
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+      if (authHeader) {
+        headers.Authorization = authHeader;
+      }
+
+      const response = await axios.get(targetUrl, {
+        params: query,
+        headers,
+        timeout: 12000,
+        validateStatus: () => true,
+      });
+
+      res.status(response.status);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(response.data);
+    } catch (err: any) {
+      this.logger.error(`TMDB proxy failed for [${targetUrl}]: ${err.message}`);
+      res.status(502).json({ error: 'TMDB proxy failure', details: err.message });
+    }
+  }
 }

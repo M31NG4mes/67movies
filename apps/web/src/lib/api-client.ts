@@ -21,7 +21,10 @@ const API_BASE =
     ? PROD_API_FALLBACK
     : 'http://localhost:4000/api');
 const TMDB_KEY = process.env.TMDB_API_KEY || '9cea7e9e78f99a9f9468c4f74f3d7eab';
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
+const TMDB_API_BASE = (process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3').replace(/\/+$/, '');
+const TMDB_IMAGE_BASE = (
+  process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE || 'https://image.tmdb.org/t/p'
+).replace(/\/+$/, '');
 const ANILIBERTY_BASE = 'https://api.anilibria.app';
 
 function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem | null {
@@ -241,7 +244,7 @@ async function fetchDirectTmdb<T>(path: string, params: Record<string, string> =
   });
 
   try {
-    const res = await fetch(`https://api.themoviedb.org/3${path}?${sp.toString()}`, {
+    const res = await fetch(`${TMDB_API_BASE}${path}?${sp.toString()}`, {
       next: { revalidate: 1800 },
     });
     if (!res.ok) return null;
