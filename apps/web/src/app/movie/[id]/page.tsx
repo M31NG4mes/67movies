@@ -43,6 +43,25 @@ interface CommentItem {
   isLiked?: boolean;
 }
 
+function getNumericMediaId(media: MediaItem | null): number {
+  if (!media) return 0;
+  if (media.tmdbId && Number.isFinite(Number(media.tmdbId))) {
+    return Number(media.tmdbId);
+  }
+  const raw = String(media.id || '').trim();
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const kp = /^kp-(\d+)$/i.exec(raw);
+  if (kp) return 1_000_000_000 + (Number(kp[1]) % 200_000_000);
+  const mal = /^mal-(\d+)$/i.exec(raw);
+  if (mal) return 1_200_000_000 + (Number(mal[1]) % 200_000_000);
+  const tvm = /^tvmaze-(\d+)$/i.exec(raw);
+  if (tvm) return 1_400_000_000 + (Number(tvm[1]) % 200_000_000);
+  const omdb = /^(?:omdb-)?tt(\d+)$/i.exec(raw);
+  if (omdb) return 1_600_000_000 + (Number(omdb[1]) % 200_000_000);
+  if (media.kinopoiskId) return 1_000_000_000 + (Number(media.kinopoiskId) % 200_000_000);
+  return 0;
+}
+
 export default function MovieDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -188,7 +207,7 @@ export default function MovieDetailPage() {
   const loadCommunityReviews = React.useCallback(async () => {
     if (!media) return;
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
-    const tmdbNum = Number(media.tmdbId || media.id);
+    const tmdbNum = getNumericMediaId(media);
     if (!tmdbNum) return;
     const mediaType = media.type === 'tv' ? 'SERIES' : 'MOVIE';
     try {
@@ -279,7 +298,7 @@ export default function MovieDetailPage() {
         method: 'POST',
         body: JSON.stringify({
           content: sendNote.trim() || `Рекомендую посмотреть «${media.title}»!`,
-          movieTmdbId: Number(media.tmdbId || media.id) || 1,
+          movieTmdbId: getNumericMediaId(media) || 1,
           movieMediaType: media.type === 'tv' ? 'SERIES' : 'MOVIE',
           movieTitle: media.title,
           moviePosterPath: media.posterPath || media.backdropPath || undefined,
@@ -300,7 +319,7 @@ export default function MovieDetailPage() {
     const res = await authFetch(`/social/collections/${collectionId}/items`, {
       method: 'POST',
       body: JSON.stringify({
-        tmdbId: Number(media.tmdbId || media.id) || 1,
+        tmdbId: getNumericMediaId(media) || 1,
         mediaType: media.type === 'tv' ? 'SERIES' : 'MOVIE',
         title: media.title,
         posterPath: media.posterPath || media.backdropPath || undefined,
@@ -337,7 +356,7 @@ export default function MovieDetailPage() {
         await authFetch('/social/ratings', {
           method: 'POST',
           body: JSON.stringify({
-            tmdbId: Number(media.tmdbId || media.id) || 1,
+            tmdbId: getNumericMediaId(media) || 1,
             mediaType: media.type === 'tv' ? 'SERIES' : 'MOVIE',
             title: media.title,
             posterPath: media.posterPath || media.backdropPath || undefined,
@@ -355,7 +374,7 @@ export default function MovieDetailPage() {
 
   const handleDeleteOwnReview = async () => {
     if (!media || !accessToken) return;
-    const tmdbNum = Number(media.tmdbId || media.id);
+    const tmdbNum = getNumericMediaId(media);
     const mediaType = media.type === 'tv' ? 'SERIES' : 'MOVIE';
     await authFetch(`/social/ratings/${tmdbNum}?mediaType=${mediaType}`, {
       method: 'DELETE',
@@ -380,9 +399,12 @@ export default function MovieDetailPage() {
     setSelectedSeason(seasonNum);
     setSelectedEpisode(episodeNum);
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    const kpParam = media?.kinopoiskId
+      ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
+      : '';
     const url = `${apiBase}/media/kinopoisk-redirect?tmdbId=${encodeURIComponent(
       String(media?.tmdbId || mediaId)
-    )}&type=${encodeURIComponent(media?.type || 'tv')}&title=${encodeURIComponent(
+    )}${kpParam}&type=${encodeURIComponent(media?.type || 'tv')}&title=${encodeURIComponent(
       media?.title || ''
     )}&year=${encodeURIComponent(String(media?.releaseYear || ''))}`;
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -474,9 +496,12 @@ export default function MovieDetailPage() {
     );
   }
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+  const kpParam = media.kinopoiskId
+    ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
+    : '';
   const kinopoiskUrl = `${apiBase}/media/kinopoisk-redirect?tmdbId=${encodeURIComponent(
     String(media.tmdbId || media.id)
-  )}&type=${encodeURIComponent(media.type || 'movie')}&title=${encodeURIComponent(
+  )}${kpParam}&type=${encodeURIComponent(media.type || 'movie')}&title=${encodeURIComponent(
     media.title || ''
   )}&year=${encodeURIComponent(String(media.releaseYear || ''))}`;
 

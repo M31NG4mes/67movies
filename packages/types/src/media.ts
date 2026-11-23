@@ -1,4 +1,5 @@
 export type MediaType = 'movie' | 'tv';
+export type MediaSourceProvider = 'tmdb' | 'kinopoisk' | 'shikimori' | 'jikan' | 'tvmaze' | 'omdb';
 
 export interface Genre {
   id: number;
@@ -37,10 +38,13 @@ export interface Season {
 }
 
 export interface MediaItem {
-  id: string; // Internal string ID or tmdb-{id}
+  id: string; // Internal string ID, numeric TMDB ID, or prefixed ID (kp-*, mal-*, tvmaze-*, omdb-*)
   tmdbId?: number;
   imdbId?: string;
   kinopoiskId?: number;
+  malId?: number;
+  tvmazeId?: number;
+  source?: MediaSourceProvider;
   type: MediaType;
   title: string;
   originalTitle?: string;

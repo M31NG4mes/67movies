@@ -141,6 +141,7 @@ export class MediaController {
   @Get('kinopoisk-redirect')
   async kinopoiskRedirect(
     @Query('tmdbId') tmdbId: string,
+    @Query('kinopoiskId') kinopoiskId = '',
     @Query('type') type: MediaType = 'movie',
     @Query('title') title = '',
     @Query('year') year = '',
@@ -148,6 +149,7 @@ export class MediaController {
   ) {
     const targetUrl = await this.mediaService.resolveKinopoiskUrl({
       tmdbId,
+      kinopoiskId,
       type,
       title,
       year,

@@ -15,6 +15,12 @@ const {
   hashPassword,
   verifyPassword,
 } = require('../dist/apps/api/src/modules/auth/password.util.js');
+const {
+  parsePrefixedMediaId,
+  normalizeTitle,
+  stripHtml,
+  mergeAndDeduplicateMedia,
+} = require('../dist/apps/api/src/modules/media/media-aggregator.util.js');
 
 test('Unit: SSRF protection blocks private IPs, localhost, metadata, and non-http schemes', () => {
   assert.equal(isSafeExternalUrl('https://api.themoviedb.org/3/movie/popular'), true);
@@ -111,4 +117,88 @@ test('Unit: Scrypt password hashing verifies valid passwords and uses unique sal
   assert.notEqual(h1, h2);
   assert.equal(await verifyPassword('StrongPass123!', h1), true);
   assert.equal(await verifyPassword('WrongPass123!', h1), false);
+});
+
+test('Unit: Multi-source ID parser routes kp/mal/tvmaze/omdb/tmdb prefixes', () => {
+  assert.deepEqual(parsePrefixedMediaId('kp-435'), { provider: 'kinopoisk', rawId: '435' });
+  assert.deepEqual(parsePrefixedMediaId('mal-16498'), { provider: 'anime', rawId: '16498' });
+  assert.deepEqual(parsePrefixedMediaId('tvmaze-82'), { provider: 'tvmaze', rawId: '82' });
+  assert.deepEqual(parsePrefixedMediaId('omdb-tt0133093'), { provider: 'omdb', rawId: 'tt0133093' });
+  assert.deepEqual(parsePrefixedMediaId('tt0133093'), { provider: 'omdb', rawId: 'tt0133093' });
+  assert.deepEqual(parsePrefixedMediaId('693134'), { provider: 'tmdb', rawId: '693134' });
+});
+
+test('Unit: Multi-source aggregator deduplicates by ID/title+year and enriches metadata', () => {
+  assert.equal(normalizeTitle('Ёлки: Новые!'), 'елки новые');
+  assert.equal(stripHtml('<p>Hello <b>world</b>&nbsp;!</p>'), 'Hello world !');
+
+  const tmdb = [
+    {
+      id: '693134',
+      tmdbId: 693134,
+      source: 'tmdb',
+      type: 'movie',
+      title: 'Дюна: Часть вторая',
+      originalTitle: 'Dune: Part Two',
+      overview: 'Описание фильма временно отсутствует.',
+      releaseYear: 2024,
+      voteAverage: 8.6,
+      genres: [],
+    },
+  ];
+
+  const kp = [
+    // Duplicate of TMDB movie by tmdbId -> should enrich kinopoiskId + overview, not duplicate
+    {
+      id: 'kp-4540126',
+      tmdbId: 693134,
+      kinopoiskId: 4540126,
+      imdbId: 'tt15239678',
+      source: 'kinopoisk',
+      type: 'movie',
+      title: 'Дюна: Часть вторая',
+      overview: 'Пол Атрейдес объединяется с Чани и фременами.',
+      releaseYear: 2024,
+      voteAverage: 8.5,
+      genres: [{ id: 9000, name: 'Фантастика' }],
+    },
+    // Unique Russian movie only on Kinopoisk -> should be added!
+    {
+      id: 'kp-41519',
+      kinopoiskId: 41519,
+      source: 'kinopoisk',
+      type: 'movie',
+      title: 'Брат',
+      originalTitle: 'Брат',
+      overview: 'Демобилизованный из армии Данила Багров возвращается в родной городок.',
+      posterPath: 'https://st.kp.yandex.net/images/film_big/41519.jpg',
+      releaseYear: 1997,
+      voteAverage: 8.3,
+      genres: [{ id: 9001, name: 'Драма' }],
+    },
+  ];
+
+  const omdb = [
+    // Duplicate of Dune via imdbId -> should not duplicate
+    {
+      id: 'omdb-tt15239678',
+      imdbId: 'tt15239678',
+      source: 'omdb',
+      type: 'movie',
+      title: 'Dune: Part Two',
+      overview: 'English plot',
+      releaseYear: 2024,
+      voteAverage: 8.5,
+      genres: [],
+    },
+  ];
+
+  const merged = mergeAndDeduplicateMedia(tmdb, [kp, omdb]);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].id, '693134');
+  assert.equal(merged[0].kinopoiskId, 4540126);
+  assert.equal(merged[0].imdbId, 'tt15239678');
+  assert.equal(merged[0].overview, 'Пол Атрейдес объединяется с Чани и фременами.');
+  assert.equal(merged[1].id, 'kp-41519');
+  assert.equal(merged[1].title, 'Брат');
 });

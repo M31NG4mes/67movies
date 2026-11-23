@@ -27,12 +27,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-24 bg-cinema-dark min-h-screen">
       <div className="mb-8 border-b border-cinema-border pb-6">
         <h1 className="text-2xl sm:text-3xl font-black text-cinema-text tracking-wide">
-          Результаты поиска TMDB: <span className="text-brand-light">«{query}»</span>
+          Результаты поиска: <span className="text-brand-light">«{query}»</span>
         </h1>
         <p className="text-sm text-cinema-muted mt-1.5">
           {items.length > 0
             ? `Найдено совпадений: ${items.length}`
-            : 'Поиск по мировой базе фильмов и сериалов'}
+            : 'Поиск по объединённой базе фильмов, сериалов и аниме'}
         </p>
       </div>
 

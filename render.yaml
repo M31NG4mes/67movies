@@ -24,5 +24,7 @@ services:
         sync: false
       - key: KINOPOISK_DEV_API_KEY
         sync: false
+      - key: KINOPOISK_UNOFFICIAL_API_KEY
+        sync: false
       - key: JWT_SECRET
         generateValue: true

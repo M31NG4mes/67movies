@@ -390,10 +390,12 @@ export const api = {
 
     getById: async (id: string, type?: MediaType) => {
       try {
-        return await fetcher<MediaItem>(`/media/${id}${type ? `?type=${type}` : ''}`);
+        return await fetcher<MediaItem>(`/media/${encodeURIComponent(id)}${type ? `?type=${type}` : ''}`);
       } catch (err) {
-        const d: any = await fetchDirectTmdb(type === 'tv' ? `/tv/${id}` : `/movie/${id}`);
-        if (d) return mapTmdbToMedia(d, type === 'tv' ? 'tv' : 'movie');
+        if (/^\d+$/.test(id)) {
+          const d: any = await fetchDirectTmdb(type === 'tv' ? `/tv/${id}` : `/movie/${id}`);
+          if (d) return mapTmdbToMedia(d, type === 'tv' ? 'tv' : 'movie');
+        }
         throw err;
       }
     },

@@ -80,6 +80,8 @@ export class ExternalMediaService {
    * 1. Official YouTube Trailers from TMDB (Russian first, English fallback)
    */
   async getTrailers(tmdbId: string, type: 'movie' | 'tv' = 'movie'): Promise<TrailerItem[]> {
+    if (!/^\d+$/.test(String(tmdbId || '').trim())) return [];
+
     const cacheKey = `ext:trailers:${type}:${tmdbId}`;
     const cached = await this.redisService.get<TrailerItem[]>(cacheKey);
     if (cached) return cached;
@@ -163,39 +165,61 @@ export class ExternalMediaService {
   }
 
   /**
-   * 3. KinopoiskDev API (Official Kinopoisk rating, budget, facts)
-   * Requires optional KINOPOISK_DEV_API_KEY in .env (free tier at kinopoisk.dev)
+   * 3. Kinopoisk API (Kinopoisk.dev v1.4 or Kinopoisk Unofficial API v2.2 fallback)
+   * Requires optional KINOPOISK_DEV_API_KEY or KINOPOISK_UNOFFICIAL_API_KEY in .env
    */
   async getKinopoiskDevMeta(title?: string, year?: string): Promise<KinopoiskExtra | null> {
-    const apiKey = this.configService.get<string>('KINOPOISK_DEV_API_KEY', '').trim();
-    if (!apiKey || !title) return null;
+    const kpDevKey = this.configService.get<string>('KINOPOISK_DEV_API_KEY', '').trim();
+    const kpUnofficialKey = this.configService.get<string>('KINOPOISK_UNOFFICIAL_API_KEY', '').trim();
+    if ((!kpDevKey && !kpUnofficialKey) || !title) return null;
 
     const cacheKey = `ext:kpdev:${title}:${year || ''}`;
     const cached = await this.redisService.get<KinopoiskExtra>(cacheKey);
     if (cached) return cached;
 
-    const data = await this.fetchJson<any>(
-      `https://api.kinopoisk.dev/v1.4/movie/search?page=1&limit=1&query=${encodeURIComponent(title)}`,
-      { 'X-API-KEY': apiKey },
-    );
+    if (kpDevKey) {
+      const data = await this.fetchJson<any>(
+        `https://api.kinopoisk.dev/v1.4/movie/search?page=1&limit=1&query=${encodeURIComponent(title)}`,
+        { 'X-API-KEY': kpDevKey },
+      );
 
-    const doc = data?.docs?.[0];
-    if (!doc) return null;
+      const doc = data?.docs?.[0];
+      if (doc) {
+        const extra: KinopoiskExtra = {
+          kpId: doc.id,
+          kpRating: doc.rating?.kp ? Math.round(doc.rating.kp * 10) / 10 : undefined,
+          imdbRating: doc.rating?.imdb ? Math.round(doc.rating.imdb * 10) / 10 : undefined,
+          facts: Array.isArray(doc.facts)
+            ? doc.facts
+                .filter((f: any) => !f.spoiler && f.value)
+                .slice(0, 3)
+                .map((f: any) => String(f.value).replace(/<[^>]+>/g, ''))
+            : undefined,
+        };
 
-    const extra: KinopoiskExtra = {
-      kpId: doc.id,
-      kpRating: doc.rating?.kp ? Math.round(doc.rating.kp * 10) / 10 : undefined,
-      imdbRating: doc.rating?.imdb ? Math.round(doc.rating.imdb * 10) / 10 : undefined,
-      facts: Array.isArray(doc.facts)
-        ? doc.facts
-            .filter((f: any) => !f.spoiler && f.value)
-            .slice(0, 3)
-            .map((f: any) => String(f.value).replace(/<[^>]+>/g, ''))
-        : undefined,
-    };
+        await this.redisService.set(cacheKey, extra, 86400);
+        return extra;
+      }
+    }
 
-    await this.redisService.set(cacheKey, extra, 86400);
-    return extra;
+    if (kpUnofficialKey) {
+      const data = await this.fetchJson<any>(
+        `https://kinopoiskapiunofficial.tech/api/v2.1/films/search-by-keyword?keyword=${encodeURIComponent(title)}&page=1`,
+        { 'X-API-KEY': kpUnofficialKey },
+      );
+      const film = data?.films?.[0];
+      if (film) {
+        const kpRating = parseFloat(String(film.rating || 0));
+        const extra: KinopoiskExtra = {
+          kpId: Number(film.filmId) || undefined,
+          kpRating: !isNaN(kpRating) && kpRating > 0 ? Math.round(kpRating * 10) / 10 : undefined,
+        };
+        await this.redisService.set(cacheKey, extra, 86400);
+        return extra;
+      }
+    }
+
+    return null;
   }
 
   /**

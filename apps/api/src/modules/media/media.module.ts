@@ -3,10 +3,30 @@ import { MediaController } from './media.controller';
 import { MediaService } from './media.service';
 import { TmdbService } from './tmdb.service';
 import { ExternalMediaService } from './external-media.service';
+import { KinopoiskProviderService } from './providers/kinopoisk.provider';
+import { AnimeProviderService } from './providers/anime.provider';
+import { TvMazeProviderService } from './providers/tvmaze.provider';
+import { OmdbProviderService } from './providers/omdb.provider';
 
 @Module({
   controllers: [MediaController],
-  providers: [MediaService, TmdbService, ExternalMediaService],
-  exports: [MediaService, TmdbService, ExternalMediaService],
+  providers: [
+    MediaService,
+    TmdbService,
+    ExternalMediaService,
+    KinopoiskProviderService,
+    AnimeProviderService,
+    TvMazeProviderService,
+    OmdbProviderService,
+  ],
+  exports: [
+    MediaService,
+    TmdbService,
+    ExternalMediaService,
+    KinopoiskProviderService,
+    AnimeProviderService,
+    TvMazeProviderService,
+    OmdbProviderService,
+  ],
 })
 export class MediaModule {}
