@@ -12,6 +12,8 @@ interface EpisodePickerProps {
   activeEpisode: number;
   onSelectEpisode: (seasonNumber: number, episodeNumber: number) => void;
   onSelectSeason: (seasonNumber: number) => void;
+  animeTitle?: string;
+  animeOriginalTitle?: string;
 }
 
 export function EpisodePicker({
@@ -20,6 +22,8 @@ export function EpisodePicker({
   activeEpisode,
   onSelectEpisode,
   onSelectSeason,
+  animeTitle,
+  animeOriginalTitle,
 }: EpisodePickerProps) {
   const currentSeason =
     (seasons && seasons.find((s) => s.seasonNumber === activeSeason)) ||
@@ -62,6 +66,9 @@ export function EpisodePicker({
     const idx = allEpisodes.findIndex((e) => e.episodeNumber === activeEpisode);
     return idx >= 0 ? Math.floor(idx / EPISODES_PER_PAGE) : 0;
   });
+  const [kitsuCovers, setKitsuCovers] = useState<
+    Record<number, { thumb: string; title?: string }>
+  >({});
 
   // Automatically jump to the page containing activeEpisode when season or activeEpisode changes
   useEffect(() => {
@@ -74,10 +81,36 @@ export function EpisodePicker({
     }
   }, [activeSeason, activeEpisode, allEpisodes.length]);
 
-  if (!seasons || seasons.length === 0 || !currentSeason) return null;
-
   const safePage = Math.min(Math.max(0, currentPage), totalPages - 1);
   const startIdx = safePage * EPISODES_PER_PAGE;
+
+  // Fetch unique per-episode covers from Kitsu API for the currently visible 50-episode page
+  useEffect(() => {
+    if (!animeOriginalTitle && !animeTitle) return;
+    let cancelled = false;
+    const sp = new URLSearchParams({
+      offset: String(startIdx),
+      limit: String(EPISODES_PER_PAGE),
+    });
+    if (animeOriginalTitle) sp.set('originalTitle', animeOriginalTitle);
+    if (animeTitle) sp.set('title', animeTitle);
+
+    fetch(`/api/anime-covers?${sp.toString()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.covers) {
+          setKitsuCovers((prev) => ({ ...prev, ...d.covers }));
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [animeTitle, animeOriginalTitle, startIdx]);
+
+  if (!seasons || seasons.length === 0 || !currentSeason) return null;
+
   const visibleEpisodes = allEpisodes.slice(startIdx, startIdx + EPISODES_PER_PAGE);
 
   return (
@@ -177,7 +210,12 @@ export function EpisodePicker({
         {visibleEpisodes.map((ep) => {
           const isSelected =
             ep.seasonNumber === activeSeason && ep.episodeNumber === activeEpisode;
-          const coverSrc = ep.stillPath || currentSeason.posterPath || null;
+          const kitsuInfo = kitsuCovers[ep.episodeNumber];
+          const hasUniqueAlPreview =
+            Boolean(ep.stillPath) && ep.stillPath !== currentSeason.posterPath;
+          const coverSrc = hasUniqueAlPreview
+            ? ep.stillPath
+            : kitsuInfo?.thumb || ep.stillPath || currentSeason.posterPath || null;
           return (
             <button
               key={`${ep.id}-${ep.episodeNumber}`}

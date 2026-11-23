@@ -481,7 +481,7 @@ export function VideoPlayer({
         ref={videoRef}
         className="w-full h-full object-contain"
         playsInline
-        crossOrigin="anonymous"
+        crossOrigin={audioBoost > 1 ? 'anonymous' : undefined}
         onTimeUpdate={onTimeUpdate}
         onLoadedMetadata={onLoadedMetadata}
         onWaiting={() => setIsBuffering(true)}

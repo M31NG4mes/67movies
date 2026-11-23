@@ -1145,6 +1145,8 @@ export default function MovieDetailPage() {
               activeEpisode={selectedEpisode}
               onSelectSeason={handleSeasonChange}
               onSelectEpisode={handleEpisodeChange}
+              animeTitle={isAnimeMedia ? media.title : undefined}
+              animeOriginalTitle={isAnimeMedia ? media.originalTitle : undefined}
             />
           </section>
         )}
