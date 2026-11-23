@@ -15,6 +15,7 @@ import { MediaTypeDto } from '../users/dto/users.dto';
 import {
   AddCollectionItemDto,
   CreateCollectionDto,
+  CreateGroupDto,
   EditMessageDto,
   SendFriendRequestDto,
   SendMessageDto,
@@ -51,6 +52,9 @@ export class SocialService {
   private readonly memRatings = new Map<string, InMemoryRating>();
   private readonly memCollections = new Map<string, any>();
   private readonly memMessages = new Map<string, any>();
+  private readonly memGroups = new Map<string, any>();
+  private readonly memGroupMessages = new Map<string, any>();
+  private groupTablesReady = false;
   private readonly typingStatus = new Map<string, number>(); // key: `${senderId}->${receiverId}`, val: expiresAt ms
 
   constructor(
@@ -823,17 +827,36 @@ export class SocialService {
     const dmModel = (this.db as any)?.directMessage;
     if (dmModel) {
       const existing = await dmModel.findUnique({ where: { id: messageId } });
-      if (!existing) throw new NotFoundException('Сообщение не найдено');
-      if (existing.senderId !== userId) {
+      if (existing) {
+        if (existing.senderId !== userId) {
+          throw new ForbiddenException('Вы можете редактировать только свои сообщения');
+        }
+        return dmModel.update({
+          where: { id: messageId },
+          data: { content: cleanContent, editedAt: new Date() },
+        });
+      }
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT * FROM chat_group_messages WHERE id = $1 LIMIT 1`,
+        messageId,
+      );
+      const gm = rows?.[0];
+      if (!gm) throw new NotFoundException('Сообщение не найдено');
+      if (gm.sender_id !== userId) {
         throw new ForbiddenException('Вы можете редактировать только свои сообщения');
       }
-      return dmModel.update({
-        where: { id: messageId },
-        data: { content: cleanContent, editedAt: new Date() },
-      });
+      const now = new Date();
+      await (this.db as any).$executeRawUnsafe(
+        `UPDATE chat_group_messages SET content = $1, edited_at = $2 WHERE id = $3`,
+        cleanContent,
+        now,
+        messageId,
+      );
+      return this.mapRawGroupMessage({ ...gm, content: cleanContent, edited_at: now });
     }
 
-    const existing = this.memMessages.get(messageId);
+    const existing = this.memMessages.get(messageId) || this.memGroupMessages.get(messageId);
     if (!existing) throw new NotFoundException('Сообщение не найдено');
     if (existing.senderId !== userId) {
       throw new ForbiddenException('Вы можете редактировать только свои сообщения');
@@ -869,24 +892,393 @@ export class SocialService {
     const dmModel = (this.db as any)?.directMessage;
     if (dmModel) {
       const existing = await dmModel.findUnique({ where: { id: messageId } });
-      if (!existing) throw new NotFoundException('Сообщение не найдено');
-      if (existing.senderId !== userId && existing.receiverId !== userId) {
-        throw new ForbiddenException('Нет доступа к этому диалогу');
+      if (existing) {
+        if (existing.senderId !== userId && existing.receiverId !== userId) {
+          throw new ForbiddenException('Нет доступа к этому диалогу');
+        }
+        const nextReactions = applyToggle(existing.reactions);
+        return dmModel.update({
+          where: { id: messageId },
+          data: { reactions: nextReactions },
+        });
       }
-      const nextReactions = applyToggle(existing.reactions);
-      return dmModel.update({
-        where: { id: messageId },
-        data: { reactions: nextReactions },
-      });
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT * FROM chat_group_messages WHERE id = $1 LIMIT 1`,
+        messageId,
+      );
+      const gm = rows?.[0];
+      if (!gm) throw new NotFoundException('Сообщение не найдено');
+      await this.ensureGroupMember(gm.group_id, userId);
+      const parsed =
+        typeof gm.reactions === 'string' ? JSON.parse(gm.reactions || '{}') : gm.reactions || {};
+      const nextReactions = applyToggle(parsed);
+      await (this.db as any).$executeRawUnsafe(
+        `UPDATE chat_group_messages SET reactions = $1::jsonb WHERE id = $2`,
+        JSON.stringify(nextReactions),
+        messageId,
+      );
+      return this.mapRawGroupMessage({ ...gm, reactions: nextReactions });
     }
 
-    const existing = this.memMessages.get(messageId);
+    const existing = this.memMessages.get(messageId) || this.memGroupMessages.get(messageId);
     if (!existing) throw new NotFoundException('Сообщение не найдено');
-    if (existing.senderId !== userId && existing.receiverId !== userId) {
+    if (existing.groupId) {
+      const grp = this.memGroups.get(existing.groupId);
+      if (!grp || !grp.memberIds.includes(userId)) {
+        throw new ForbiddenException('Нет доступа к этой группе');
+      }
+    } else if (existing.senderId !== userId && existing.receiverId !== userId) {
       throw new ForbiddenException('Нет доступа к этому диалогу');
     }
     existing.reactions = applyToggle(existing.reactions);
     this.persistSocial();
     return existing;
+  }
+
+  async deleteMessage(userId: string, messageId: string) {
+    const dmModel = (this.db as any)?.directMessage;
+    if (dmModel) {
+      const existing = await dmModel.findUnique({ where: { id: messageId } });
+      if (existing) {
+        if (existing.senderId !== userId) {
+          throw new ForbiddenException('Вы можете удалять только свои сообщения');
+        }
+        await dmModel.delete({ where: { id: messageId } });
+        return { deleted: true, id: messageId };
+      }
+
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT id, sender_id FROM chat_group_messages WHERE id = $1 LIMIT 1`,
+        messageId,
+      );
+      const gm = rows?.[0];
+      if (!gm) throw new NotFoundException('Сообщение не найдено');
+      if (gm.sender_id !== userId) {
+        throw new ForbiddenException('Вы можете удалять только свои сообщения');
+      }
+      await (this.db as any).$executeRawUnsafe(
+        `DELETE FROM chat_group_messages WHERE id = $1`,
+        messageId,
+      );
+      return { deleted: true, id: messageId };
+    }
+
+    const existing = this.memMessages.get(messageId);
+    if (existing) {
+      if (existing.senderId !== userId) {
+        throw new ForbiddenException('Вы можете удалять только свои сообщения');
+      }
+      this.memMessages.delete(messageId);
+      this.persistSocial();
+      return { deleted: true, id: messageId };
+    }
+
+    const gm = this.memGroupMessages.get(messageId);
+    if (!gm) throw new NotFoundException('Сообщение не найдено');
+    if (gm.senderId !== userId) {
+      throw new ForbiddenException('Вы можете удалять только свои сообщения');
+    }
+    this.memGroupMessages.delete(messageId);
+    return { deleted: true, id: messageId };
+  }
+
+  private async ensureGroupTables() {
+    if (!this.db || this.groupTablesReady) return;
+    await (this.db as any).$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS chat_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await (this.db as any).$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS chat_group_members (
+        group_id TEXT NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (group_id, user_id)
+      );
+    `);
+    await (this.db as any).$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS chat_group_messages (
+        id TEXT PRIMARY KEY,
+        group_id TEXT NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+        sender_id TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        image_url TEXT,
+        gif_url TEXT,
+        reply_to_id TEXT,
+        reply_to_content TEXT,
+        reply_to_sender_name TEXT,
+        edited_at TIMESTAMPTZ,
+        reactions JSONB NOT NULL DEFAULT '{}'::jsonb,
+        movie_tmdb_id INT,
+        movie_media_type TEXT,
+        movie_title TEXT,
+        movie_poster_path TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    this.groupTablesReady = true;
+  }
+
+  private async ensureGroupMember(groupId: string, userId: string) {
+    if (this.db) {
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT user_id FROM chat_group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
+        groupId,
+        userId,
+      );
+      if (!rows?.length) {
+        throw new ForbiddenException('Вы не являетесь участником этой группы');
+      }
+      return;
+    }
+    const grp = this.memGroups.get(groupId);
+    if (!grp || !grp.memberIds.includes(userId)) {
+      throw new ForbiddenException('Вы не являетесь участником этой группы');
+    }
+  }
+
+  private mapRawGroupMessage(row: any) {
+    let reactions = {};
+    try {
+      reactions =
+        typeof row.reactions === 'string'
+          ? JSON.parse(row.reactions || '{}')
+          : row.reactions || {};
+    } catch {
+      reactions = {};
+    }
+    return {
+      id: row.id,
+      groupId: row.group_id,
+      senderId: row.sender_id,
+      content: row.content || '',
+      imageUrl: row.image_url || null,
+      gifUrl: row.gif_url || null,
+      replyToId: row.reply_to_id || null,
+      replyToContent: row.reply_to_content || null,
+      replyToSenderName: row.reply_to_sender_name || null,
+      editedAt: row.edited_at || null,
+      reactions,
+      movieTmdbId: row.movie_tmdb_id || null,
+      movieMediaType: row.movie_media_type || null,
+      movieTitle: row.movie_title || null,
+      moviePosterPath: row.movie_poster_path || null,
+      createdAt: row.created_at,
+    };
+  }
+
+  async createGroup(userId: string, dto: CreateGroupDto) {
+    const cleanName = sanitizeText(dto.name);
+    if (!cleanName) {
+      throw new BadRequestException('Введите название группы');
+    }
+
+    const friendsList = await this.getFriendsOverview(userId);
+    const allowedFriendIds = new Set(
+      (friendsList.friends || []).map((f: any) => f.friend?.id).filter(Boolean),
+    );
+    const uniqueMembers = Array.from(
+      new Set([
+        userId,
+        ...(dto.memberIds || []).filter((id) => id && id !== userId && allowedFriendIds.has(id)),
+      ]),
+    );
+    if (uniqueMembers.length < 2) {
+      throw new BadRequestException('Выберите хотя бы одного друга для создания группы');
+    }
+
+    const groupId = crypto.randomUUID();
+    const now = new Date();
+
+    if (this.db) {
+      await this.ensureGroupTables();
+      await (this.db as any).$executeRawUnsafe(
+        `INSERT INTO chat_groups (id, name, owner_id, created_at) VALUES ($1, $2, $3, $4)`,
+        groupId,
+        cleanName,
+        userId,
+        now,
+      );
+      for (const memberId of uniqueMembers) {
+        await (this.db as any).$executeRawUnsafe(
+          `INSERT INTO chat_group_members (group_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4)`,
+          groupId,
+          memberId,
+          memberId === userId ? 'owner' : 'member',
+          now,
+        );
+      }
+    } else {
+      this.memGroups.set(groupId, {
+        id: groupId,
+        name: cleanName,
+        ownerId: userId,
+        memberIds: uniqueMembers,
+        createdAt: now,
+      });
+    }
+
+    const members = (await Promise.all(uniqueMembers.map((id) => this.enrichUser(id)))).filter(Boolean);
+    return {
+      id: groupId,
+      name: cleanName,
+      ownerId: userId,
+      memberCount: members.length,
+      members,
+      lastMessage: null,
+      createdAt: now,
+    };
+  }
+
+  async getMyGroups(userId: string) {
+    if (this.db) {
+      await this.ensureGroupTables();
+      const groupRows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT g.id, g.name, g.owner_id, g.created_at
+         FROM chat_groups g
+         INNER JOIN chat_group_members m ON m.group_id = g.id
+         WHERE m.user_id = $1
+         ORDER BY g.created_at DESC`,
+        userId,
+      );
+      const groups = await Promise.all(
+        (groupRows || []).map(async (g) => {
+          const memberRows: any[] = await (this.db as any).$queryRawUnsafe(
+            `SELECT user_id FROM chat_group_members WHERE group_id = $1`,
+            g.id,
+          );
+          const members = (
+            await Promise.all((memberRows || []).map((r) => this.enrichUser(r.user_id)))
+          ).filter(Boolean);
+          const lastMsgRows: any[] = await (this.db as any).$queryRawUnsafe(
+            `SELECT * FROM chat_group_messages WHERE group_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            g.id,
+          );
+          return {
+            id: g.id,
+            name: g.name,
+            ownerId: g.owner_id,
+            memberCount: members.length,
+            members,
+            lastMessage: lastMsgRows?.[0] ? this.mapRawGroupMessage(lastMsgRows[0]) : null,
+            createdAt: g.created_at,
+          };
+        }),
+      );
+      return { groups };
+    }
+
+    const groups = await Promise.all(
+      Array.from(this.memGroups.values())
+        .filter((g) => g.memberIds.includes(userId))
+        .map(async (g) => {
+          const members = (
+            await Promise.all(g.memberIds.map((id: string) => this.enrichUser(id)))
+          ).filter(Boolean);
+          const msgs = Array.from(this.memGroupMessages.values())
+            .filter((m) => m.groupId === g.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          return {
+            id: g.id,
+            name: g.name,
+            ownerId: g.ownerId,
+            memberCount: members.length,
+            members,
+            lastMessage: msgs[0] || null,
+            createdAt: g.createdAt,
+          };
+        }),
+    );
+    return { groups };
+  }
+
+  async getGroupMessages(userId: string, groupId: string) {
+    await this.ensureGroupMember(groupId, userId);
+
+    if (this.db) {
+      await this.ensureGroupTables();
+      const msgRows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT * FROM chat_group_messages WHERE group_id = $1 ORDER BY created_at ASC LIMIT 200`,
+        groupId,
+      );
+      const messages = msgRows.map((r) => this.mapRawGroupMessage(r));
+      return { groupId, messages };
+    }
+
+    const messages = Array.from(this.memGroupMessages.values())
+      .filter((m) => m.groupId === groupId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return { groupId, messages };
+  }
+
+  async sendGroupMessage(userId: string, groupId: string, dto: SendMessageDto) {
+    await this.ensureGroupMember(groupId, userId);
+
+    const cleanContent = dto.content ? sanitizeText(dto.content) : '';
+    const imageUrl = dto.imageUrl?.trim() || null;
+    const gifUrl = dto.gifUrl?.trim() || null;
+
+    if (!cleanContent && !dto.movieTmdbId && !imageUrl && !gifUrl) {
+      throw new BadRequestException('Сообщение не может быть пустым');
+    }
+
+    const msgId = crypto.randomUUID();
+    const now = new Date();
+    const payload = {
+      id: msgId,
+      groupId,
+      senderId: userId,
+      content: cleanContent,
+      imageUrl,
+      gifUrl,
+      replyToId: dto.replyToId || null,
+      replyToContent: dto.replyToContent ? sanitizeText(dto.replyToContent) : null,
+      replyToSenderName: dto.replyToSenderName ? sanitizeText(dto.replyToSenderName) : null,
+      editedAt: null,
+      reactions: {},
+      movieTmdbId: dto.movieTmdbId || null,
+      movieMediaType: dto.movieMediaType || null,
+      movieTitle: dto.movieTitle ? sanitizeText(dto.movieTitle) : null,
+      moviePosterPath: dto.moviePosterPath || null,
+      createdAt: now,
+    };
+
+    if (this.db) {
+      await this.ensureGroupTables();
+      await (this.db as any).$executeRawUnsafe(
+        `INSERT INTO chat_group_messages (
+          id, group_id, sender_id, content, image_url, gif_url,
+          reply_to_id, reply_to_content, reply_to_sender_name,
+          reactions, movie_tmdb_id, movie_media_type, movie_title, movie_poster_path, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15)`,
+        payload.id,
+        payload.groupId,
+        payload.senderId,
+        payload.content,
+        payload.imageUrl,
+        payload.gifUrl,
+        payload.replyToId,
+        payload.replyToContent,
+        payload.replyToSenderName,
+        '{}',
+        payload.movieTmdbId,
+        payload.movieMediaType,
+        payload.movieTitle,
+        payload.moviePosterPath,
+        now,
+      );
+      return payload;
+    }
+
+    this.memGroupMessages.set(msgId, payload);
+    return payload;
   }
 }

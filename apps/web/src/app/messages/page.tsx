@@ -22,6 +22,8 @@ import {
   Copy,
   Reply,
   Pencil,
+  Trash2,
+  Users,
 } from 'lucide-react';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
 
@@ -66,6 +68,15 @@ interface ConversationSummary {
   friend: FriendUser;
   unreadCount: number;
   isTyping?: boolean;
+  lastMessage: DirectMessageItem | null;
+}
+
+interface ChatGroupItem {
+  id: string;
+  name: string;
+  ownerId: string;
+  memberCount: number;
+  members: FriendUser[];
   lastMessage: DirectMessageItem | null;
 }
 
@@ -189,8 +200,14 @@ function MessagesContent() {
   const { user, accessToken, hydrated, hydrate } = useAuthStore();
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [groups, setGroups] = useState<ChatGroupItem[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(initialFriendId);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [activeFriend, setActiveFriend] = useState<FriendUser | null>(null);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [isFriendTyping, setIsFriendTyping] = useState(false);
   const [messages, setMessages] = useState<DirectMessageItem[]>([]);
   const [draft, setDraft] = useState('');
@@ -258,17 +275,22 @@ function MessagesContent() {
 
   const loadConversations = useCallback(async () => {
     if (!accessToken) return;
-    const [convRes, friendsRes] = await Promise.all([
+    const [convRes, friendsRes, groupsRes] = await Promise.all([
       authFetch('/social/messages/conversations', { cache: 'no-store' }).catch(() => null),
       authFetch('/social/friends', { cache: 'no-store' }).catch(() => null),
+      authFetch('/social/groups', { cache: 'no-store' }).catch(() => null),
     ]);
     if (convRes?.ok) {
       const data = await convRes.json();
       const list: ConversationSummary[] = data.conversations || [];
       setConversations(list);
-      if (!selectedFriendId && !initialFriendId && list.length > 0 && window.innerWidth >= 768) {
+      if (!selectedFriendId && !selectedGroupId && !initialFriendId && list.length > 0 && window.innerWidth >= 768) {
         setSelectedFriendId(list[0].friend.id);
       }
+    }
+    if (groupsRes?.ok) {
+      const gData = await groupsRes.json();
+      setGroups(gData.groups || []);
     }
     if (friendsRes?.ok) {
       const fData = await friendsRes.json();
@@ -276,7 +298,7 @@ function MessagesContent() {
       setOutgoingRequests(fData.outgoingRequests || []);
     }
     setLoadingList(false);
-  }, [accessToken, selectedFriendId, initialFriendId]);
+  }, [accessToken, selectedFriendId, selectedGroupId, initialFriendId]);
 
   const loadThread = useCallback(
     async (friendId: string, silent = false) => {
@@ -290,6 +312,24 @@ function MessagesContent() {
         setActiveFriend(data.friend || null);
         setMessages(data.messages || []);
         setIsFriendTyping(Boolean(data.isFriendTyping));
+      }
+      if (!silent) setLoadingChat(false);
+    },
+    [accessToken]
+  );
+
+  const loadGroupThread = useCallback(
+    async (groupId: string, silent = false) => {
+      if (!accessToken) return;
+      if (!silent) setLoadingChat(true);
+      const res = await authFetch(`/social/groups/${encodeURIComponent(groupId)}/messages`, {
+        cache: 'no-store',
+      }).catch(() => null);
+      if (res?.ok) {
+        const data = await res.json();
+        setActiveFriend(null);
+        setMessages(data.messages || []);
+        setIsFriendTyping(false);
       }
       if (!silent) setLoadingChat(false);
     },
@@ -310,18 +350,30 @@ function MessagesContent() {
     }
   }, [accessToken, selectedFriendId, loadThread]);
 
+  useEffect(() => {
+    if (accessToken && selectedGroupId) {
+      prevMsgCountRef.current = 0;
+      setIsFriendTyping(false);
+      setReplyingTo(null);
+      setEditingMsg(null);
+      loadGroupThread(selectedGroupId, false);
+    }
+  }, [accessToken, selectedGroupId, loadGroupThread]);
+
   // Live polling (pauses automatically when browser tab is hidden to save CPU/battery)
   useEffect(() => {
     if (!accessToken) return;
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       loadConversations();
-      if (selectedFriendId) {
+      if (selectedGroupId) {
+        loadGroupThread(selectedGroupId, true);
+      } else if (selectedFriendId) {
         loadThread(selectedFriendId, true);
       }
     }, 2200);
     return () => clearInterval(interval);
-  }, [accessToken, selectedFriendId, loadConversations, loadThread]);
+  }, [accessToken, selectedFriendId, selectedGroupId, loadConversations, loadThread, loadGroupThread]);
 
   // Smooth auto-scroll on new messages or typing bubble
   useEffect(() => {
@@ -545,6 +597,59 @@ function MessagesContent() {
     }
   };
 
+  const handleDeleteMessage = async (msg: DirectMessageItem) => {
+    setContextMenu(null);
+    const snapshot = messages;
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    if (editingMsg?.id === msg.id) {
+      setEditingMsg(null);
+      setDraft('');
+    }
+    if (replyingTo?.id === msg.id) setReplyingTo(null);
+
+    const res = await authFetch(`/social/messages/${encodeURIComponent(msg.id)}`, {
+      method: 'DELETE',
+    }).catch(() => null);
+
+    if (res?.ok) {
+      showChatToast('Сообщение удалено');
+      loadConversations();
+    } else {
+      setMessages(snapshot);
+      showChatToast('Не удалось удалить сообщение');
+    }
+  };
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!groupName.trim() || selectedGroupMemberIds.length === 0 || creatingGroup) return;
+    setCreatingGroup(true);
+    try {
+      const res = await authFetch('/social/groups', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: groupName.trim(),
+          memberIds: selectedGroupMemberIds,
+        }),
+      });
+      if (res.ok) {
+        const created: ChatGroupItem = await res.json();
+        setGroups((prev) => [created, ...prev]);
+        setIsCreateGroupOpen(false);
+        setGroupName('');
+        setSelectedGroupMemberIds([]);
+        setSelectedFriendId(null);
+        setSelectedGroupId(created.id);
+        showChatToast(`Группа «${created.name}» создана`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showChatToast(err?.message || 'Ошибка создания группы');
+      }
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
   const sendPayload = async (payload: {
     content?: string;
     imageUrl?: string;
@@ -553,10 +658,15 @@ function MessagesContent() {
     replyToContent?: string;
     replyToSenderName?: string;
   }) => {
-    if (!selectedFriendId || sending) return false;
+    const targetUrl = selectedGroupId
+      ? `/social/groups/${encodeURIComponent(selectedGroupId)}/messages`
+      : selectedFriendId
+      ? `/social/messages/${encodeURIComponent(selectedFriendId)}`
+      : null;
+    if (!targetUrl || sending) return false;
     setSending(true);
     try {
-      const res = await authFetch(`/social/messages/${encodeURIComponent(selectedFriendId)}`, {
+      const res = await authFetch(targetUrl, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -574,7 +684,7 @@ function MessagesContent() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFriendId || sending) return;
+    if ((!selectedFriendId && !selectedGroupId) || sending) return;
 
     // Handle Edit mode
     if (editingMsg) {
@@ -709,13 +819,22 @@ function MessagesContent() {
         {/* Left Sidebar: Friends & Conversations */}
         <aside
           className={`${
-            selectedFriendId ? 'hidden md:flex' : 'flex'
+            selectedFriendId || selectedGroupId ? 'hidden md:flex' : 'flex'
           } md:col-span-4 flex-col rounded-3xl bg-[#111119] border border-[#292936] overflow-hidden min-h-0`}
         >
-          <div className="px-4 py-3 border-b border-[#292936] flex items-center justify-between shrink-0">
+          <div className="px-4 py-3 border-b border-[#292936] flex items-center justify-between gap-2 shrink-0">
             <span className="text-xs font-bold uppercase tracking-wider text-[#92929F]">
-              Диалоги ({conversations.length})
+              Диалоги ({conversations.length + groups.length})
             </span>
+            <button
+              type="button"
+              onClick={() => setIsCreateGroupOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#181821] hover:bg-[#8065FF]/20 border border-[#292936] hover:border-[#8065FF]/50 text-[11px] font-bold text-[#A18BFF] transition-all"
+              title="Создать групповой чат с друзьями"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Создать группу</span>
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -762,7 +881,7 @@ function MessagesContent() {
 
             {loadingList ? (
               <div className="p-8 text-center text-xs text-[#92929F]">Загрузка чатов...</div>
-            ) : conversations.length === 0 ? (
+            ) : conversations.length === 0 && groups.length === 0 ? (
               <div className="p-8 text-center space-y-3">
                 <MessageCircle className="w-10 h-10 text-[#A18BFF] mx-auto opacity-60" />
                 <p className="text-sm font-bold text-white">Пока нет друзей в чате</p>
@@ -780,26 +899,72 @@ function MessagesContent() {
                 </button>
               </div>
             ) : (
-              conversations.map((conv) => {
-                const isSelected = conv.friend.id === selectedFriendId;
-                const previewText = conv.isTyping
-                  ? 'печатает...'
-                  : conv.lastMessage
-                  ? conv.lastMessage.movieTitle
-                    ? `🎬 ${conv.lastMessage.movieTitle}`
-                    : conv.lastMessage.gifUrl
-                    ? '🎞️ GIF'
-                    : conv.lastMessage.imageUrl
-                    ? `📷 Фото${conv.lastMessage.content ? ` — ${conv.lastMessage.content}` : ''}`
-                    : conv.lastMessage.content
-                  : 'Начните переписку...';
+              <>
+                {groups.map((grp) => {
+                  const isSelected = grp.id === selectedGroupId;
+                  const previewText = grp.lastMessage
+                    ? grp.lastMessage.movieTitle
+                      ? `🎬 ${grp.lastMessage.movieTitle}`
+                      : grp.lastMessage.gifUrl
+                      ? '🎞️ GIF'
+                      : grp.lastMessage.imageUrl
+                      ? `📷 Фото${grp.lastMessage.content ? ` — ${grp.lastMessage.content}` : ''}`
+                      : grp.lastMessage.content
+                    : `${grp.memberCount} участн.`;
 
-                return (
-                  <motion.button
-                    key={conv.friend.id}
-                    type="button"
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setSelectedFriendId(conv.friend.id)}
+                  return (
+                    <motion.button
+                      key={grp.id}
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setSelectedFriendId(null);
+                        setSelectedGroupId(grp.id);
+                      }}
+                      className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all ${
+                        isSelected
+                          ? 'bg-[#8065FF]/15 border border-[#8065FF]/50'
+                          : 'hover:bg-[#181821] border border-transparent'
+                      }`}
+                    >
+                      <div className="w-11 h-11 rounded-xl bg-[#8065FF]/20 border border-[#8065FF]/40 flex items-center justify-center shrink-0 text-[#A18BFF]">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold text-white truncate">{grp.name}</span>
+                          <span className="text-[10px] font-bold text-[#A18BFF] bg-[#8065FF]/15 px-1.5 py-0.5 rounded-md shrink-0">
+                            {grp.memberCount}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#92929F] truncate mt-0.5">{previewText}</p>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+                {conversations.map((conv) => {
+                  const isSelected = conv.friend.id === selectedFriendId;
+                  const previewText = conv.isTyping
+                    ? 'печатает...'
+                    : conv.lastMessage
+                    ? conv.lastMessage.movieTitle
+                      ? `🎬 ${conv.lastMessage.movieTitle}`
+                      : conv.lastMessage.gifUrl
+                      ? '🎞️ GIF'
+                      : conv.lastMessage.imageUrl
+                      ? `📷 Фото${conv.lastMessage.content ? ` — ${conv.lastMessage.content}` : ''}`
+                      : conv.lastMessage.content
+                    : 'Начните переписку...';
+
+                  return (
+                    <motion.button
+                      key={conv.friend.id}
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setSelectedGroupId(null);
+                        setSelectedFriendId(conv.friend.id);
+                      }}
                     className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all ${
                       isSelected
                         ? 'bg-[#8065FF]/15 border border-[#8065FF]/50'
@@ -847,7 +1012,8 @@ function MessagesContent() {
                     </div>
                   </motion.button>
                 );
-              })
+              })}
+              </>
             )}
           </div>
         </aside>
@@ -855,15 +1021,15 @@ function MessagesContent() {
         {/* Right Panel: Active Chat Thread */}
         <section
           className={`${
-            selectedFriendId ? 'flex' : 'hidden md:flex'
+            selectedFriendId || selectedGroupId ? 'flex' : 'hidden md:flex'
           } md:col-span-8 flex-col rounded-3xl bg-[#111119] border border-[#292936] overflow-hidden min-h-0 relative`}
         >
-          {!selectedFriendId ? (
+          {!selectedFriendId && !selectedGroupId ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
               <div className="w-16 h-16 rounded-2xl bg-[#8065FF]/15 border border-[#8065FF]/30 flex items-center justify-center text-[#A18BFF]">
                 <Sparkles className="w-7 h-7" />
               </div>
-              <h2 className="text-lg font-bold text-white">Выберите друга для переписки</h2>
+              <h2 className="text-lg font-bold text-white">Выберите друга или группу</h2>
               <p className="text-xs text-[#92929F] max-w-sm leading-relaxed">
                 Отправляйте фото, эмодзи, тысячи GIF, реакции, ответы и карточки фильмов!
               </p>
@@ -875,57 +1041,83 @@ function MessagesContent() {
                 <div className="flex items-center gap-3 min-w-0">
                   <button
                     type="button"
-                    onClick={() => setSelectedFriendId(null)}
+                    onClick={() => {
+                      setSelectedFriendId(null);
+                      setSelectedGroupId(null);
+                    }}
                     className="md:hidden p-2 rounded-xl bg-[#181821] text-[#92929F] hover:text-white active:scale-95 transition-transform"
                   >
                     <ArrowLeft className="w-4 h-4" />
                   </button>
 
-                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#181821] border border-[#292936] flex items-center justify-center shrink-0">
-                    {activeFriend?.avatarUrl ? (
-                      <img
-                        src={activeFriend.avatarUrl}
-                        alt={activeFriend.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-sm font-black text-[#A18BFF] uppercase">
-                        {(activeFriend?.name || '?').slice(0, 1)}
-                      </span>
-                    )}
-                  </div>
+                  {selectedGroupId ? (
+                    (() => {
+                      const activeGroup = groups.find((g) => g.id === selectedGroupId);
+                      return (
+                        <>
+                          <div className="w-10 h-10 rounded-xl bg-[#8065FF]/20 border border-[#8065FF]/40 flex items-center justify-center shrink-0 text-[#A18BFF]">
+                            <Users className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white truncate">
+                              {activeGroup?.name || 'Группа'}
+                            </p>
+                            <p className="text-[11px] text-[#92929F] truncate">
+                              {activeGroup ? `${activeGroup.memberCount} участн.` : 'Групповой чат'}
+                            </p>
+                          </div>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <>
+                      <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#181821] border border-[#292936] flex items-center justify-center shrink-0">
+                        {activeFriend?.avatarUrl ? (
+                          <img
+                            src={activeFriend.avatarUrl}
+                            alt={activeFriend.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-sm font-black text-[#A18BFF] uppercase">
+                            {(activeFriend?.name || '?').slice(0, 1)}
+                          </span>
+                        )}
+                      </div>
 
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-white truncate">
-                      {activeFriend?.name || 'Загрузка...'}
-                    </p>
-                    <AnimatePresence mode="wait">
-                      {isFriendTyping ? (
-                        <motion.p
-                          key="typing"
-                          initial={{ opacity: 0, y: 3 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -3 }}
-                          className="text-[11px] font-semibold text-[#A18BFF]"
-                        >
-                          печатает...
-                        </motion.p>
-                      ) : (
-                        <motion.p
-                          key="idle"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          className="text-[11px] text-[#92929F]"
-                        >
-                          Друг в 67movies
-                        </motion.p>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white truncate">
+                          {activeFriend?.name || 'Загрузка...'}
+                        </p>
+                        <AnimatePresence mode="wait">
+                          {isFriendTyping ? (
+                            <motion.p
+                              key="typing"
+                              initial={{ opacity: 0, y: 3 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -3 }}
+                              className="text-[11px] font-semibold text-[#A18BFF]"
+                            >
+                              печатает...
+                            </motion.p>
+                          ) : (
+                            <motion.p
+                              key="idle"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              className="text-[11px] text-[#92929F]"
+                            >
+                              Друг в 67movies
+                            </motion.p>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {activeFriend && (
+                {activeFriend && !selectedGroupId && (
                   <Link
                     href={`/user/${activeFriend.id}`}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#181821] hover:bg-[#8065FF]/20 border border-[#292936] hover:border-[#8065FF] text-xs font-semibold text-[#A18BFF] transition-all shrink-0"
@@ -965,6 +1157,12 @@ function MessagesContent() {
                       const reactionEntries = Object.entries(msg.reactions || {}).filter(
                         ([, users]) => Array.isArray(users) && users.length > 0
                       );
+                      const groupSenderName =
+                        selectedGroupId && !isMine
+                          ? groups
+                              .find((g) => g.id === selectedGroupId)
+                              ?.members?.find((m) => m.id === msg.senderId)?.name || 'Участник'
+                          : null;
 
                       return (
                         <motion.div
@@ -974,6 +1172,11 @@ function MessagesContent() {
                           transition={{ type: 'spring', stiffness: 440, damping: 32 }}
                           className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
                         >
+                          {groupSenderName && (
+                            <span className="text-[11px] font-bold text-[#A18BFF] mb-1 px-1">
+                              {groupSenderName}
+                            </span>
+                          )}
                           {/* Message Bubble (right-click opens Reactions / Reply / Edit / Copy menu) */}
                           <div
                             onContextMenu={(e) => {
@@ -1511,6 +1714,137 @@ function MessagesContent() {
                 <span>Копировать текст</span>
               </button>
             )}
+
+            {/* Delete (own messages) */}
+            {contextMenu.msg.senderId === user.id && (
+              <button
+                type="button"
+                onClick={() => handleDeleteMessage(contextMenu.msg)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors text-left"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>Удалить</span>
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Create Group Modal */}
+      <AnimatePresence>
+        {isCreateGroupOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsCreateGroupOpen(false)}
+            className="fixed inset-0 z-[65] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.form
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={handleCreateGroup}
+              className="w-full max-w-md rounded-3xl bg-[#111119] border border-[#292936] p-5 space-y-4 shadow-2xl"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#A18BFF]" />
+                  <span>Создать группу</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateGroupOpen(false)}
+                  className="p-1.5 rounded-xl bg-[#181821] text-[#92929F] hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#92929F]">Название группы</label>
+                <input
+                  type="text"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Например: Вечерний киноклуб"
+                  maxLength={60}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#181821] border border-[#292936] focus:border-[#8065FF] outline-none text-sm text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-[#92929F]">
+                  Выберите друзей ({selectedGroupMemberIds.length})
+                </label>
+                {conversations.length === 0 ? (
+                  <p className="text-xs text-[#92929F] py-3 text-center">
+                    Сначала добавьте друзей, чтобы создать группу
+                  </p>
+                ) : (
+                  <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                    {conversations.map((c) => {
+                      const checked = selectedGroupMemberIds.includes(c.friend.id);
+                      return (
+                        <button
+                          key={c.friend.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedGroupMemberIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== c.friend.id)
+                                : [...prev, c.friend.id]
+                            )
+                          }
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all ${
+                            checked
+                              ? 'bg-[#8065FF]/15 border-[#8065FF]/60'
+                              : 'bg-[#181821] border-[#292936] hover:border-[#8065FF]/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#111119] border border-[#292936] flex items-center justify-center shrink-0">
+                              {c.friend.avatarUrl ? (
+                                <img
+                                  src={c.friend.avatarUrl}
+                                  alt={c.friend.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-xs font-bold text-[#A18BFF]">
+                                  {c.friend.name.slice(0, 1)}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-sm font-semibold text-white truncate">
+                              {c.friend.name}
+                            </span>
+                          </div>
+                          <div
+                            className={`w-5 h-5 rounded-md flex items-center justify-center border ${
+                              checked
+                                ? 'bg-[#8065FF] border-[#8065FF] text-white'
+                                : 'border-[#292936]'
+                            }`}
+                          >
+                            {checked && <Check className="w-3.5 h-3.5" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={!groupName.trim() || selectedGroupMemberIds.length === 0 || creatingGroup}
+                className="w-full py-2.5 rounded-xl brand-btn text-white text-sm font-bold disabled:opacity-50"
+              >
+                {creatingGroup ? 'Создание...' : 'Создать группу'}
+              </button>
+            </motion.form>
           </motion.div>
         )}
       </AnimatePresence>

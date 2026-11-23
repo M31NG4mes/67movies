@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsEmail,
   IsEnum,
@@ -154,4 +155,15 @@ export class ToggleReactionDto {
   @MinLength(1)
   @MaxLength(16)
   emoji: string;
+}
+
+export class CreateGroupDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  name: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  memberIds: string[];
 }

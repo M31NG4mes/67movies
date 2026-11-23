@@ -867,7 +867,7 @@ export default function MovieDetailPage() {
                   className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
                 >
                   <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                  <span>Смотреть на Кинопоиске</span>
+                  <span>Смотреть</span>
                 </a>
               )}
 

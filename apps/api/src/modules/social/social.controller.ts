@@ -16,6 +16,7 @@ import { MediaTypeDto } from '../users/dto/users.dto';
 import {
   AddCollectionItemDto,
   CreateCollectionDto,
+  CreateGroupDto,
   EditMessageDto,
   SendFriendRequestDto,
   SendMessageDto,
@@ -209,5 +210,50 @@ export class SocialController {
     @Body() dto: ToggleReactionDto,
   ) {
     return this.socialService.toggleMessageReaction(user.userId, messageId, dto);
+  }
+
+  @Delete('messages/:messageId')
+  @UseGuards(JwtAuthGuard)
+  deleteMessage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.socialService.deleteMessage(user.userId, messageId);
+  }
+
+  // ==================== ГРУППОВЫЕ ЧАТЫ ====================
+
+  @Get('groups')
+  @UseGuards(JwtAuthGuard)
+  getMyGroups(@CurrentUser() user: AuthenticatedUser) {
+    return this.socialService.getMyGroups(user.userId);
+  }
+
+  @Post('groups')
+  @UseGuards(JwtAuthGuard)
+  createGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateGroupDto,
+  ) {
+    return this.socialService.createGroup(user.userId, dto);
+  }
+
+  @Get('groups/:groupId/messages')
+  @UseGuards(JwtAuthGuard)
+  getGroupMessages(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.socialService.getGroupMessages(user.userId, groupId);
+  }
+
+  @Post('groups/:groupId/messages')
+  @UseGuards(JwtAuthGuard)
+  sendGroupMessage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+    @Body() dto: SendMessageDto,
+  ) {
+    return this.socialService.sendGroupMessage(user.userId, groupId, dto);
   }
 }
