@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { StreamSourceGroup, VideoStream } from '@cinemaflow/types';
+import { StreamSourceGroup, VideoQuality, VideoStream } from '@cinemaflow/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,22 +19,156 @@ function normalizeTitle(raw?: string | null): string {
     .trim();
 }
 
-function buildEmbedUrl(rawLink: string, season?: number, episode?: number): string {
-  const base = rawLink.startsWith('//')
+function decryptKodikSrc(encoded: string): string | null {
+  if (!encoded) return null;
+  if (encoded.startsWith('http://') || encoded.startsWith('https://')) return encoded;
+  if (encoded.startsWith('//')) return `https:${encoded}`;
+
+  const zCharCode = 'Z'.charCodeAt(0);
+  const rot13 = encoded.replace(/[a-zA-Z]/g, (c) => {
+    const code = c.charCodeAt(0);
+    const limit = c <= 'Z' ? zCharCode : 122;
+    const shifted = code + 18;
+    return String.fromCharCode(shifted <= limit ? shifted : shifted - 26);
+  });
+
+  for (const candidate of [rot13, encoded]) {
+    try {
+      const padded = candidate.padEnd(candidate.length + ((4 - (candidate.length % 4)) % 4), '=');
+      const decoded = Buffer.from(padded, 'base64').toString('utf-8');
+      if (decoded.startsWith('//')) return `https:${decoded}`;
+      if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function resolveEpisodeEmbedLink(item: any, season?: number, episode?: number): string | null {
+  let rawLink: string | undefined = item?.link;
+
+  if (season !== undefined && episode !== undefined && item?.seasons) {
+    const seasonObj = item.seasons[String(season)] || item.seasons[season];
+    const epObj = seasonObj?.episodes?.[String(episode)] || seasonObj?.episodes?.[episode];
+    if (typeof epObj === 'string') {
+      rawLink = epObj;
+    } else if (epObj && typeof epObj === 'object' && epObj.link) {
+      rawLink = epObj.link;
+    } else if (Object.keys(item.seasons).length > 0) {
+      return null;
+    }
+  }
+
+  if (!rawLink) return null;
+  return rawLink.startsWith('//')
     ? `https:${rawLink}`
     : rawLink.startsWith('http')
     ? rawLink
     : `https://${rawLink}`;
+}
+
+async function probeKodikQualities(embedUrl: string): Promise<Array<{ q: VideoQuality; label: string }>> {
   try {
-    const u = new URL(base);
-    if (season !== undefined && episode !== undefined) {
-      u.searchParams.set('season', String(season));
-      u.searchParams.set('episode', String(episode));
+    const embedParsed = new URL(embedUrl);
+    const htmlRes = await fetch(embedUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        Referer: `${embedParsed.protocol}//${embedParsed.host}/`,
+      },
+      cache: 'no-store',
+    });
+    if (!htmlRes.ok) return [];
+    const html = await htmlRes.text();
+
+    let urlParams: Record<string, any> = {};
+    const urlParamsMatch =
+      /urlParams\s*=\s*'([^']+)'/.exec(html) ||
+      /urlParams\s*=\s*"([^"]+)"/.exec(html);
+    if (urlParamsMatch?.[1]) {
+      try {
+        urlParams = JSON.parse(urlParamsMatch[1]);
+      } catch {}
     }
-    return u.toString();
+
+    const pathMatch = /\/(video|seria|movie|episode)\/(\d+)\/([a-zA-Z0-9]+)\//.exec(embedParsed.pathname);
+    const vType =
+      /videoInfo\.type\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      /vInfo\.type\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      pathMatch?.[1] ||
+      'video';
+    const vId =
+      /videoInfo\.id\s*=\s*['"]?(\d+)['"]?/.exec(html)?.[1] ||
+      /vInfo\.id\s*=\s*['"]?(\d+)['"]?/.exec(html)?.[1] ||
+      pathMatch?.[2] ||
+      '';
+    const vHash =
+      /videoInfo\.hash\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      /vInfo\.hash\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      pathMatch?.[3] ||
+      '';
+
+    if (!vId || !vHash) return [];
+
+    const pdHost = urlParams.pd || embedParsed.host;
+    let decodedRef = urlParams.ref || '';
+    try {
+      if (decodedRef.includes('%')) decodedRef = decodeURIComponent(decodedRef);
+    } catch {}
+
+    const form = new URLSearchParams();
+    if (urlParams.d) form.set('d', String(urlParams.d));
+    if (urlParams.d_sign) form.set('d_sign', String(urlParams.d_sign));
+    if (urlParams.pd) form.set('pd', String(urlParams.pd));
+    if (urlParams.pd_sign) form.set('pd_sign', String(urlParams.pd_sign));
+    if (decodedRef) form.set('ref', String(decodedRef));
+    if (urlParams.ref_sign) form.set('ref_sign', String(urlParams.ref_sign));
+    form.set('bad_user', 'true');
+    form.set('cdn_is_working', 'true');
+    form.set('type', vType);
+    form.set('hash', vHash);
+    form.set('id', vId);
+    form.set('info', '{}');
+
+    for (const epPath of ['/ftor', '/gvi', '/video-links']) {
+      const ftorRes = await fetch(`https://${pdHost}${epPath}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          Origin: `https://${pdHost}`,
+          Referer: embedUrl,
+        },
+        body: form.toString(),
+        cache: 'no-store',
+      }).catch(() => null);
+
+      if (!ftorRes || !ftorRes.ok) continue;
+      const json: any = await ftorRes.json().catch(() => null);
+      const links = json?.links;
+      if (!links || typeof links !== 'object') continue;
+
+      const available: Array<{ q: VideoQuality; label: string }> = [];
+      for (const [label, q] of [
+        ['1080', '1080p'],
+        ['720', '720p'],
+        ['480', '480p'],
+        ['360', '360p'],
+      ] as Array<[string, VideoQuality]>) {
+        const entry = Array.isArray(links[label]) ? links[label][0] : links[label];
+        if (typeof entry?.src === 'string' && decryptKodikSrc(entry.src)) {
+          available.push({ q, label });
+        }
+      }
+      if (available.length > 0) return available;
+    }
   } catch {
-    return base;
+    return [];
   }
+  return [];
 }
 
 export async function GET(req: NextRequest) {
@@ -122,44 +256,47 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.score - a.score);
 
   const seenVoices = new Set<string>();
-  const sourceGroups: StreamSourceGroup[] = [];
+  const candidates: Array<{ item: any; voice: string; embedUrl: string }> = [];
 
   for (const { item } of scored) {
-    if (!item?.link) continue;
     const voice = String(item?.translation?.title || 'Русская озвучка').trim();
     if (seenVoices.has(voice.toLowerCase())) continue;
+    const embedUrl = resolveEpisodeEmbedLink(item, season, episode);
+    if (!embedUrl) continue;
     seenVoices.add(voice.toLowerCase());
-
-    const embedUrl = buildEmbedUrl(item.link, season, episode);
-    const qualities: Array<{ q: '1080p' | '720p' | '480p'; label: string }> = [
-      { q: '1080p', label: '1080' },
-      { q: '720p', label: '720' },
-      { q: '480p', label: '480' },
-    ];
-
-    const streams: VideoStream[] = qualities.map(({ q, label }) => ({
-      id: `kodik-${item.id}-${q}`,
-      providerId: 'kodik',
-      providerName: 'Kodik',
-      title: `${item.title || title} (${q})`,
-      voiceActing: voice,
-      season,
-      episode,
-      quality: q,
-      format: 'hls',
-      streamUrl: `/api/stream?embed=${encodeURIComponent(embedUrl)}&q=${label}`,
-      isProxyRequired: false,
-    }));
-
-    sourceGroups.push({
-      providerId: 'kodik',
-      providerName: 'Kodik',
-      voiceActing: voice,
-      streams,
-    });
-
-    if (sourceGroups.length >= 8) break;
+    candidates.push({ item, voice, embedUrl });
+    if (candidates.length >= 10) break;
   }
 
+  const verifiedGroups = await Promise.all(
+    candidates.map(async ({ item, voice, embedUrl }) => {
+      const qualities = await probeKodikQualities(embedUrl);
+      if (qualities.length === 0) return null;
+
+      const streams: VideoStream[] = qualities.map(({ q, label }) => ({
+        id: `kodik-${item.id}-${q}`,
+        providerId: 'kodik',
+        providerName: 'Kodik',
+        title: `${item.title || title} (${q})`,
+        voiceActing: voice,
+        season,
+        episode,
+        quality: q,
+        format: 'hls',
+        streamUrl: `/api/stream?kodikLink=${encodeURIComponent(embedUrl)}&quality=${label}`,
+        isProxyRequired: false,
+      }));
+
+      const group: StreamSourceGroup = {
+        providerId: 'kodik',
+        providerName: 'Kodik',
+        voiceActing: voice,
+        streams,
+      };
+      return group;
+    }),
+  );
+
+  const sourceGroups = verifiedGroups.filter((g): g is StreamSourceGroup => g !== null);
   return NextResponse.json({ sourceGroups });
 }

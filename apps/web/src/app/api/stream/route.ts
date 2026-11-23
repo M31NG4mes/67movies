@@ -170,7 +170,11 @@ async function resolveKodikEmbedToHlsUrl(
       if (!links || typeof links !== 'object') continue;
 
       const qualityOrder =
-        preferredQuality === '720'
+        preferredQuality === '360'
+          ? ['360', '480', '720', '1080']
+          : preferredQuality === '480'
+          ? ['480', '720', '360', '1080']
+          : preferredQuality === '720'
           ? ['720', '1080', '480', '360']
           : ['1080', '720', '480', '360'];
 
