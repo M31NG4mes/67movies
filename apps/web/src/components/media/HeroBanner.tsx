@@ -146,7 +146,7 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
                   : currentMedia.tmdbId || currentMedia.id
               }?type=${
                 currentMedia.type === 'tv' ? 'tv' : 'movie'
-              }`}
+              }${currentMedia.rezkaUrl ? `&url=${encodeURIComponent(currentMedia.rezkaUrl)}` : ''}`}
               className="inline-flex items-center justify-center px-6 sm:px-8 py-3 sm:py-3.5 brand-btn text-white font-semibold rounded-xl text-sm sm:text-base"
             >
               {t.watch}
