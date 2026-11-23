@@ -1,20 +1,22 @@
 FROM node:20-alpine AS base
-RUN npm install -g pnpm turbo
-
-FROM base AS builder
+RUN corepack enable && corepack prepare pnpm@10.6.5 --activate
 WORKDIR /app
-COPY . .
-RUN pnpm install --frozen-lockfile=false
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/types/package.json packages/types/package.json
+COPY apps/api/package.json apps/api/package.json
+COPY apps/api/prisma apps/api/prisma
+
+RUN pnpm install --frozen-lockfile --filter @cinemaflow/api...
+
+COPY packages/types packages/types
+COPY apps/api apps/api
+
+RUN pnpm --filter @cinemaflow/types build || true
+RUN pnpm --filter @cinemaflow/api prisma:generate
 RUN pnpm --filter @cinemaflow/api build
 
-FROM node:20-alpine AS runner
-WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
-COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
-COPY --from=builder /app/packages ./packages
-
 EXPOSE 4000
-CMD ["node", "apps/api/dist/main.js"]
+
+CMD ["sh", "-c", "cd apps/api && npx prisma db push --skip-generate || true && node --max-old-space-size=320 dist/apps/api/src/main"]

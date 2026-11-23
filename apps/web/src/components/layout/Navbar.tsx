@@ -460,30 +460,32 @@ function NavbarContent() {
           MOBILE ONLY: Minimal Floating Controls (Menu + Search)
           All navigation & settings are tucked cleanly inside the Slide-Out Drawer
          ================================================================= */}
-      <div className="md:hidden fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
-        <button
-          type="button"
-          onClick={() => setIsMobileMenuOpen(true)}
-          aria-label="Открыть меню"
-          className="pointer-events-auto relative w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
-        >
-          <Menu className="w-5 h-5" />
-          {unreadMessages > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow">
-              {unreadMessages > 9 ? '9+' : unreadMessages}
-            </span>
-          )}
-        </button>
+      {!pathname?.startsWith('/watch') && (
+        <div className="md:hidden fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Открыть меню"
+            className="pointer-events-auto relative w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+          >
+            <Menu className="w-5 h-5" />
+            {unreadMessages > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow">
+                {unreadMessages > 9 ? '9+' : unreadMessages}
+              </span>
+            )}
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setIsSearchOpen(true)}
-          aria-label="Поиск"
-          className="pointer-events-auto w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
-        >
-          <Search className="w-4 h-4" />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
+            aria-label="Поиск"
+            className="pointer-events-auto w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* MOBILE ONLY: Smooth Slide-Out Navigation Drawer */}
       <AnimatePresence>
@@ -676,62 +678,6 @@ function NavbarContent() {
             </div>
           </div>
         </div>
-      )}
-      {/* =================================================================
-          MOBILE: Thumb-Friendly Bottom Navigation Bar
-         ================================================================= */}
-      {!pathname?.startsWith('/watch') && (
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090D]/90 backdrop-blur-xl border-t border-white/10 px-2 py-1.5 flex items-center justify-around">
-          <Link
-            href="/"
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
-              pathname === '/' ? 'text-[#A18BFF]' : 'text-[#92929F]'
-            }`}
-          >
-            <Home className="w-5 h-5" />
-            <span>{t.home}</span>
-          </Link>
-          <Link
-            href="/catalog"
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
-              pathname?.startsWith('/catalog') ? 'text-[#A18BFF]' : 'text-[#92929F]'
-            }`}
-          >
-            <Compass className="w-5 h-5" />
-            <span>{t.catalog}</span>
-          </Link>
-          <button
-            type="button"
-            onClick={() => setIsSearchOpen(true)}
-            className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold text-[#92929F] active:scale-95 transition-transform"
-          >
-            <Search className="w-5 h-5" />
-            <span>Поиск</span>
-          </button>
-          <Link
-            href="/messages"
-            className={`relative flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
-              pathname?.startsWith('/messages') ? 'text-[#A18BFF]' : 'text-[#92929F]'
-            }`}
-          >
-            <MessageCircle className="w-5 h-5" />
-            <span>{t.chat}</span>
-            {unreadMessages > 0 && (
-              <span className="absolute top-0.5 right-1.5 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
-                {unreadMessages > 9 ? '9+' : unreadMessages}
-              </span>
-            )}
-          </Link>
-          <Link
-            href={user ? '/profile' : '/auth'}
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-[10px] font-semibold transition-colors ${
-              pathname?.startsWith('/profile') ? 'text-[#A18BFF]' : 'text-[#92929F]'
-            }`}
-          >
-            <UserIcon className="w-5 h-5" />
-            <span>{user ? 'Профиль' : t.signIn}</span>
-          </Link>
-        </nav>
       )}
     </>
   );

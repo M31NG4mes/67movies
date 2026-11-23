@@ -36,7 +36,9 @@ export default function RootLayout({
         <AuthGate>
           <Navbar />
           <FriendRequestNotifier />
-          {children}
+          <div className="w-full max-w-full min-w-0 overflow-x-clip flex-1 flex flex-col">
+            {children}
+          </div>
         </AuthGate>
       </body>
     </html>

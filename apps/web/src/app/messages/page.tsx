@@ -27,6 +27,7 @@ import {
   UserMinus,
   Settings,
   LogOut,
+  MoreVertical,
 } from 'lucide-react';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
 
@@ -805,17 +806,20 @@ function MessagesContent() {
     []
   );
 
-  const handleClearDirectConversation = async () => {
-    if (!selectedFriendId || managingGroup) return;
+  const handleClearDirectConversation = async (friendIdOverride?: string) => {
+    const targetId = friendIdOverride || selectedFriendId;
+    if (!targetId || managingGroup) return;
     if (!window.confirm('Удалить всю переписку с этим другом?')) return;
     setManagingGroup(true);
     try {
       const res = await authFetch(
-        `/social/messages/conversation/${encodeURIComponent(selectedFriendId)}`,
+        `/social/messages/conversation/${encodeURIComponent(targetId)}`,
         { method: 'DELETE' }
       );
       if (res.ok) {
-        setMessages([]);
+        if (targetId === selectedFriendId) {
+          setMessages([]);
+        }
         await loadConversations();
         showChatToast('Переписка удалена');
       } else {
@@ -1208,11 +1212,35 @@ function MessagesContent() {
                         >
                           {previewText}
                         </p>
-                        {conv.unreadCount > 0 && (
-                          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#8065FF] text-white text-[10px] font-black flex items-center justify-center shrink-0">
-                            {conv.unreadCount}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {conv.unreadCount > 0 && (
+                            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#8065FF] text-white text-[10px] font-black flex items-center justify-center">
+                              {conv.unreadCount}
+                            </span>
+                          )}
+                          {conv.lastMessage && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              title="Удалить диалог"
+                              aria-label="Удалить диалог"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleClearDirectConversation(conv.friend.id);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleClearDirectConversation(conv.friend.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg text-[#92929F] hover:text-rose-400 hover:bg-rose-500/15 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </motion.button>
@@ -1339,7 +1367,7 @@ function MessagesContent() {
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={handleClearDirectConversation}
+                        onClick={() => handleClearDirectConversation()}
                         disabled={managingGroup}
                         title="Удалить переписку"
                         aria-label="Удалить переписку"
@@ -1405,62 +1433,81 @@ function MessagesContent() {
                               {groupSenderName}
                             </span>
                           )}
-                          {/* Message Bubble (right-click on desktop or long-press on mobile opens Reactions / Reply / Edit / Copy / Delete menu) */}
+                          {/* Message Bubble + 3-dots Action Button (visible on mobile, hover on desktop) */}
                           <div
-                            style={{ WebkitTouchCallout: 'none' }}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              openContextMenuForMsg(msg, e.clientX, e.clientY);
-                            }}
-                            onTouchStart={(e) => {
-                              const touch = e.touches[0];
-                              if (!touch) return;
-                              const cx = touch.clientX;
-                              const cy = touch.clientY;
-                              touchStartPosRef.current = { x: cx, y: cy };
-                              if (longPressTimerRef.current) {
-                                clearTimeout(longPressTimerRef.current);
-                              }
-                              longPressTimerRef.current = setTimeout(() => {
-                                if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                                  navigator.vibrate(18);
+                            className={`flex items-end gap-1 max-w-full group ${
+                              isMine ? 'flex-row' : 'flex-row-reverse'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              aria-label="Действия с сообщением"
+                              title="Реакции, ответить, редактировать, удалить"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                openContextMenuForMsg(msg, rect.left, rect.bottom + 6);
+                              }}
+                              className="p-1.5 rounded-full text-[#92929F] hover:text-white hover:bg-white/10 opacity-75 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0 mb-1"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+
+                            <div
+                              style={{ WebkitTouchCallout: 'none' }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openContextMenuForMsg(msg, e.clientX, e.clientY);
+                              }}
+                              onTouchStart={(e) => {
+                                const touch = e.touches[0];
+                                if (!touch) return;
+                                const cx = touch.clientX;
+                                const cy = touch.clientY;
+                                touchStartPosRef.current = { x: cx, y: cy };
+                                if (longPressTimerRef.current) {
+                                  clearTimeout(longPressTimerRef.current);
                                 }
-                                openContextMenuForMsg(msg, cx, cy);
-                              }, 420);
-                            }}
-                            onTouchMove={(e) => {
-                              const touch = e.touches[0];
-                              const start = touchStartPosRef.current;
-                              if (!touch || !start) return;
-                              if (
-                                Math.abs(touch.clientX - start.x) > 10 ||
-                                Math.abs(touch.clientY - start.y) > 10
-                              ) {
+                                longPressTimerRef.current = setTimeout(() => {
+                                  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                                    navigator.vibrate(18);
+                                  }
+                                  openContextMenuForMsg(msg, cx, cy);
+                                }, 420);
+                              }}
+                              onTouchMove={(e) => {
+                                const touch = e.touches[0];
+                                const start = touchStartPosRef.current;
+                                if (!touch || !start) return;
+                                if (
+                                  Math.abs(touch.clientX - start.x) > 10 ||
+                                  Math.abs(touch.clientY - start.y) > 10
+                                ) {
+                                  if (longPressTimerRef.current) {
+                                    clearTimeout(longPressTimerRef.current);
+                                    longPressTimerRef.current = null;
+                                  }
+                                }
+                              }}
+                              onTouchEnd={() => {
                                 if (longPressTimerRef.current) {
                                   clearTimeout(longPressTimerRef.current);
                                   longPressTimerRef.current = null;
                                 }
-                              }
-                            }}
-                            onTouchEnd={() => {
-                              if (longPressTimerRef.current) {
-                                clearTimeout(longPressTimerRef.current);
-                                longPressTimerRef.current = null;
-                              }
-                            }}
-                            onTouchCancel={() => {
-                              if (longPressTimerRef.current) {
-                                clearTimeout(longPressTimerRef.current);
-                                longPressTimerRef.current = null;
-                              }
-                            }}
-                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg select-none md:select-text ${
-                              isMine
-                                ? 'bg-[#8065FF] text-white rounded-br-md'
-                                : 'bg-[#181821] border border-[#292936] text-white rounded-bl-md'
-                            }`}
-                          >
+                              }}
+                              onTouchCancel={() => {
+                                if (longPressTimerRef.current) {
+                                  clearTimeout(longPressTimerRef.current);
+                                  longPressTimerRef.current = null;
+                                }
+                              }}
+                              className={`max-w-[82vw] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg select-none md:select-text ${
+                                isMine
+                                  ? 'bg-[#8065FF] text-white rounded-br-md'
+                                  : 'bg-[#181821] border border-[#292936] text-white rounded-bl-md'
+                              }`}
+                            >
                             {/* Quoted Reply Preview */}
                             {msg.replyToContent && (
                               <div
@@ -1584,6 +1631,7 @@ function MessagesContent() {
                                   <Check className="w-3.5 h-3.5" />
                                 ))}
                             </div>
+                          </div>
                           </div>
 
                           {/* Reactions Pills */}
