@@ -5,6 +5,7 @@ import { Navbar } from '../components/layout/Navbar';
 import { ThemeInitializer } from '../components/layout/ThemeInitializer';
 import { NewYearOverlay } from '../components/layout/NewYearOverlay';
 import { AuthGate } from '../components/layout/AuthGate';
+import { FriendRequestNotifier } from '../components/layout/FriendRequestNotifier';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -34,6 +35,7 @@ export default function RootLayout({
         <NewYearOverlay />
         <AuthGate>
           <Navbar />
+          <FriendRequestNotifier />
           {children}
         </AuthGate>
       </body>

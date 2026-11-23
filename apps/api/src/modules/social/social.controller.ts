@@ -85,6 +85,15 @@ export class SocialController {
     return this.socialService.removeFriendship(user.userId, friendshipId);
   }
 
+  @Post('friends/:targetUserId/block')
+  @UseGuards(JwtAuthGuard)
+  blockUser(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.socialService.blockUser(user.userId, targetUserId);
+  }
+
   // --- My Shared Ratings & Favorites (protected) ---
 
   @Get('ratings/me')

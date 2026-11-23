@@ -883,49 +883,52 @@ export default function MovieDetailPage() {
                 </button>
               )}
 
-              {/* Button: «+ В подборку» (Letterboxd-style Lists) */}
+              {/* Button: «+ В подборку» (Icon-only) */}
               {accessToken && (
                 <button
                   type="button"
                   onClick={openCollectionModal}
-                  className="flex items-center gap-2 px-4 py-3.5 rounded-xl font-semibold border border-cinema-border bg-cinema-card hover:bg-cinema-surface hover:border-[#8065FF] text-cinema-text transition-all text-sm"
+                  aria-label="В подборку"
+                  title="В подборку"
+                  className="flex items-center justify-center p-3.5 rounded-xl border border-cinema-border bg-cinema-card hover:bg-cinema-surface hover:border-[#8065FF] text-cinema-text transition-all"
                 >
-                  <FolderPlus className="w-4 h-4 text-[#A18BFF]" />
-                  <span>В подборку</span>
+                  <FolderPlus className="w-5 h-5 text-[#A18BFF]" />
                 </button>
               )}
 
-              {/* Button: «Отправить другу» (Direct Movie Share in Messenger) */}
+              {/* Button: «Отправить другу» (Icon-only) */}
               {accessToken && (
                 <button
                   type="button"
                   onClick={openSendFriendModal}
-                  className="flex items-center gap-2 px-4 py-3.5 rounded-xl font-semibold border border-[#8065FF]/40 bg-[#8065FF]/15 hover:bg-[#8065FF]/25 hover:border-[#8065FF] text-[#A18BFF] transition-all text-sm"
+                  aria-label="Отправить другу"
+                  title="Отправить другу"
+                  className="flex items-center justify-center p-3.5 rounded-xl border border-[#8065FF]/40 bg-[#8065FF]/15 hover:bg-[#8065FF]/25 hover:border-[#8065FF] text-[#A18BFF] transition-all"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>Отправить другу</span>
+                  <Send className="w-5 h-5" />
                 </button>
               )}
 
-              {/* Button: «Оценить» */}
+              {/* Button: «Оценить» (Icon-only) */}
               <button
                 onClick={() => setIsRatingModalOpen(true)}
                 data-nav-item="true"
-                className={`flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold border backdrop-blur-md transition-all text-sm ${
+                aria-label={userRating ? `Ваша оценка: ${userRating}/10` : 'Оценить'}
+                title={userRating ? `Ваша оценка: ${userRating}/10` : 'Оценить'}
+                className={`flex items-center justify-center p-3.5 rounded-xl border backdrop-blur-md transition-all ${
                   userRating
                     ? 'bg-amber-400/20 border-amber-400/50 text-amber-300'
                     : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-text hover:border-brand-main/50'
                 }`}
               >
                 <Star
-                  className={`w-4 h-4 ${
+                  className={`w-5 h-5 ${
                     userRating ? 'fill-amber-400 text-amber-400' : 'text-amber-400'
                   }`}
                 />
-                <span>{userRating ? `Ваша оценка: ${userRating}/10` : 'Оценить'}</span>
               </button>
 
-              {/* Button: «❤️ В любимые» (instant 1-click favorite without requiring a review) */}
+              {/* Button: «❤️ В любимые» (Icon-only) */}
               {(() => {
                 const isFavNow =
                   favorites.length >= 0 &&
@@ -935,9 +938,9 @@ export default function MovieDetailPage() {
                     type="button"
                     onClick={handleInstantToggleFavorite}
                     data-nav-item="true"
-                    aria-label="В любимые фильмы"
-                    title="Добавить в «Любимые фильмы» в профиле одним нажатием"
-                    className={`flex items-center gap-2 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-sm font-semibold ${
+                    aria-label={isFavNow ? 'В любимых' : 'В любимые'}
+                    title={isFavNow ? 'Убрать из любимых' : 'Добавить в любимые'}
+                    className={`flex items-center justify-center p-3.5 rounded-xl border backdrop-blur-md transition-all ${
                       isFavNow
                         ? 'bg-rose-500/20 border-rose-500 text-rose-300 shadow-[0_0_20px_rgba(244,63,94,0.25)]'
                         : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-rose-300 hover:border-rose-500/50'
@@ -948,12 +951,11 @@ export default function MovieDetailPage() {
                         isFavNow ? 'fill-rose-500 text-rose-500 scale-110' : ''
                       }`}
                     />
-                    <span>{isFavNow ? 'В любимых' : 'В любимые'}</span>
                   </button>
                 );
               })()}
 
-              {/* Button: «🔖 В вотчлист» */}
+              {/* Button: «🔖 В вотчлист» (Icon-only) */}
               {(() => {
                 const inWatchlistNow =
                   watchlist.length >= 0 &&
@@ -963,9 +965,9 @@ export default function MovieDetailPage() {
                     type="button"
                     onClick={handleInstantToggleWatchlist}
                     data-nav-item="true"
-                    aria-label="В вотчлист"
-                    title="Добавить в «Мой вотчлист» (посмотреть позже)"
-                    className={`flex items-center gap-2 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-sm font-semibold ${
+                    aria-label={inWatchlistNow ? 'В вотчлисте' : 'В вотчлист'}
+                    title={inWatchlistNow ? 'Убрать из вотчлиста' : 'Добавить в вотчлист'}
+                    className={`flex items-center justify-center p-3.5 rounded-xl border backdrop-blur-md transition-all ${
                       inWatchlistNow
                         ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF] shadow-[0_0_20px_rgba(128,101,255,0.25)]'
                         : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white hover:border-brand-main/50'
@@ -976,7 +978,6 @@ export default function MovieDetailPage() {
                         inWatchlistNow ? 'fill-[#A18BFF] text-[#A18BFF]' : ''
                       }`}
                     />
-                    <span>{inWatchlistNow ? 'В вотчлисте' : 'В вотчлист'}</span>
                   </button>
                 );
               })()}

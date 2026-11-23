@@ -54,8 +54,11 @@ export class SocialService {
   private readonly memMessages = new Map<string, any>();
   private readonly memGroups = new Map<string, any>();
   private readonly memGroupMessages = new Map<string, any>();
+  private readonly memBlocks = new Set<string>(); // `${blockerId}->${blockedId}`
   private groupTablesReady = false;
+  private blockTableReady = false;
   private readonly typingStatus = new Map<string, number>(); // key: `${senderId}->${receiverId}`, val: expiresAt ms
+  private readonly userCache = new Map<string, { data: any; expiresAt: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -101,14 +104,20 @@ export class SocialService {
   }
 
   private async enrichUser(userId: string) {
+    const cached = this.userCache.get(userId);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
+    }
+
     const base = await this.authService.findPublicUserById(userId);
     if (!base) return null;
 
+    let result = base;
     if (!this.db) {
       const profiles = await this.usersService.listProfiles(userId).catch(() => []);
       const first = profiles[0];
       if (first) {
-        return {
+        result = {
           ...base,
           name: first.name || base.name,
           avatarUrl: first.avatarUrl ?? base.avatarUrl,
@@ -116,7 +125,13 @@ export class SocialService {
         };
       }
     }
-    return base;
+
+    if (this.userCache.size >= 200) {
+      const firstKey = this.userCache.keys().next().value;
+      if (firstKey !== undefined) this.userCache.delete(firstKey);
+    }
+    this.userCache.set(userId, { data: result, expiresAt: Date.now() + 30_000 });
+    return result;
   }
 
   // =========================================================================
@@ -144,6 +159,10 @@ export class SocialService {
 
     const targetPublic = await this.enrichUser(targetId);
     if (!targetPublic) throw new NotFoundException('Пользователь не найден');
+
+    if (await this.isBlockedBetween(userId, targetId)) {
+      throw new ForbiddenException('Невозможно отправить заявку: пользователь ограничил доступ');
+    }
 
     if (this.db) {
       const existing = await this.db.friendship.findFirst({
@@ -660,48 +679,77 @@ export class SocialService {
   }
 
   async getConversations(userId: string) {
-    const friendsData = await this.getFriendsOverview(userId);
+    let acceptedFriendIds: string[] = [];
+
+    if (this.db) {
+      const friendships = await this.db.friendship.findMany({
+        where: {
+          OR: [{ requesterId: userId }, { addresseeId: userId }],
+          status: 'ACCEPTED',
+        },
+        select: { requesterId: true, addresseeId: true },
+      });
+      acceptedFriendIds = friendships.map((f) =>
+        f.requesterId === userId ? f.addresseeId : f.requesterId,
+      );
+    } else {
+      acceptedFriendIds = [...this.memFriendships.values()]
+        .filter(
+          (f) =>
+            (f.requesterId === userId || f.addresseeId === userId) &&
+            f.status === 'ACCEPTED',
+        )
+        .map((f) => (f.requesterId === userId ? f.addresseeId : f.requesterId));
+    }
+
     const dmModel = (this.db as any)?.directMessage;
+    const lastByFriend = new Map<string, any>();
+    const unreadByFriend = new Map<string, number>();
 
-    const conversations = await Promise.all(
-      friendsData.friends.map(async (f) => {
-        const friendId = f.user.id;
-        let lastMessage: any = null;
-        let unreadCount = 0;
-
-        if (dmModel) {
-          lastMessage = await dmModel.findFirst({
-            where: {
-              OR: [
-                { senderId: userId, receiverId: friendId },
-                { senderId: friendId, receiverId: userId },
-              ],
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-          unreadCount = await dmModel.count({
-            where: { senderId: friendId, receiverId: userId, isRead: false },
-          });
-        } else {
-          const thread = [...this.memMessages.values()]
-            .filter(
-              (m) =>
-                (m.senderId === userId && m.receiverId === friendId) ||
-                (m.senderId === friendId && m.receiverId === userId),
-            )
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          lastMessage = thread[0] || null;
-          unreadCount = thread.filter((m) => m.receiverId === userId && !m.isRead).length;
+    if (dmModel) {
+      const recentMsgs: any[] = await dmModel.findMany({
+        where: {
+          OR: [{ senderId: userId }, { receiverId: userId }],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 400,
+      });
+      for (const m of recentMsgs) {
+        const fid = m.senderId === userId ? m.receiverId : m.senderId;
+        if (!lastByFriend.has(fid)) {
+          lastByFriend.set(fid, m);
         }
+        if (m.receiverId === userId && !m.isRead) {
+          unreadByFriend.set(fid, (unreadByFriend.get(fid) || 0) + 1);
+        }
+      }
+    } else {
+      const recentMsgs = [...this.memMessages.values()]
+        .filter((m) => m.senderId === userId || m.receiverId === userId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      for (const m of recentMsgs) {
+        const fid = m.senderId === userId ? m.receiverId : m.senderId;
+        if (!lastByFriend.has(fid)) {
+          lastByFriend.set(fid, m);
+        }
+        if (m.receiverId === userId && !m.isRead) {
+          unreadByFriend.set(fid, (unreadByFriend.get(fid) || 0) + 1);
+        }
+      }
+    }
 
-        return {
-          friend: f.user,
-          unreadCount,
-          lastMessage,
-          isTyping: this.isUserTypingTo(friendId, userId),
-        };
-      }),
+    const enrichedFriends = await Promise.all(
+      Array.from(new Set(acceptedFriendIds)).map((fid) => this.enrichUser(fid)),
     );
+
+    const conversations = enrichedFriends
+      .filter(Boolean)
+      .map((friend: any) => ({
+        friend,
+        unreadCount: unreadByFriend.get(friend.id) || 0,
+        lastMessage: lastByFriend.get(friend.id) || null,
+        isTyping: this.isUserTypingTo(friend.id, userId),
+      }));
 
     conversations.sort((a, b) => {
       const timeA = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
@@ -984,6 +1032,72 @@ export class SocialService {
     return { deleted: true, id: messageId };
   }
 
+  private async ensureBlockTable() {
+    if (!this.db || this.blockTableReady) return;
+    await (this.db as any).$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        blocker_id TEXT NOT NULL,
+        blocked_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (blocker_id, blocked_id)
+      );
+    `);
+    this.blockTableReady = true;
+  }
+
+  private async isBlockedBetween(userA: string, userB: string): Promise<boolean> {
+    if (this.db) {
+      await this.ensureBlockTable();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT 1 FROM user_blocks
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)
+         LIMIT 1`,
+        userA,
+        userB,
+      );
+      return Boolean(rows?.length);
+    }
+    return this.memBlocks.has(`${userA}->${userB}`) || this.memBlocks.has(`${userB}->${userA}`);
+  }
+
+  async blockUser(userId: string, targetUserId: string) {
+    if (!targetUserId || targetUserId === userId) {
+      throw new BadRequestException('Некорректный пользователь для блокировки');
+    }
+    if (this.db) {
+      await this.ensureBlockTable();
+      await (this.db as any).$executeRawUnsafe(
+        `INSERT INTO user_blocks (blocker_id, blocked_id, created_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+        userId,
+        targetUserId,
+      );
+      await this.db.friendship.deleteMany({
+        where: {
+          OR: [
+            { requesterId: userId, addresseeId: targetUserId },
+            { requesterId: targetUserId, addresseeId: userId },
+          ],
+        },
+      });
+      return { blocked: true, targetUserId };
+    }
+
+    this.memBlocks.add(`${userId}->${targetUserId}`);
+    for (const [fid, rec] of this.memFriendships.entries()) {
+      if (
+        (rec.requesterId === userId && rec.addresseeId === targetUserId) ||
+        (rec.requesterId === targetUserId && rec.addresseeId === userId)
+      ) {
+        this.memFriendships.delete(fid);
+      }
+    }
+    this.persistSocial();
+    return { blocked: true, targetUserId };
+  }
+
   private async ensureGroupTables() {
     if (!this.db || this.groupTablesReady) return;
     await (this.db as any).$executeRawUnsafe(`
@@ -1083,7 +1197,7 @@ export class SocialService {
 
     const friendsList = await this.getFriendsOverview(userId);
     const allowedFriendIds = new Set(
-      (friendsList.friends || []).map((f: any) => f.friend?.id).filter(Boolean),
+      (friendsList.friends || []).map((f: any) => f.user?.id || f.friend?.id).filter(Boolean),
     );
     const uniqueMembers = Array.from(
       new Set([

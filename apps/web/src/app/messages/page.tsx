@@ -196,13 +196,16 @@ function MessagesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialFriendId = searchParams.get('friend');
+  const initialGroupId = searchParams.get('group');
 
   const { user, accessToken, hydrated, hydrate } = useAuthStore();
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [groups, setGroups] = useState<ChatGroupItem[]>([]);
-  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(initialFriendId);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(
+    initialGroupId ? null : initialFriendId
+  );
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId);
   const [activeFriend, setActiveFriend] = useState<FriendUser | null>(null);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [groupName, setGroupName] = useState('');
@@ -300,6 +303,12 @@ function MessagesContent() {
     setLoadingList(false);
   }, [accessToken, selectedFriendId, selectedGroupId, initialFriendId]);
 
+  const buildMessagesSig = (list: DirectMessageItem[]) => {
+    if (list.length === 0) return '0';
+    const last = list[list.length - 1];
+    return `${list.length}:${last.id}:${last.editedAt || ''}:${JSON.stringify(last.reactions || {})}`;
+  };
+
   const loadThread = useCallback(
     async (friendId: string, silent = false) => {
       if (!accessToken) return;
@@ -309,8 +318,11 @@ function MessagesContent() {
       }).catch(() => null);
       if (res?.ok) {
         const data = await res.json();
+        const incoming: DirectMessageItem[] = data.messages || [];
         setActiveFriend(data.friend || null);
-        setMessages(data.messages || []);
+        setMessages((prev) =>
+          buildMessagesSig(prev) === buildMessagesSig(incoming) ? prev : incoming
+        );
         setIsFriendTyping(Boolean(data.isFriendTyping));
       }
       if (!silent) setLoadingChat(false);
@@ -327,8 +339,11 @@ function MessagesContent() {
       }).catch(() => null);
       if (res?.ok) {
         const data = await res.json();
+        const incoming: DirectMessageItem[] = data.messages || [];
         setActiveFriend(null);
-        setMessages(data.messages || []);
+        setMessages((prev) =>
+          buildMessagesSig(prev) === buildMessagesSig(incoming) ? prev : incoming
+        );
         setIsFriendTyping(false);
       }
       if (!silent) setLoadingChat(false);
@@ -360,19 +375,25 @@ function MessagesContent() {
     }
   }, [accessToken, selectedGroupId, loadGroupThread]);
 
-  // Live polling (pauses automatically when browser tab is hidden to save CPU/battery)
+  // Live polling: active thread every 4s, sidebar list every 12s (pauses when tab is hidden)
   useEffect(() => {
     if (!accessToken) return;
-    const interval = setInterval(() => {
+    const threadInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      loadConversations();
       if (selectedGroupId) {
         loadGroupThread(selectedGroupId, true);
       } else if (selectedFriendId) {
         loadThread(selectedFriendId, true);
       }
-    }, 2200);
-    return () => clearInterval(interval);
+    }, 4000);
+    const listInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      loadConversations();
+    }, 12000);
+    return () => {
+      clearInterval(threadInterval);
+      clearInterval(listInterval);
+    };
   }, [accessToken, selectedFriendId, selectedGroupId, loadConversations, loadThread, loadGroupThread]);
 
   // Smooth auto-scroll on new messages or typing bubble
@@ -1146,7 +1167,7 @@ function MessagesContent() {
                     </p>
                   </div>
                 ) : (
-                  <AnimatePresence initial={false}>
+                  <>
                     {messages.map((msg) => {
                       const isMine = msg.senderId === user.id;
                       const movieHref = msg.movieTmdbId
@@ -1165,11 +1186,8 @@ function MessagesContent() {
                           : null;
 
                       return (
-                        <motion.div
+                        <div
                           key={msg.id}
-                          initial={{ opacity: 0, y: 10, scale: 0.97 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 440, damping: 32 }}
                           className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
                         >
                           {groupSenderName && (
@@ -1352,10 +1370,10 @@ function MessagesContent() {
                               })}
                             </div>
                           )}
-                        </motion.div>
+                        </div>
                       );
                     })}
-                  </AnimatePresence>
+                  </>
                 )}
 
                 {/* Animated Typing Indicator */}
