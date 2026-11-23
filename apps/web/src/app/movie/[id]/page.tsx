@@ -265,7 +265,6 @@ export default function MovieDetailPage() {
 
   useEffect(() => {
     if (media && media.title) {
-      addToHistory({ ...media, routeId: mediaId });
       loadCommunityReviews();
 
       // Load trailers, OMDb, KinopoiskDev, and Jikan/MAL extras
@@ -370,7 +369,7 @@ export default function MovieDetailPage() {
           .catch(() => {});
       }
     }
-  }, [media?.id, addToHistory, loadCommunityReviews, mediaId]);
+  }, [media?.id, loadCommunityReviews, mediaId]);
 
   const openCollectionModal = async () => {
     setIsCollectionModalOpen(true);
@@ -834,6 +833,47 @@ export default function MovieDetailPage() {
               )}
             </div>
 
+            {/* Mobile Primary Watch Button (right under poster/title, BEFORE description) */}
+            <div className="sm:hidden">
+              {isAnimeMedia ? (
+                <Link
+                  href={buildAnimeWatchUrl(selectedSeason, selectedEpisode)}
+                  onClick={() =>
+                    addToHistory({
+                      ...media,
+                      routeId: mediaId,
+                      seasonNumber: isTv ? selectedSeason : undefined,
+                      episodeNumber: isTv ? selectedEpisode : undefined,
+                    })
+                  }
+                  className="w-full flex items-center justify-center gap-3 px-6 py-3.5 brand-btn text-white font-bold rounded-xl text-sm shadow-lg"
+                >
+                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                  <span>
+                    {isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть'}
+                  </span>
+                </Link>
+              ) : (
+                <a
+                  href={kinopoiskUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() =>
+                    addToHistory({
+                      ...media,
+                      routeId: mediaId,
+                      seasonNumber: isTv ? selectedSeason : undefined,
+                      episodeNumber: isTv ? selectedEpisode : undefined,
+                    })
+                  }
+                  className="w-full flex items-center justify-center gap-3 px-6 py-3.5 brand-btn text-white font-bold rounded-xl text-sm shadow-lg"
+                >
+                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                  <span>Смотреть</span>
+                </a>
+              )}
+            </div>
+
             {/* Synopsis / Description */}
             <div className="space-y-2">
               <h2 className="text-xs uppercase tracking-wider font-bold text-cinema-muted">
@@ -846,12 +886,20 @@ export default function MovieDetailPage() {
 
             {/* Primary Action Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              {/* Button: «Смотреть» -> built-in HLS player for ALL anime, Kinopoisk for movies/series */}
+              {/* Button: «Смотреть» -> built-in HLS player for ALL anime, Kinopoisk for movies/series (Desktop/Tablet) */}
               {isAnimeMedia ? (
                 <Link
                   href={buildAnimeWatchUrl(selectedSeason, selectedEpisode)}
+                  onClick={() =>
+                    addToHistory({
+                      ...media,
+                      routeId: mediaId,
+                      seasonNumber: isTv ? selectedSeason : undefined,
+                      episodeNumber: isTv ? selectedEpisode : undefined,
+                    })
+                  }
                   data-nav-item="true"
-                  className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
+                  className="hidden sm:flex items-center justify-center gap-3 px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-base"
                 >
                   <Play className="w-5 h-5 fill-white text-white ml-0.5" />
                   <span>
@@ -863,8 +911,16 @@ export default function MovieDetailPage() {
                   href={kinopoiskUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() =>
+                    addToHistory({
+                      ...media,
+                      routeId: mediaId,
+                      seasonNumber: isTv ? selectedSeason : undefined,
+                      episodeNumber: isTv ? selectedEpisode : undefined,
+                    })
+                  }
                   data-nav-item="true"
-                  className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
+                  className="hidden sm:flex items-center justify-center gap-3 px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-base"
                 >
                   <Play className="w-5 h-5 fill-white text-white ml-0.5" />
                   <span>Смотреть</span>

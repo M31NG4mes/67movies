@@ -244,13 +244,25 @@ export function VideoPlayer({
     isPlaying,
   });
 
-  // Sync volume, mute, and playbackRate from store to HTMLVideoElement
+  // Sync volume, mute, and Web Audio GainNode (so volume slider works accurately even on iOS & during Audio Boost)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+
+    const effectiveGain = isMuted ? 0 : Math.max(0, Math.min(2, volume * audioBoost));
     video.muted = isMuted;
-  }, [volume, isMuted]);
+    // When GainNode is attached, keep element.volume at 1 so GainNode handles 0..200% accurately;
+    // otherwise set element.volume directly.
+    if (mediaSourceConnectedRef.current && gainNodeRef.current) {
+      video.volume = 1;
+      gainNodeRef.current.gain.value = effectiveGain;
+      if (audioCtxRef.current?.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    } else {
+      video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+    }
+  }, [volume, isMuted, audioBoost]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -258,28 +270,31 @@ export function VideoPlayer({
     video.playbackRate = playbackRate;
   }, [playbackRate]);
 
-  // Sync Web Audio API GainNode when audioBoost > 1
+  // Attach Web Audio API GainNode when audioBoost > 1 OR on iOS when user adjusts volume below 100%
   useEffect(() => {
-    if (audioBoost > 1 && !useSafeProxy) {
-      // Ensure CORS-safe same-origin stream proxy is active when boosting audio via Web Audio API
+    const needsWebAudio = audioBoost > 1 || (isIosDevice() && volume > 0 && volume < 1);
+    if (!needsWebAudio && !mediaSourceConnectedRef.current) return;
+
+    if (needsWebAudio && !useSafeProxy) {
       setUseSafeProxy(true);
     }
     const video = videoRef.current;
     if (!video) return;
 
-    if (audioBoost > 1 && !mediaSourceConnectedRef.current) {
+    if (needsWebAudio && !mediaSourceConnectedRef.current) {
       try {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioCtx) {
           const ctx = new AudioCtx();
           const source = ctx.createMediaElementSource(video);
           const gain = ctx.createGain();
-          gain.gain.value = audioBoost;
+          gain.gain.value = isMuted ? 0 : volume * audioBoost;
           source.connect(gain);
           gain.connect(ctx.destination);
           audioCtxRef.current = ctx;
           gainNodeRef.current = gain;
           mediaSourceConnectedRef.current = true;
+          video.volume = 1;
         }
       } catch {
         // Fallback smoothly if MediaElementSource cannot attach
@@ -287,12 +302,12 @@ export function VideoPlayer({
     }
 
     if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = audioBoost;
+      gainNodeRef.current.gain.value = isMuted ? 0 : volume * audioBoost;
       if (audioCtxRef.current?.state === 'suspended') {
         audioCtxRef.current.resume().catch(() => {});
       }
     }
-  }, [audioBoost, useSafeProxy, setUseSafeProxy]);
+  }, [audioBoost, volume, isMuted, useSafeProxy, setUseSafeProxy]);
 
   // Pick stream
   useEffect(() => {
@@ -756,7 +771,11 @@ export function VideoPlayer({
         className="w-full h-full object-contain"
         playsInline
         x-webkit-airplay="allow"
-        crossOrigin={audioBoost > 1 ? 'anonymous' : undefined}
+        crossOrigin={
+          audioBoost > 1 || (isIosDevice() && volume > 0 && volume < 1)
+            ? 'anonymous'
+            : undefined
+        }
         onTimeUpdate={onTimeUpdate}
         onLoadedMetadata={onLoadedMetadata}
         onPlay={() => setIsPlaying(true)}

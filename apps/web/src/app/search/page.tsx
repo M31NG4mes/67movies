@@ -23,7 +23,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     try {
       const res = await api.media.search(query).catch(() => null);
       if (res?.items && res.items.length > 0) {
-        items = res.items;
+        items = [...res.items].sort(
+          (a, b) => (Number(b.voteAverage) || 0) - (Number(a.voteAverage) || 0)
+        );
       }
     } catch (e) {
       console.warn('[SearchPage] search error', e);

@@ -56,29 +56,29 @@ export function TrackSelectorModal({
   return (
     <div
       onClick={onClose}
-      className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fadeIn p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fadeIn p-3 sm:p-4"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-3xl bg-cinema-surface border border-cinema-border rounded-2xl shadow-2xl p-6 text-white max-h-[88vh] flex flex-col"
+        className="relative w-full max-w-3xl bg-cinema-surface border border-cinema-border rounded-2xl shadow-2xl p-4 sm:p-6 text-white max-h-[88dvh] flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-cinema-border">
-          <div className="flex items-center gap-2.5">
-            <Sliders className="w-5 h-5 text-brand-main" />
-            <h2 className="text-xl font-bold tracking-wide">
+        <div className="flex items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-cinema-border shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sliders className="w-4 h-4 sm:w-5 sm:h-5 text-brand-main shrink-0" />
+            <h2 className="text-base sm:text-xl font-bold tracking-wide leading-tight">
               Настройки звука, скорости и воспроизведения
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-cinema-muted hover:text-white hover:bg-cinema-card rounded-full transition-colors"
+            className="p-2 text-cinema-muted hover:text-white hover:bg-cinema-card rounded-full transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="py-4 space-y-6 overflow-y-auto pr-1">
+        <div className="py-3 sm:py-4 space-y-4 sm:space-y-6 overflow-y-auto overflow-x-hidden pr-1 min-w-0">
           {/* 1. Sound & Volume Controls */}
           <div className="bg-cinema-card border border-cinema-border rounded-xl p-4 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -106,7 +106,7 @@ export function TrackSelectorModal({
               </button>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <input
                 type="range"
                 min="0"
@@ -114,15 +114,15 @@ export function TrackSelectorModal({
                 step="0.01"
                 value={isMuted ? 0 : volume}
                 onChange={(e) => setVolume(parseFloat(e.target.value))}
-                className="flex-1 h-2 bg-cinema-border rounded-lg appearance-none cursor-pointer accent-brand-main"
+                className="w-full sm:flex-1 h-2 bg-cinema-border rounded-lg appearance-none cursor-pointer accent-brand-main"
               />
-              <div className="flex items-center gap-1.5">
+              <div className="grid grid-cols-4 sm:flex items-center gap-1.5 shrink-0">
                 {[0.25, 0.5, 0.75, 1.0].map((preset) => (
                   <button
                     key={preset}
                     type="button"
                     onClick={() => setVolume(preset)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                    className={`px-2 sm:px-2.5 py-1.5 sm:py-1 rounded-lg text-xs font-bold border transition-colors text-center ${
                       !isMuted && Math.abs(volume - preset) < 0.03
                         ? 'bg-brand-main border-brand-main text-white'
                         : 'bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white'

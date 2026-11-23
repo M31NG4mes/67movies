@@ -161,6 +161,16 @@ function FilterSections({
     });
   };
 
+  // Auto-apply manual year range inputs after short debounce
+  useEffect(() => {
+    if (!instantApply) return;
+    const timer = setTimeout(() => {
+      onInstantCommit(draft);
+    }, 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.yearFrom, draft.yearTo]);
+
   const toggleGenre = (gid: number) => {
     if (gid === 0) {
       updateField({ genres: [] });
@@ -771,33 +781,22 @@ export function CatalogTopBar({ initial, genres, availableYears }: CatalogFilter
                 setDraft={setDraft}
                 genres={genres}
                 availableYears={availableYears}
-                instantApply={false}
+                instantApply={true}
                 onInstantCommit={commit}
               />
             </div>
 
-            <div className="px-4 py-3 border-t border-[#292936] bg-[#111119] flex items-center gap-2.5 shrink-0">
-              <button
-                type="button"
-                onClick={handleResetAll}
-                className="px-4 py-3 rounded-xl bg-[#181821] border border-[#292936] text-xs font-bold text-[#92929F] hover:text-white"
-              >
-                Сбросить
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMobileSheetOpen(false);
-                  commit(draft);
-                }}
-                className="flex-1 inline-flex items-center justify-center gap-2 py-3 rounded-xl brand-btn text-white text-xs font-bold"
-              >
-                <Check className="w-4 h-4" />
-                <span>
-                  Показать результаты{draftFiltersCount > 0 ? ` (${draftFiltersCount})` : ''}
-                </span>
-              </button>
-            </div>
+            {draftFiltersCount > 0 && (
+              <div className="px-4 py-3 border-t border-[#292936] bg-[#111119] shrink-0">
+                <button
+                  type="button"
+                  onClick={handleResetAll}
+                  className="w-full py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-xs font-bold text-[#92929F] hover:text-white"
+                >
+                  Сбросить фильтры ({draftFiltersCount})
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -887,18 +886,6 @@ export function CatalogSidebarFilters({ initial, genres, availableYears }: Catal
           instantApply={true}
           onInstantCommit={commit}
         />
-      </div>
-
-      {/* Footer Apply Button (handy for year range input) */}
-      <div className="px-4 py-3 border-t border-[#292936] bg-[#111119] shrink-0">
-        <button
-          type="button"
-          onClick={() => commit(draft)}
-          className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl brand-btn text-white text-xs font-bold"
-        >
-          <Check className="w-4 h-4" />
-          <span>Применить</span>
-        </button>
       </div>
     </aside>
   );

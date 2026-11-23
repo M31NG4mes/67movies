@@ -124,7 +124,10 @@ function NavbarContent() {
       try {
         const res = await api.media.search(trimmed, 1);
         if (!cancelled) {
-          setSuggestions((res?.items || []).slice(0, 6));
+          const sorted = [...(res?.items || [])].sort(
+            (a, b) => (Number(b.voteAverage) || 0) - (Number(a.voteAverage) || 0)
+          );
+          setSuggestions(sorted.slice(0, 6));
         }
       } catch {
         if (!cancelled) setSuggestions([]);
@@ -173,7 +176,8 @@ function NavbarContent() {
   if (
     pathname === '/auth' ||
     pathname.startsWith('/admin') ||
-    pathname.startsWith('/watch')
+    pathname === '/watch' ||
+    pathname.startsWith('/watch/')
   ) {
     return null;
   }
@@ -460,7 +464,7 @@ function NavbarContent() {
           MOBILE ONLY: Minimal Floating Controls (Menu + Search)
           All navigation & settings are tucked cleanly inside the Slide-Out Drawer
          ================================================================= */}
-      {!pathname?.startsWith('/watch') && (
+      {!(pathname === '/watch' || pathname?.startsWith('/watch/')) && (
         <div className="md:hidden fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
           <button
             type="button"
