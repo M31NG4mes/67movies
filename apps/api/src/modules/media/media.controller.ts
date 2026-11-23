@@ -84,6 +84,7 @@ export class MediaController {
     @Query('type') type: MediaType = 'movie',
     @Query('category') category?: string,
     @Query('genreId') genreId?: string,
+    @Query('genres') genres?: string,
     @Query('sort') sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
     @Query('yearFrom') yearFrom?: string,
     @Query('yearTo') yearTo?: string,
@@ -92,13 +93,23 @@ export class MediaController {
     @Query('q') q?: string,
     @Query('page') page = '1'
   ) {
+    const parsedGenreIds = Array.from(
+      new Set(
+        [genres, genreId]
+          .filter(Boolean)
+          .flatMap((v) => String(v).split(','))
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )
+    );
     return this.mediaService.discoverByGenre(
       type,
-      genreId ? parseInt(genreId, 10) : undefined,
+      parsedGenreIds[0],
       parseInt(page, 10) || 1,
       sort,
       {
         category,
+        genreIds: parsedGenreIds.length > 0 ? parsedGenreIds : undefined,
         yearFrom: yearFrom ? parseInt(yearFrom, 10) : undefined,
         yearTo: yearTo ? parseInt(yearTo, 10) : undefined,
         minRating: minRating ? parseFloat(minRating) : undefined,

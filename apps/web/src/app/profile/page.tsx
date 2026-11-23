@@ -630,7 +630,7 @@ export default function ProfilePage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
                 {favoriteMovies.map((item) => (
                   <div
                     key={`fav-${item.id}`}
@@ -713,7 +713,7 @@ export default function ProfilePage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
                 {watchlist.map((item) => (
                   <div
                     key={`wl-${item.id}`}
@@ -797,7 +797,7 @@ export default function ProfilePage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
                 {myRatings.map((item) => (
                   <div
                     key={`rate-${item.id}`}
@@ -939,7 +939,7 @@ export default function ProfilePage() {
                           : 'Пока пусто — откройте любой фильм и нажмите «В подборку».'}
                       </p>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
                         {col.items.map((item: any) => (
                           <div
                             key={item.id}

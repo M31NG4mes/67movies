@@ -301,6 +301,7 @@ export class MediaService {
     sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
     extra?: {
       category?: string;
+      genreIds?: number[];
       yearFrom?: number;
       yearTo?: number;
       minRating?: number;

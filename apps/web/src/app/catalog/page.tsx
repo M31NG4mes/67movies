@@ -16,6 +16,7 @@ interface CatalogPageProps {
     type?: MediaType;
     category?: string;
     genre?: string;
+    genres?: string;
     sort?: string;
     yearFrom?: string;
     yearTo?: string;
@@ -55,7 +56,16 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   const isTv = category === 'tv' || category === 'anime' || category === 'dorama';
   const resolvedType: MediaType = isTv ? 'tv' : 'movie';
 
-  const activeGenreId = searchParams?.genre ? parseInt(searchParams.genre, 10) || 0 : 0;
+  const activeGenreIds = Array.from(
+    new Set(
+      [searchParams?.genres, searchParams?.genre]
+        .filter(Boolean)
+        .flatMap((v) => String(v).split(','))
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    )
+  );
+  const activeGenreId = activeGenreIds[0] || 0;
   const activeSort: CatalogSort =
     searchParams?.sort === 'rating' ||
     searchParams?.sort === 'date' ||
@@ -76,6 +86,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     api.media
       .discoverByGenre(resolvedType, activeGenreId, page, activeSort, {
         category,
+        genreIds: activeGenreIds.length > 0 ? activeGenreIds : undefined,
         yearFrom,
         yearTo,
         minRating,
@@ -86,10 +97,12 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     api.media.getGenres(resolvedType, category).catch(() => []),
   ]);
 
-  const hasActiveQuery = Boolean(q);
+  const hasActiveFilters = Boolean(
+    activeGenreIds.length > 0 || yearFrom || yearTo || minRating || lang || q
+  );
   const items = mediaRes?.items?.length
     ? mediaRes.items
-    : hasActiveQuery || category === 'anime'
+    : hasActiveFilters || category === 'anime'
     ? []
     : isTv
     ? mockSeriesCatalog
@@ -97,13 +110,15 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
 
   const totalPages = mediaRes?.totalPages || 1;
   const genres: Genre[] = [{ id: 0, name: 'Все жанры' }, ...((genresRes as Genre[]) || [])];
-  const activeGenreName =
-    activeGenreId > 0 ? genres.find((g) => g.id === activeGenreId)?.name : null;
+  const activeGenreNames = activeGenreIds
+    .map((gid) => genres.find((g) => g.id === gid)?.name)
+    .filter(Boolean)
+    .join(', ');
 
   const buildPageUrl = (targetPage: number) => {
     const sp = new URLSearchParams();
     if (category !== 'movie') sp.set('category', category);
-    if (activeGenreId > 0) sp.set('genre', String(activeGenreId));
+    if (activeGenreIds.length > 0) sp.set('genres', activeGenreIds.join(','));
     if (activeSort !== 'popularity') sp.set('sort', activeSort);
     if (yearFrom) sp.set('yearFrom', String(yearFrom));
     if (yearTo) sp.set('yearTo', String(yearTo));
@@ -116,12 +131,12 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   };
 
   return (
-    <div className="max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 pt-20 md:pt-12 pb-24 bg-[#09090D] min-h-screen">
+    <div className="w-full max-w-[1440px] mx-auto px-3 sm:px-8 lg:px-10 pt-16 md:pt-14 pb-16 bg-[#09090D] min-h-screen overflow-x-hidden">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight truncate">
           {CATEGORY_TITLES[category]}
-          {activeGenreName ? ` — ${activeGenreName}` : ''}
+          {activeGenreNames ? ` — ${activeGenreNames}` : ''}
         </h1>
         <p className="text-xs sm:text-sm text-[#92929F] mt-1">
           {[
@@ -137,12 +152,12 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
         </p>
       </div>
 
-      {/* Categories + Expandable Advanced Filters */}
+      {/* Categories + Expandable Advanced Filters (Bottom Sheet on Mobile) */}
       <CatalogFilters
         genres={genres}
         initial={{
           category,
-          genre: activeGenreId,
+          genres: activeGenreIds,
           sort: activeSort,
           yearFrom: yearFrom ? String(yearFrom) : '',
           yearTo: yearTo ? String(yearTo) : '',
@@ -154,16 +169,22 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
 
       {/* Media Grid */}
       {items.length === 0 ? (
-        <div className="text-center py-20 bg-[#181821] border border-[#292936] rounded-2xl p-8 max-w-xl mx-auto">
-          <p className="text-lg font-semibold text-white">
+        <div className="text-center py-14 sm:py-20 bg-[#181821] border border-[#292936] rounded-2xl p-6 sm:p-8 max-w-xl mx-auto space-y-4">
+          <p className="text-base sm:text-lg font-bold text-white">
             <T k="nothingFound" />
           </p>
-          <p className="text-sm text-[#92929F] mt-2">
+          <p className="text-xs sm:text-sm text-[#92929F]">
             <T k="tryRelaxFilters" />
           </p>
+          <Link
+            href={category !== 'movie' ? `/catalog?category=${category}` : '/catalog'}
+            className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl brand-btn text-white text-xs font-bold"
+          >
+            Сбросить фильтры
+          </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-5 animate-fadeIn">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4 animate-fadeIn">
           {items.map((item: MediaItem) => (
             <MediaCard key={item.id} media={item} fluid />
           ))}

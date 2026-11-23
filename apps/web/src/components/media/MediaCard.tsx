@@ -58,8 +58,8 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
   return (
     <Link
       href={`/movie/${targetId}?type=${targetType}`}
-      className={`group relative block rounded-2xl overflow-hidden bg-[#181821] brand-card-hover focus:outline-none ${
-        fluid ? 'w-full' : 'flex-none w-36 sm:w-44 md:w-48'
+      className={`group relative block rounded-xl sm:rounded-2xl overflow-hidden bg-[#181821] brand-card-hover focus:outline-none ${
+        fluid ? 'w-full' : 'flex-none w-28 sm:w-40 md:w-48'
       }`}
     >
       <div className="aspect-[2/3] w-full relative overflow-hidden">
@@ -99,13 +99,13 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
         )}
 
         {/* Smooth Title Overlay (always visible on mobile, hover reveal on desktop) */}
-        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/95 via-black/55 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-2.5 sm:p-3 hero-keep-white">
-          <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
+        <div className="absolute inset-x-0 bottom-0 h-20 sm:h-28 bg-gradient-to-t from-black/95 via-black/60 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-2 sm:p-3 hero-keep-white">
+          <h3 className="text-xs sm:text-sm font-bold text-white truncate sm:whitespace-normal sm:line-clamp-2 leading-snug">
             {media.title}
           </h3>
-          <div className="flex items-center justify-between text-[11px] text-white/75 mt-1">
+          <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-white/75 mt-0.5 sm:mt-1">
             <span>{media.releaseYear || ''}</span>
-            <span className="uppercase tracking-wider text-[10px]">
+            <span className="uppercase tracking-wider text-[9px] sm:text-[10px]">
               {targetType === 'tv' ? t.seriesBadge : t.movieBadge}
             </span>
           </div>

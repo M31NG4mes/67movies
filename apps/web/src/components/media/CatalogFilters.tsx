@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   SlidersHorizontal,
@@ -27,7 +27,7 @@ export type CatalogSort = 'popularity' | 'rating' | 'date' | 'votes';
 
 export interface CatalogFilterState {
   category: CatalogCategory;
-  genre: number;
+  genres: number[];
   sort: CatalogSort;
   yearFrom: string;
   yearTo: string;
@@ -51,14 +51,48 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
   const [isSortOpen, setIsSortOpen] = useState(false);
 
   const [category, setCategory] = useState<CatalogCategory>(initial.category);
-  const [genre, setGenre] = useState<number>(initial.genre);
+  const [selectedGenres, setSelectedGenres] = useState<number[]>(initial.genres || []);
   const [sort, setSort] = useState<CatalogSort>(initial.sort);
   const [yearFrom, setYearFrom] = useState<string>(initial.yearFrom);
   const [yearTo, setYearTo] = useState<string>(initial.yearTo);
   const [minRating, setMinRating] = useState<string>(initial.minRating);
   const [lang, setLang] = useState<string>(initial.lang);
   const [q, setQ] = useState<string>(initial.q || '');
-  const isAnimeCategory = initial.category === 'anime';
+
+  // Keep draft state synced when URL params update via navigation
+  useEffect(() => {
+    setCategory(initial.category);
+    setSelectedGenres(initial.genres || []);
+    setSort(initial.sort);
+    setYearFrom(initial.yearFrom);
+    setYearTo(initial.yearTo);
+    setMinRating(initial.minRating);
+    setLang(initial.lang);
+    setQ(initial.q || '');
+  }, [
+    initial.category,
+    initial.genres.join(','),
+    initial.sort,
+    initial.yearFrom,
+    initial.yearTo,
+    initial.minRating,
+    initial.lang,
+    initial.q,
+  ]);
+
+  // Lock background scroll while mobile bottom sheet is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    if (!isMobile) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
+  const isAnimeCategory = category === 'anime';
 
   const CATEGORIES: Array<{ id: CatalogCategory; label: string; icon: any }> = [
     { id: 'movie', label: t.movies, icon: Film },
@@ -108,7 +142,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
   const navigateWith = (next: Partial<CatalogFilterState>) => {
     const merged: CatalogFilterState = {
       category,
-      genre,
+      genres: selectedGenres,
       sort,
       yearFrom,
       yearTo,
@@ -119,7 +153,9 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     };
     const sp = new URLSearchParams();
     if (merged.category !== 'movie') sp.set('category', merged.category);
-    if (merged.genre > 0) sp.set('genre', String(merged.genre));
+    if (merged.genres && merged.genres.length > 0) {
+      sp.set('genres', merged.genres.join(','));
+    }
     if (merged.sort !== 'popularity') sp.set('sort', merged.sort);
     if (merged.yearFrom) sp.set('yearFrom', merged.yearFrom);
     if (merged.yearTo) sp.set('yearTo', merged.yearTo);
@@ -128,17 +164,33 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     if (merged.q && merged.category === 'anime') sp.set('q', merged.q.trim());
 
     const qs = sp.toString();
-    router.push(qs ? `/catalog?${qs}` : '/catalog');
+    router.push(qs ? `/catalog?${qs}` : '/catalog', { scroll: false });
   };
 
-  const activeFiltersCount = [
-    initial.genre > 0,
-    initial.sort !== 'popularity',
-    Boolean(initial.yearFrom || initial.yearTo),
-    Boolean(initial.minRating),
-    Boolean(initial.lang && !isAnimeCategory),
-    Boolean(initial.q),
-  ].filter(Boolean).length;
+  const toggleGenre = (gid: number) => {
+    if (gid === 0) {
+      setSelectedGenres([]);
+      return;
+    }
+    setSelectedGenres((prev) =>
+      prev.includes(gid) ? prev.filter((id) => id !== gid) : [...prev, gid]
+    );
+  };
+
+  const activeFiltersCount =
+    (initial.genres?.length || 0) +
+    (initial.sort !== 'popularity' ? 1 : 0) +
+    (initial.yearFrom || initial.yearTo ? 1 : 0) +
+    (initial.minRating ? 1 : 0) +
+    (initial.lang && initial.category !== 'anime' ? 1 : 0) +
+    (initial.q ? 1 : 0);
+
+  const draftFiltersCount =
+    selectedGenres.length +
+    (sort !== 'popularity' ? 1 : 0) +
+    (yearFrom || yearTo ? 1 : 0) +
+    (minRating ? 1 : 0) +
+    (lang && !isAnimeCategory ? 1 : 0);
 
   const handleApply = () => {
     setIsOpen(false);
@@ -147,7 +199,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
 
   const handleReset = () => {
     setCategory('movie');
-    setGenre(0);
+    setSelectedGenres([]);
     setSort('popularity');
     setYearFrom('');
     setYearTo('');
@@ -155,19 +207,20 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     setLang('');
     setQ('');
     setIsOpen(false);
-    router.push('/catalog');
+    router.push('/catalog', { scroll: false });
   };
 
   // Build visible active chips for quick 1-click clearing
   const activeChips: Array<{ id: string; label: string; onClear: () => void }> = [];
-  if (initial.genre > 0) {
-    const gName = genres.find((g) => g.id === initial.genre)?.name || `#${initial.genre}`;
+  for (const gid of initial.genres || []) {
+    const gName = genres.find((g) => g.id === gid)?.name || `#${gid}`;
     activeChips.push({
-      id: 'genre',
+      id: `genre-${gid}`,
       label: gName,
       onClear: () => {
-        setGenre(0);
-        navigateWith({ genre: 0 });
+        const nextGenres = (initial.genres || []).filter((id) => id !== gid);
+        setSelectedGenres(nextGenres);
+        navigateWith({ genres: nextGenres });
       },
     });
   }
@@ -192,7 +245,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
       },
     });
   }
-  if (initial.lang && !isAnimeCategory) {
+  if (initial.lang && initial.category !== 'anime') {
     const lName = LANG_OPTIONS.find((l) => l.value === initial.lang)?.label || initial.lang;
     activeChips.push({
       id: 'lang',
@@ -204,10 +257,210 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
     });
   }
 
+  const renderFilterSections = () => (
+    <div className="space-y-5">
+      {/* 1. Content Type */}
+      <div className="space-y-2">
+        <label className="text-[11px] font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
+          <Film className="w-3.5 h-3.5 text-[#A18BFF]" />
+          <span>Тип контента</span>
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+          {CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
+            const active = category === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  setCategory(cat.id);
+                  if (cat.id !== category) setSelectedGenres([]);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                  active
+                    ? 'bg-[#8065FF]/20 border-[#8065FF] text-white'
+                    : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{cat.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 2. Sort + Rating + Country */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+        <div className="space-y-2">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
+            <ArrowUpDown className="w-3.5 h-3.5 text-[#A18BFF]" />
+            <span>{t.sortBy}</span>
+          </label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {SORT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setSort(opt.value)}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all text-left truncate ${
+                  sort === opt.value
+                    ? 'bg-[#8065FF]/20 border-[#8065FF] text-white'
+                    : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
+            <Star className="w-3.5 h-3.5 text-[#A18BFF]" />
+            <span>{t.minRating}</span>
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {RATING_OPTIONS.map((r) => (
+              <button
+                key={r.value || 'any'}
+                type="button"
+                onClick={() => setMinRating(r.value)}
+                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  minRating === r.value
+                    ? 'bg-[#8065FF] border-[#8065FF] text-white'
+                    : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!isAnimeCategory && (
+          <div className="space-y-2">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-[#A18BFF]" />
+              <span>{t.countryLang}</span>
+            </label>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-xs font-semibold text-white focus:outline-none focus:border-[#8065FF]"
+            >
+              {LANG_OPTIONS.map((l) => (
+                <option key={l.value || 'all'} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Year Range */}
+      <div className="space-y-2">
+        <label className="text-[11px] font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
+          <Calendar className="w-3.5 h-3.5 text-[#A18BFF]" />
+          <span>{t.yearLabel}</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="number"
+            min={1920}
+            max={2026}
+            value={yearFrom}
+            onChange={(e) => setYearFrom(e.target.value)}
+            placeholder={t.yearFrom}
+            className="w-24 sm:w-32 px-3 py-2 rounded-xl bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
+          />
+          <span className="text-[#92929F] text-xs">—</span>
+          <input
+            type="number"
+            min={1920}
+            max={2026}
+            value={yearTo}
+            onChange={(e) => setYearTo(e.target.value)}
+            placeholder={t.yearTo}
+            className="w-24 sm:w-32 px-3 py-2 rounded-xl bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
+          />
+
+          <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:ml-1 pt-1 sm:pt-0">
+            {YEAR_PRESETS.map((p) => {
+              const active = yearFrom === p.from && yearTo === p.to;
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    if (active) {
+                      setYearFrom('');
+                      setYearTo('');
+                    } else {
+                      setYearFrom(p.from);
+                      setYearTo(p.to);
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
+                    active
+                      ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF]'
+                      : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Multi-Select Genre Pills */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-[#92929F]">
+            {t.genres} {selectedGenres.length > 0 ? `(${selectedGenres.length})` : ''}
+          </label>
+          {selectedGenres.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedGenres([])}
+              className="text-[11px] font-semibold text-[#A18BFF] hover:underline"
+            >
+              Сбросить жанры
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {genres.map((g) => {
+            const isSelected =
+              g.id === 0 ? selectedGenres.length === 0 : selectedGenres.includes(g.id);
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => toggleGenre(g.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                  isSelected
+                    ? 'bg-[#8065FF] border-[#8065FF] text-white'
+                    : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
+                }`}
+              >
+                {g.id === 0 ? t.allGenres : g.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-3.5 mb-7">
+    <div className="space-y-3 mb-5 sm:mb-7 w-full max-w-full">
       {/* Anime search (AniLiberty catalog) */}
-      {isAnimeCategory && (
+      {initial.category === 'anime' && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -215,7 +468,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
           }}
           className="flex items-center gap-2"
         >
-          <div className="relative flex-1 max-w-xl">
+          <div className="relative flex-1 min-w-0 max-w-xl">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#92929F]" />
             <input
               type="text"
@@ -247,9 +500,10 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
           </button>
         </form>
       )}
+
       {/* Top Row: Category Tabs with Icons + Sort & Filters Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 -mx-5 px-5 lg:mx-0 lg:px-0 scrollbar-none">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-3 w-full">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none w-full">
           {CATEGORIES.map((cat) => {
             const Icon = cat.icon;
             const isActive = initial.category === cat.id;
@@ -259,10 +513,10 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                 type="button"
                 onClick={() => {
                   setCategory(cat.id);
-                  setGenre(0);
-                  navigateWith({ category: cat.id, genre: 0 });
+                  setSelectedGenres([]);
+                  navigateWith({ category: cat.id, genres: [] });
                 }}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
                   isActive
                     ? 'brand-btn text-white'
                     : 'bg-[#111119] text-[#92929F] hover:text-white border border-[#292936] hover:border-[#8065FF]/60'
@@ -276,12 +530,12 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
         </div>
 
         {/* Sort Dropdown + Filters Toggle */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {activeFiltersCount > 0 && (
             <button
               type="button"
               onClick={handleReset}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#181821] hover:bg-red-500/15 border border-[#292936] hover:border-red-500/40 text-xs font-semibold text-[#92929F] hover:text-red-300 transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-2 sm:py-2.5 rounded-xl bg-[#181821] hover:bg-red-500/15 border border-[#292936] hover:border-red-500/40 text-xs font-semibold text-[#92929F] hover:text-red-300 transition-all"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{t.reset}</span>
@@ -296,21 +550,14 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
                 setIsSortOpen(!isSortOpen);
                 setIsOpen(false);
               }}
-              className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                isSortOpen || initial.sort !== 'popularity'
-                  ? 'bg-[#8065FF]/20 border-[#8065FF] text-white'
-                  : 'bg-[#111119] border-[#292936] hover:border-[#8065FF] text-white'
-              }`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 sm:py-2.5 rounded-xl bg-[#111119] border border-[#292936] hover:border-[#8065FF] text-xs font-bold text-white transition-all"
             >
               <ArrowUpDown className="w-3.5 h-3.5 text-[#A18BFF]" />
-              <span className="text-[#92929F] font-semibold hidden sm:inline">{t.sortBy}:</span>
-              <span>
-                {SORT_OPTIONS.find((o) => o.value === initial.sort)?.label || t.sortBy}
-              </span>
+              <span>{SORT_OPTIONS.find((o) => o.value === initial.sort)?.label || t.sortBy}</span>
             </button>
 
             {isSortOpen && (
-              <div className="absolute right-0 mt-2 w-52 rounded-2xl bg-[#111119] border border-[#292936] shadow-2xl p-1.5 z-40 animate-scaleIn">
+              <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-52 rounded-2xl bg-[#111119]/95 border border-[#292936] shadow-2xl p-1.5 z-40 backdrop-blur-xl animate-scaleIn">
                 {SORT_OPTIONS.map((opt) => {
                   const isActive = initial.sort === opt.value;
                   return (
@@ -343,7 +590,7 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
               setIsOpen(!isOpen);
               setIsSortOpen(false);
             }}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+            className={`inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl border text-xs font-bold transition-all ${
               isOpen || activeFiltersCount > 0
                 ? 'bg-[#8065FF]/20 border-[#8065FF] text-white'
                 : 'bg-[#111119] border-[#292936] hover:border-[#8065FF] text-white'
@@ -362,13 +609,13 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
 
       {/* Active Filter Chips (instant 1-click removal) */}
       {activeChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {activeChips.map((chip) => (
             <button
               key={chip.id}
               type="button"
               onClick={chip.onClear}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-semibold text-[#A18BFF] hover:bg-rose-500/15 hover:border-rose-500/40 hover:text-rose-300 transition-all"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-[#8065FF]/15 border border-[#8065FF]/40 text-[11px] sm:text-xs font-semibold text-[#A18BFF] hover:bg-rose-500/15 hover:border-rose-500/40 hover:text-rose-300 transition-all"
             >
               <span>{chip.label}</span>
               <X className="w-3 h-3" />
@@ -377,13 +624,18 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
         </div>
       )}
 
-      {/* Expandable Advanced Filter Panel */}
+      {/* DESKTOP: Expandable Filter Panel */}
       {isOpen && (
-        <div className="p-5 sm:p-6 rounded-2xl bg-[#111119] border border-[#292936] shadow-2xl space-y-6 animate-scaleIn">
+        <div className="hidden md:block p-6 rounded-2xl bg-[#111119] border border-[#292936] shadow-2xl space-y-6 animate-scaleIn">
           <div className="flex items-center justify-between border-b border-[#292936] pb-3.5">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-[#A18BFF]" />
               <span>{t.advancedFilters}</span>
+              {draftFiltersCount > 0 && (
+                <span className="px-2 py-0.5 rounded-md bg-[#8065FF]/20 text-[#A18BFF] text-xs font-bold">
+                  Выбрано: {draftFiltersCount}
+                </span>
+              )}
             </h2>
             <button
               type="button"
@@ -394,153 +646,8 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* 1. Sort */}
-            <div className="space-y-2.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
-                <ArrowUpDown className="w-3.5 h-3.5 text-[#A18BFF]" />
-                <span>{t.sortBy}</span>
-              </label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {SORT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSort(opt.value)}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all text-left ${
-                      sort === opt.value
-                        ? 'bg-[#8065FF]/20 border-[#8065FF] text-white'
-                        : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {renderFilterSections()}
 
-            {/* 2. Min Rating */}
-            <div className="space-y-2.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5 text-[#A18BFF]" />
-                <span>{t.minRating}</span>
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {RATING_OPTIONS.map((r) => (
-                  <button
-                    key={r.value || 'any'}
-                    type="button"
-                    onClick={() => setMinRating(r.value)}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                      minRating === r.value
-                        ? 'bg-[#8065FF] border-[#8065FF] text-white'
-                        : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
-                    }`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 3. Country / Language (not used for the AniLiberty anime catalog) */}
-            {!isAnimeCategory && (
-            <div className="space-y-2.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-[#A18BFF]" />
-                <span>{t.countryLang}</span>
-              </label>
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#09090D] border border-[#292936] text-xs font-semibold text-white focus:outline-none focus:border-[#8065FF]"
-              >
-                {LANG_OPTIONS.map((l) => (
-                  <option key={l.value || 'all'} value={l.value}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            )}
-          </div>
-
-          {/* 4. Year Range */}
-          <div className="space-y-2.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-[#92929F] flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[#A18BFF]" />
-              <span>{t.yearLabel}</span>
-            </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                type="number"
-                min={1920}
-                max={2026}
-                value={yearFrom}
-                onChange={(e) => setYearFrom(e.target.value)}
-                placeholder={t.yearFrom}
-                className="w-32 px-3 py-2 rounded-xl bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
-              />
-              <span className="text-[#92929F] text-xs">—</span>
-              <input
-                type="number"
-                min={1920}
-                max={2026}
-                value={yearTo}
-                onChange={(e) => setYearTo(e.target.value)}
-                placeholder={t.yearTo}
-                className="w-32 px-3 py-2 rounded-xl bg-[#09090D] border border-[#292936] text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF]"
-              />
-
-              <div className="flex flex-wrap gap-1.5 ml-0 sm:ml-2">
-                {YEAR_PRESETS.map((p) => {
-                  const active = yearFrom === p.from && yearTo === p.to;
-                  return (
-                    <button
-                      key={p.label}
-                      type="button"
-                      onClick={() => {
-                        setYearFrom(p.from);
-                        setYearTo(p.to);
-                      }}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
-                        active
-                          ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF]'
-                          : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* 5. Genre Pills */}
-          <div className="space-y-2.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-[#92929F]">
-              {t.genres}
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {genres.map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => setGenre(g.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                    genre === g.id
-                      ? 'bg-[#8065FF] border-[#8065FF] text-white'
-                      : 'bg-[#181821] border-[#292936] text-[#92929F] hover:text-white'
-                  }`}
-                >
-                  {g.id === 0 ? t.allGenres : g.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#292936]">
             <button
               type="button"
@@ -555,8 +662,71 @@ export function CatalogFilters({ initial, genres }: CatalogFiltersProps) {
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl brand-btn text-white text-xs font-bold"
             >
               <Check className="w-4 h-4" />
-              <span>{t.applyFilters}</span>
+              <span>Показать результаты</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE: Bottom Sheet Filter Drawer */}
+      {isOpen && (
+        <div
+          onClick={() => setIsOpen(false)}
+          className="md:hidden fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-end animate-fadeIn"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-h-[88dvh] bg-[#111119] border-t border-[#292936] rounded-t-3xl flex flex-col shadow-2xl animate-slideUp"
+          >
+            {/* Bottom Sheet Handle + Header */}
+            <div className="px-4 pt-2.5 pb-3 border-b border-[#292936] shrink-0">
+              <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-3" />
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-[#A18BFF]" />
+                  <span>{t.filters}</span>
+                  {draftFiltersCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-md bg-[#8065FF] text-white text-[10px] font-black">
+                      {draftFiltersCount}
+                    </span>
+                  )}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  aria-label="Закрыть фильтры"
+                  className="p-1.5 rounded-xl bg-[#181821] text-[#92929F] hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Filter Body */}
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              {renderFilterSections()}
+            </div>
+
+            {/* Sticky Bottom Sheet Actions */}
+            <div className="px-4 py-3 border-t border-[#292936] bg-[#111119] flex items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="px-4 py-3 rounded-xl bg-[#181821] border border-[#292936] text-xs font-bold text-[#92929F] hover:text-white transition-all"
+              >
+                {t.reset}
+              </button>
+              <button
+                type="button"
+                onClick={handleApply}
+                className="flex-1 inline-flex items-center justify-center gap-2 py-3 rounded-xl brand-btn text-white text-xs font-bold"
+              >
+                <Check className="w-4 h-4" />
+                <span>
+                  Показать результаты{draftFiltersCount > 0 ? ` (${draftFiltersCount})` : ''}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}

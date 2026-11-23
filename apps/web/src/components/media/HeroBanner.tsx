@@ -78,7 +78,7 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
   };
 
   return (
-    <section className="relative w-full h-[72vh] sm:h-[78vh] min-h-[480px] sm:min-h-[540px] max-h-[780px] flex items-center overflow-hidden bg-[#09090D]">
+    <section className="relative w-full h-[54vh] sm:h-[74vh] min-h-[340px] sm:min-h-[520px] max-h-[760px] flex items-center overflow-hidden bg-[#09090D]">
       {/* Stacked Crossfading Backdrops (zero flicker!) */}
       {activeList.map((item, idx) => {
         const bg =
@@ -115,18 +115,18 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
       <div className="absolute inset-0 z-[1] bg-hero-vignette-y" />
 
       {/* Content Container */}
-      <div className="relative z-10 w-full max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 pt-10 pb-20 hero-keep-white">
-        <div key={currentMedia.id} className="max-w-xl space-y-5 animate-slideUp">
+      <div className="relative z-10 w-full max-w-[1440px] mx-auto px-4 sm:px-8 lg:px-10 pt-12 pb-12 sm:pt-10 sm:pb-20 hero-keep-white">
+        <div key={currentMedia.id} className="max-w-xl space-y-3 sm:space-y-5 animate-slideUp">
           {/* Small Crimson Pill Badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-red-500/50 bg-red-500/15 backdrop-blur-sm">
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full border border-red-500/50 bg-red-500/15 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs font-medium text-red-300 tracking-wide">
+            <span className="text-[11px] sm:text-xs font-medium text-red-300 tracking-wide">
               {currentMedia.type === 'tv' ? t.series : language === 'en' ? 'Trending' : 'В тренде'}
             </span>
           </div>
 
           {/* Large Clean White Title */}
-          <h1 className="text-2xl sm:text-5xl lg:text-[54px] font-bold text-white tracking-tight leading-[1.12] drop-shadow-2xl">
+          <h1 className="text-xl sm:text-5xl lg:text-[54px] font-bold text-white tracking-tight leading-[1.12] drop-shadow-2xl">
             {currentMedia.title}
           </h1>
 
@@ -136,7 +136,7 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
           </p>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 pt-1 sm:pt-2">
             <Link
               href={`/movie/${
                 currentMedia.anilibertyId
@@ -147,7 +147,7 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
               }?type=${
                 currentMedia.type === 'tv' ? 'tv' : 'movie'
               }`}
-              className="inline-flex items-center justify-center px-6 sm:px-8 py-3 sm:py-3.5 brand-btn text-white font-semibold rounded-xl text-sm sm:text-base"
+              className="inline-flex items-center justify-center px-5 sm:px-8 py-2.5 sm:py-3.5 brand-btn text-white font-semibold rounded-xl text-xs sm:text-base"
             >
               {t.watch}
             </Link>

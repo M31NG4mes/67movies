@@ -126,23 +126,23 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   };
 
   return (
-    <div className="max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 pt-20 md:pt-16 pb-24 bg-[#09090D] min-h-screen">
+    <div className="max-w-[1440px] mx-auto px-3.5 sm:px-8 lg:px-10 pt-16 pb-16 bg-[#09090D] min-h-screen w-full">
       {/* Header & Month Switcher */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 border-b border-[#292936] pb-6 mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 sm:gap-5 border-b border-[#292936] pb-4 sm:pb-6 mb-6 sm:mb-8">
         <div>
-          <div className="flex items-center gap-2 text-[#A18BFF] text-xs font-bold uppercase tracking-widest mb-1.5">
-            <CalendarDays className="w-4 h-4" />
+          <div className="flex items-center gap-2 text-[#A18BFF] text-[11px] sm:text-xs font-bold uppercase tracking-widest mb-1">
+            <CalendarDays className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span><T k="calendarEyebrow" /></span>
           </div>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
+          <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
             <T k="calendarTitle" />
           </h1>
-          <p className="text-sm text-[#92929F] mt-1">
+          <p className="text-xs sm:text-sm text-[#92929F] mt-1">
             <T k="calendarSubtitle" />
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Type Filter */}
           <div className="flex items-center gap-1 bg-[#111119] border border-[#292936] p-1 rounded-xl">
             {(
@@ -155,7 +155,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
               <Link
                 key={opt.id}
                 href={buildUrl(year, month, opt.id)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all ${
                   type === opt.id
                     ? 'brand-btn text-white'
                     : 'text-[#92929F] hover:text-white hover:bg-[#181821]'
@@ -167,21 +167,21 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           </div>
 
           {/* Month Navigation */}
-          <div className="flex items-center gap-2 bg-[#111119] border border-[#292936] p-1 rounded-xl">
+          <div className="flex items-center gap-1 sm:gap-2 bg-[#111119] border border-[#292936] p-1 rounded-xl">
             <Link
               href={buildUrl(prevYear, prevMonth)}
               aria-label="Предыдущий месяц"
-              className="p-2 rounded-lg hover:bg-[#181821] text-[#92929F] hover:text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-[#181821] text-[#92929F] hover:text-white transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </Link>
-            <span className="px-3 text-sm font-bold text-white min-w-[140px] text-center">
+            <span className="px-2 sm:px-3 text-xs sm:text-sm font-bold text-white min-w-[105px] sm:min-w-[140px] text-center">
               {MONTH_NAMES_RU[month - 1]} {year}
             </span>
             <Link
               href={buildUrl(nextYear, nextMonth)}
               aria-label="Следующий месяц"
-              className="p-2 rounded-lg hover:bg-[#181821] text-[#92929F] hover:text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-[#181821] text-[#92929F] hover:text-white transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </Link>
@@ -191,32 +191,32 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
       {/* TVMaze Live Today Episodes Strip */}
       {tvMazeEpisodes.length > 0 && (
-        <section className="mb-10 p-5 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
+        <section className="mb-6 sm:mb-10 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#111119] border border-[#292936] space-y-3 sm:space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <span className="p-2 rounded-xl bg-[#8065FF]/15 text-[#A18BFF]">
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <span className="p-1.5 sm:p-2 rounded-xl bg-[#8065FF]/15 text-[#A18BFF]">
                 <Tv className="w-4 h-4" />
               </span>
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
+                <h2 className="text-sm sm:text-lg font-bold text-white leading-tight">
                   <T k="onAirToday" />
                 </h2>
-                <p className="text-xs text-[#92929F]">
+                <p className="text-[11px] sm:text-xs text-[#92929F]">
                   <T k="onAirSubtitle" />
                 </p>
               </div>
             </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
               LIVE • {tvMazeEpisodes.length} серий
             </span>
           </div>
 
-          <div className="flex gap-3 overflow-x-auto pb-2">
+          <div className="flex gap-2.5 sm:gap-3 overflow-x-auto pb-2">
             {tvMazeEpisodes.map((ep) => (
               <Link
                 key={ep.id}
                 href={`/search?q=${encodeURIComponent(ep.showName)}`}
-                className="group w-64 shrink-0 flex items-center gap-3 p-2.5 rounded-2xl bg-[#181821] border border-[#292936] hover:border-[#8065FF] transition-all"
+                className="group w-52 sm:w-64 shrink-0 flex items-center gap-2.5 sm:gap-3 p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-[#181821] border border-[#292936] hover:border-[#8065FF] transition-all"
               >
                 <div className="w-12 h-16 rounded-xl overflow-hidden bg-[#09090D] shrink-0 flex items-center justify-center">
                   {ep.image ? (
@@ -276,21 +276,21 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             return (
               <div
                 key={dayGroup.date}
-                className="flex flex-col md:flex-row gap-4 md:gap-6 items-start"
+                className="flex flex-col md:flex-row gap-2.5 sm:gap-4 md:gap-6 items-start"
               >
                 {/* Date Badge Column */}
-                <div className="flex md:flex-col items-center justify-center gap-2 md:gap-0.5 px-4 py-2.5 md:w-24 md:py-4 rounded-2xl bg-[#111119] border border-[#292936] shrink-0">
-                  <span className="text-2xl sm:text-3xl font-black text-white leading-none">
+                <div className="flex md:flex-col items-center justify-center gap-1.5 sm:gap-2 md:gap-0.5 px-3 py-1.5 sm:px-4 sm:py-2.5 md:w-24 md:py-4 rounded-xl sm:rounded-2xl bg-[#111119] border border-[#292936] shrink-0">
+                  <span className="text-lg sm:text-3xl font-black text-white leading-none">
                     {dayNum}
                   </span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#A18BFF]">
+                  <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-[#A18BFF]">
                     {monthShort}
                   </span>
-                  <span className="text-[11px] text-[#92929F] font-medium">{weekday}</span>
+                  <span className="text-[10px] sm:text-[11px] text-[#92929F] font-medium">{weekday}</span>
                 </div>
 
                 {/* Releases on This Day */}
-                <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
                   {dayGroup.items.map((item) => {
                     const targetId = item.tmdbId || item.id;
                     const targetType = item.type === 'tv' ? 'tv' : 'movie';
@@ -298,9 +298,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                       <Link
                         key={`${targetType}-${targetId}`}
                         href={`/movie/${targetId}?type=${targetType}`}
-                        className="group flex items-center gap-3.5 p-3 rounded-2xl bg-[#111119] border border-[#292936] hover:border-[#8065FF] transition-all hover:-translate-y-0.5"
+                        className="group flex items-center gap-2.5 sm:gap-3.5 p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-[#111119] border border-[#292936] hover:border-[#8065FF] transition-all hover:-translate-y-0.5"
                       >
-                        <div className="w-14 h-20 rounded-xl overflow-hidden bg-[#181821] shrink-0 flex items-center justify-center">
+                        <div className="w-11 h-16 sm:w-14 sm:h-20 rounded-lg sm:rounded-xl overflow-hidden bg-[#181821] shrink-0 flex items-center justify-center">
                           {item.posterPath ? (
                             <img
                               src={item.posterPath}
@@ -309,26 +309,26 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                           ) : (
-                            <Film className="w-5 h-5 text-[#92929F]" />
+                            <Film className="w-4 h-4 sm:w-5 sm:h-5 text-[#92929F]" />
                           )}
                         </div>
-                        <div className="min-w-0 flex-1 space-y-1">
+                        <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-1">
                           <div className="flex items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded-md bg-[#8065FF]/15 text-[#A18BFF] text-[10px] font-bold uppercase">
+                            <span className="px-1.5 py-0.5 rounded bg-[#8065FF]/15 text-[#A18BFF] text-[9px] sm:text-[10px] font-bold uppercase">
                               {targetType === 'tv' ? 'Сериал' : 'Фильм'}
                             </span>
                             {item.voteAverage > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-[#A18BFF]">
-                                <Star className="w-3 h-3 fill-[#A18BFF]" />
+                              <span className="inline-flex items-center gap-0.5 text-[10px] sm:text-[11px] font-bold text-[#A18BFF]">
+                                <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-[#A18BFF]" />
                                 {Number(item.voteAverage).toFixed(1)}
                               </span>
                             )}
                           </div>
-                          <h3 className="text-sm font-bold text-white line-clamp-1 group-hover:text-[#A18BFF] transition-colors">
+                          <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-1 group-hover:text-[#A18BFF] transition-colors">
                             {item.title}
                           </h3>
                           {item.overview && (
-                            <p className="text-[11px] text-[#92929F] line-clamp-2 leading-snug">
+                            <p className="text-[10px] sm:text-[11px] text-[#92929F] line-clamp-1 sm:line-clamp-2 leading-snug">
                               {item.overview}
                             </p>
                           )}

@@ -141,6 +141,7 @@ export class TmdbService {
     sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
     extra?: {
       category?: string;
+      genreIds?: number[];
       yearFrom?: number;
       yearTo?: number;
       minRating?: number;
@@ -170,12 +171,19 @@ export class TmdbService {
       page,
     };
 
-    // Combine category-implied genres with user-selected genre
+    // Combine category-implied genres with user-selected genres
     const genreList: number[] = [];
     if (category === 'cartoons' || category === 'anime') genreList.push(16);
     if (category === 'documentary') genreList.push(99);
     if (genreId && genreId > 0 && !genreList.includes(genreId)) {
       genreList.push(genreId);
+    }
+    if (Array.isArray(extra?.genreIds)) {
+      for (const gid of extra.genreIds) {
+        if (gid > 0 && !genreList.includes(gid)) {
+          genreList.push(gid);
+        }
+      }
     }
     if (genreList.length > 0) {
       params.with_genres = genreList.join(',');

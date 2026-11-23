@@ -41,7 +41,7 @@ export default function HistoryPage() {
       </div>
 
       {!hydrated ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="aspect-[2/3] rounded-2xl bg-[#181821] animate-pulse" />
           ))}
@@ -61,7 +61,7 @@ export default function HistoryPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-5 animate-fadeIn">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4 animate-fadeIn">
           {history.map((item) => (
             <div
               key={item.id}

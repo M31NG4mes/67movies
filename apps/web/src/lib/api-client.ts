@@ -528,6 +528,7 @@ export const api = {
       sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
       extra?: {
         category?: string;
+        genreIds?: number[];
         yearFrom?: number;
         yearTo?: number;
         minRating?: number;
@@ -538,6 +539,12 @@ export const api = {
       const category = extra?.category || type;
       const isTv = category === 'tv' || category === 'anime' || category === 'dorama';
       const resolvedType: MediaType = isTv ? 'tv' : 'movie';
+      const normalizedGenres = Array.from(
+        new Set([
+          ...(Array.isArray(extra?.genreIds) ? extra.genreIds : []),
+          ...(genreId && genreId > 0 ? [genreId] : []),
+        ].filter((n) => n > 0))
+      );
 
       try {
         const sp = new URLSearchParams({
@@ -546,7 +553,10 @@ export const api = {
           sort,
           page: String(page),
         });
-        if (genreId && genreId > 0) sp.set('genreId', String(genreId));
+        if (normalizedGenres.length > 0) {
+          sp.set('genreId', String(normalizedGenres[0]));
+          sp.set('genres', normalizedGenres.join(','));
+        }
         if (extra?.yearFrom) sp.set('yearFrom', String(extra.yearFrom));
         if (extra?.yearTo) sp.set('yearTo', String(extra.yearTo));
         if (extra?.minRating) sp.set('minRating', String(extra.minRating));
@@ -599,14 +609,23 @@ export const api = {
         const params: Record<string, string> = {
           sort_by: sortByMap[sort] || 'popularity.desc',
         };
-        if (genreId && genreId > 0) params.with_genres = String(genreId);
+        const genreList: number[] = [];
+        if (category === 'anime' || category === 'cartoons' || category === 'cartoon') {
+          genreList.push(16);
+        } else if (category === 'documentary') {
+          genreList.push(99);
+        }
+        for (const gid of normalizedGenres) {
+          if (!genreList.includes(gid)) genreList.push(gid);
+        }
+        if (genreList.length > 0) params.with_genres = genreList.join(',');
+
         if (category === 'anime') {
-          params.with_genres = '16';
           params.with_original_language = 'ja';
-        } else if (category === 'cartoon') {
-          params.with_genres = '16';
         } else if (category === 'dorama') {
           params.with_original_language = 'ko';
+        } else if (extra?.lang) {
+          params.with_original_language = extra.lang;
         }
         if (extra?.yearFrom) {
           params[resolvedType === 'tv' ? 'first_air_date.gte' : 'primary_release_date.gte'] = `${extra.yearFrom}-01-01`;
