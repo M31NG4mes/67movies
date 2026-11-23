@@ -98,6 +98,19 @@ def _rewrite_url_domain(url: str, mirror: str) -> str:
     return urlunsplit((mirror_parsed.scheme or "https", mirror_parsed.netloc, parsed.path, parsed.query, parsed.fragment))
 
 
+def _normalize_image_url(url: Optional[str], mirror: str = "https://rezka.ag") -> Optional[str]:
+    if not url:
+        return None
+    raw = str(url).strip()
+    if not raw:
+        return None
+    if raw.startswith("//"):
+        return f"https:{raw}"
+    if raw.startswith("/"):
+        return f"{mirror.rstrip('/')}{raw}"
+    return raw
+
+
 def _with_mirrors(fn):
     last_err: Optional[Exception] = None
     for mirror in DEFAULT_MIRRORS:
@@ -137,7 +150,7 @@ def _infer_media_type(entity: Optional[str], status: Optional[str] = None, url: 
     return "movie"
 
 
-def _normalize_poster(poster: Any) -> Dict[str, Any]:
+def _normalize_poster(poster: Any, mirror: str = "https://rezka.ag") -> Dict[str, Any]:
     media_type = _infer_media_type(poster.entity, poster.status, poster.url)
     year = _extract_year(poster.year)
     genres = [g.strip() for g in str(poster.genre or "").split(",") if g.strip()]
@@ -148,7 +161,7 @@ def _normalize_poster(poster: Any) -> Dict[str, Any]:
         "title": poster.title,
         "type": media_type,
         "entity": poster.entity,
-        "posterUrl": poster.img_url,
+        "posterUrl": _normalize_image_url(poster.img_url, mirror),
         "releaseYear": year,
         "country": poster.country,
         "genres": genres,
@@ -173,7 +186,7 @@ def search_content(query: str, page: int = 1) -> Dict[str, Any]:
     except EmptyPage:
         return _cache_set(cache_key, {"items": [], "page": page, "totalPages": page, "totalItems": 0}, SEARCH_TTL)
 
-    items = [_normalize_poster(p) for p in posters]
+    items = [_normalize_poster(p, mirror) for p in posters]
     result = {
         "items": items,
         "page": page,
@@ -249,8 +262,8 @@ def _extract_details_payload(details: Any) -> Dict[str, Any]:
         "title": details.title,
         "originalTitle": details.original_title or details.title,
         "description": details.description or "",
-        "posterUrl": details.img_url,
-        "backdropUrl": details.img_url,
+        "posterUrl": _normalize_image_url(details.img_url),
+        "backdropUrl": _normalize_image_url(details.img_url),
         "releaseYear": release_year,
         "rating": rating_val,
         "voteCount": votes_val,

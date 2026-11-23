@@ -31,7 +31,10 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
   }, [primarySrc]);
 
   const handleImageError = () => {
-    if (secondarySrc && imgSrc !== secondarySrc) {
+    const proxiedPrimary = primarySrc ? `/api/image?url=${encodeURIComponent(primarySrc)}` : '';
+    if (proxiedPrimary && !imgSrc.startsWith('/api/image') && imgSrc === primarySrc) {
+      setImgSrc(proxiedPrimary);
+    } else if (secondarySrc && imgSrc !== secondarySrc && !imgSrc.includes(encodeURIComponent(secondarySrc))) {
       setImgSrc(secondarySrc);
     } else {
       setImgFailed(true);
