@@ -1,23 +1,7 @@
 import { create } from 'zustand';
 
-export type ThemeMode = 'dark' | 'midnight' | 'oled' | 'cinema' | 'light';
+export type ThemeMode = 'dark' | 'light';
 export type AppLanguage = 'ru' | 'en';
-
-export interface ThemePreset {
-  id: ThemeMode;
-  nameRu: string;
-  nameEn: string;
-  bg: string;
-  card: string;
-}
-
-export const THEME_PRESETS: ThemePreset[] = [
-  { id: 'dark', nameRu: 'Тёмная', nameEn: 'Dark', bg: '#09090D', card: '#111119' },
-  { id: 'midnight', nameRu: 'Полночь', nameEn: 'Midnight', bg: '#070B16', card: '#0E1526' },
-  { id: 'oled', nameRu: 'OLED Чёрная', nameEn: 'OLED Black', bg: '#000000', card: '#0A0A0E' },
-  { id: 'cinema', nameRu: 'Кинозал', nameEn: 'Cinema', bg: '#11090E', card: '#1B1016' },
-  { id: 'light', nameRu: 'Светлая', nameEn: 'Light', bg: '#E4E6EE', card: '#F4F5F8' },
-];
 
 export interface AccentPreset {
   id: string;
@@ -327,8 +311,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
       const raw = localStorage.getItem(PREFS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        const validThemes: ThemeMode[] = ['dark', 'midnight', 'oled', 'cinema', 'light'];
-        const theme: ThemeMode = validThemes.includes(parsed.theme) ? parsed.theme : 'dark';
+        const theme: ThemeMode = parsed.theme === 'light' ? 'light' : 'dark';
         const accentColor: string = parsed.accentColor || '#8065FF';
         const language: AppLanguage = parsed.language === 'en' ? 'en' : 'ru';
         const newYearMode = Boolean(parsed.newYearMode);
@@ -405,10 +388,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   },
 
   syncFromServer: (s) => {
-    const validThemes: ThemeMode[] = ['dark', 'midnight', 'oled', 'cinema', 'light'];
-    const theme: ThemeMode = validThemes.includes(s.theme as ThemeMode)
-      ? (s.theme as ThemeMode)
-      : get().theme;
+    const theme: ThemeMode = s.theme === 'light' ? 'light' : get().theme;
     const accentColor = s.accentColor || get().accentColor;
     const language: AppLanguage = s.language === 'en' ? 'en' : s.language === 'ru' ? 'ru' : get().language;
     const { newYearMode, ageVerified18 } = get();

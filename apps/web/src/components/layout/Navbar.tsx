@@ -25,7 +25,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MediaItem } from '@cinemaflow/types';
 import { api } from '../../lib/api-client';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
-import { THEME_PRESETS, TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
+import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
 import { Logo } from './Logo';
 
 function SidebarTooltip({ label }: { label: string }) {
@@ -52,8 +52,7 @@ function NavbarContent() {
   const { user, accessToken, profiles, activeProfileId, hydrate } = useAuthStore();
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
-  const { theme, language, newYearMode, setTheme, setLanguage, setNewYearMode } =
-    usePreferencesStore();
+  const { language, setLanguage } = usePreferencesStore();
   const t = TRANSLATIONS[language];
   const currentAccountProfile =
     profiles.find((p) => p.id === activeProfileId) || profiles[0] || null;
@@ -229,18 +228,16 @@ function NavbarContent() {
   return (
     <>
       {/* =================================================================
-          DESKTOP: All Controls Consolidated into Left Slim Sidebar
-          (with sleek hover tooltips sliding out to the right)
+          DESKTOP: Expandable Left Sidebar (expands smoothly on hover)
          ================================================================= */}
-      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-16 z-50 bg-[#09090D]/95 border-r border-white/[0.06] flex-col items-center justify-between py-5">
-        {/* Top: Brand Logo */}
-        <div className="group relative">
-          <Logo compact />
-          <SidebarTooltip label="67movies" />
+      <aside className="group/sidebar hidden md:flex fixed top-0 left-0 bottom-0 w-16 hover:w-56 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] z-50 bg-[#09090D]/95 hover:bg-[#09090D]/98 backdrop-blur-xl border-r border-white/[0.06] hover:shadow-[16px_0_40px_rgba(0,0,0,0.65)] flex-col justify-between py-5 px-2.5 overflow-hidden">
+        {/* Top: Brand Logo (shows '67' collapsed, '67 movies' expanded) */}
+        <div className="w-full px-0.5 flex items-center">
+          <Logo expandOnSidebarHover className="w-full" />
         </div>
 
-        {/* Middle: Navigation + Search Icons */}
-        <nav className="flex flex-col items-center gap-3.5">
+        {/* Middle: Navigation Links */}
+        <nav className="w-full flex flex-col gap-2">
           {sideLinks.map((item) => {
             const Icon = item.icon;
             return (
@@ -248,7 +245,7 @@ function NavbarContent() {
                 key={item.href}
                 href={item.href}
                 aria-label={item.label}
-                className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                className={`relative w-full h-11 px-3 rounded-xl flex items-center gap-3.5 transition-all duration-200 overflow-hidden ${
                   item.isActive
                     ? 'text-[#A18BFF] bg-[#8065FF]/15 shadow-[0_0_16px_rgba(128,101,255,0.2)]'
                     : 'text-[#8C8A9A] hover:text-white hover:bg-white/5'
@@ -262,58 +259,40 @@ function NavbarContent() {
                     style={{ backgroundColor: 'var(--brand-main)' }}
                   />
                 )}
-                <Icon className="w-[20px] h-[20px] stroke-[1.75]" />
-                {Boolean((item as any).badge) && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg">
-                    {(item as any).badge > 9 ? '9+' : (item as any).badge}
-                  </span>
-                )}
-                <SidebarTooltip label={item.label} />
+                <span className="relative shrink-0 flex items-center justify-center">
+                  <Icon className="w-[20px] h-[20px] stroke-[1.75]" />
+                  {Boolean((item as any).badge) && (
+                    <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center shadow-lg">
+                      {(item as any).badge > 9 ? '9+' : (item as any).badge}
+                    </span>
+                  )}
+                </span>
+                <span className="text-sm font-semibold whitespace-nowrap opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
+                  {item.label}
+                </span>
               </Link>
             );
           })}
 
-          <div className="w-6 h-px bg-white/10 my-1" />
-
           {canAccessAdmin && (
-            <Link
-              href="/admin"
-              aria-label="Админ-панель"
-              className="group relative w-11 h-11 rounded-xl flex items-center justify-center text-[#A18BFF] bg-[#8065FF]/15 hover:bg-[#8065FF]/25 border border-[#8065FF]/35 transition-all duration-200"
-            >
-              <Shield className="w-[19px] h-[19px] stroke-[1.9]" />
-              <SidebarTooltip label="Админ-панель" />
-            </Link>
+            <>
+              <div className="w-full h-px bg-white/10 my-1" />
+              <Link
+                href="/admin"
+                aria-label="Админ-панель"
+                className="relative w-full h-11 px-3 rounded-xl flex items-center gap-3.5 text-[#A18BFF] bg-[#8065FF]/15 hover:bg-[#8065FF]/25 border border-[#8065FF]/35 transition-all duration-200 overflow-hidden"
+              >
+                <Shield className="w-[19px] h-[19px] stroke-[1.9] shrink-0" />
+                <span className="text-sm font-semibold whitespace-nowrap opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
+                  {t.adminPanel}
+                </span>
+              </Link>
+            </>
           )}
         </nav>
 
-        {/* Bottom: New Year, Language, Theme & Account */}
-        <div className="flex flex-col items-center gap-3">
-          {/* New Year Festive Toggle */}
-          <button
-            type="button"
-            onClick={() => setNewYearMode(!newYearMode)}
-            aria-label="Новогодняя тема"
-            className={`group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-              newYearMode
-                ? 'text-sky-300 bg-sky-400/15 border border-sky-400/40 shadow-[0_0_16px_rgba(56,189,248,0.35)]'
-                : 'text-[#8C8A9A] hover:text-sky-300 hover:bg-white/5'
-            }`}
-          >
-            <Snowflake className={`w-[19px] h-[19px] stroke-[1.75] ${newYearMode ? 'animate-spin' : ''}`} style={newYearMode ? { animationDuration: '9s' } : undefined} />
-            <SidebarTooltip
-              label={
-                newYearMode
-                  ? language === 'en'
-                    ? 'New Year Mode: ON'
-                    : 'Новогодняя тема: ВКЛ'
-                  : language === 'en'
-                  ? 'New Year Mode'
-                  : 'Новогодняя тема'
-              }
-            />
-          </button>
-
+        {/* Bottom: Language & Account */}
+        <div className="w-full flex flex-col gap-2.5">
           {/* Language Switcher */}
           <button
             type="button"
@@ -328,66 +307,42 @@ function NavbarContent() {
               }
             }}
             aria-label="Сменить язык"
-            className="group relative w-10 h-9 rounded-xl flex items-center justify-center text-[11px] font-bold uppercase tracking-wider text-[#92929F] hover:text-white border border-white/10 hover:border-[#8065FF] transition-all"
+            className="w-full h-10 px-2.5 rounded-xl flex items-center gap-3.5 text-[#92929F] hover:text-white hover:bg-white/5 border border-white/10 hover:border-[#8065FF] transition-all overflow-hidden"
           >
-            <span>{language.toUpperCase()}</span>
-            <SidebarTooltip label={language === 'ru' ? 'Язык: Русский' : 'Language: English'} />
-          </button>
-
-          {/* Theme Switcher (cycles through all 5 themes) */}
-          <button
-            type="button"
-            onClick={() => {
-              const idx = THEME_PRESETS.findIndex((p) => p.id === theme);
-              const nextTheme = THEME_PRESETS[(idx + 1) % THEME_PRESETS.length].id;
-              setTheme(nextTheme);
-              if (accessToken) {
-                authFetch('/settings', {
-                  method: 'PATCH',
-                  body: JSON.stringify({ theme: nextTheme }),
-                }).catch(() => {});
-              }
-            }}
-            aria-label="Переключить тему"
-            className="group relative w-10 h-10 rounded-xl flex items-center justify-center text-[#8C8A9A] hover:text-white hover:bg-white/5 transition-all"
-          >
-            {theme === 'light' ? (
-              <Moon className="w-[19px] h-[19px] stroke-[1.75]" />
-            ) : (
-              <Sun className="w-[19px] h-[19px] stroke-[1.75]" />
-            )}
-            <SidebarTooltip
-              label={`${t.themeLabel}: ${
-                THEME_PRESETS.find((p) => p.id === theme)?.[language === 'en' ? 'nameEn' : 'nameRu'] ||
-                theme
-              }`}
-            />
+            <span className="w-6 text-center text-[11px] font-bold uppercase tracking-wider shrink-0">
+              {language.toUpperCase()}
+            </span>
+            <span className="text-xs font-semibold whitespace-nowrap opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
+              {language === 'ru' ? 'Русский' : 'English'}
+            </span>
           </button>
 
           {/* Account / Login */}
           <Link
             href={user ? '/profile' : '/auth'}
             aria-label={user ? user.name : t.signIn}
-            className="group relative w-10 h-10 rounded-xl overflow-visible flex items-center justify-center transition-transform hover:scale-105"
+            className="w-full h-11 px-0.5 rounded-xl flex items-center gap-3 hover:bg-white/5 transition-all overflow-hidden"
           >
             {user ? (
               currentAccountProfile?.avatarUrl ? (
                 <img
                   src={currentAccountProfile.avatarUrl}
                   alt={user.name}
-                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/15 group-hover:ring-[#8065FF] transition-all"
+                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/15 shrink-0"
                 />
               ) : (
-                <span className="w-10 h-10 rounded-xl brand-btn text-white text-sm font-black flex items-center justify-center uppercase">
+                <span className="w-10 h-10 rounded-xl brand-btn text-white text-sm font-black flex items-center justify-center uppercase shrink-0">
                   {user.name.slice(0, 1)}
                 </span>
               )
             ) : (
-              <span className="w-10 h-10 rounded-xl bg-[#181821] border border-[#292936] group-hover:border-[#8065FF] text-[#A18BFF] flex items-center justify-center transition-all">
+              <span className="w-10 h-10 rounded-xl bg-[#181821] border border-[#292936] text-[#A18BFF] flex items-center justify-center shrink-0">
                 <UserIcon className="w-5 h-5" />
               </span>
             )}
-            <SidebarTooltip label={user ? user.name : t.signIn} />
+            <span className="text-sm font-bold text-white truncate opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
+              {user ? user.name : t.signIn}
+            </span>
           </Link>
         </div>
       </aside>
@@ -642,26 +597,8 @@ function NavbarContent() {
                 </nav>
               </div>
 
-              {/* Drawer Footer: Theme, Language & New Year Toggles */}
-              <div className="pt-4 border-t border-[#292936] grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextTheme = theme === 'dark' ? 'light' : 'dark';
-                    setTheme(nextTheme);
-                    if (accessToken) {
-                      authFetch('/settings', {
-                        method: 'PATCH',
-                        body: JSON.stringify({ theme: nextTheme }),
-                      }).catch(() => {});
-                    }
-                  }}
-                  className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
-                >
-                  {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-[#A18BFF]" />}
-                  <span>{theme === 'dark' ? t.themeLight : t.themeDark}</span>
-                </button>
-
+              {/* Drawer Footer: Language Toggle */}
+              <div className="pt-4 border-t border-[#292936]">
                 <button
                   type="button"
                   onClick={() => {
@@ -674,23 +611,10 @@ function NavbarContent() {
                       }).catch(() => {});
                     }
                   }}
-                  className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-xs font-bold text-[#B8B6C8] hover:text-white"
                 >
-                  <span className="text-xs font-black text-white">{language.toUpperCase()}</span>
-                  <span>{t.langShort}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setNewYearMode(!newYearMode)}
-                  className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-[10px] font-bold ${
-                    newYearMode
-                      ? 'bg-sky-500/20 border-sky-400/40 text-sky-300'
-                      : 'bg-[#181821] border-[#292936] text-[#B8B6C8]'
-                  }`}
-                >
-                  <Snowflake className="w-4 h-4" />
-                  <span>{t.winterLabel}</span>
+                  <span className="font-black text-white">{language.toUpperCase()}</span>
+                  <span>{language === 'ru' ? 'Язык: Русский' : 'Language: English'}</span>
                 </button>
               </div>
             </motion.aside>

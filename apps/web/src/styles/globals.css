@@ -17,54 +17,6 @@ html[data-theme='light'] {
   color-scheme: light;
 }
 
-html[data-theme='midnight'] {
-  --background: #070B16;
-  --foreground: #F8FAFC;
-  color-scheme: dark;
-}
-
-html[data-theme='midnight'] .bg-\[\#09090D\] {
-  background-color: #070B16 !important;
-}
-
-html[data-theme='midnight'] .bg-\[\#111119\],
-html[data-theme='midnight'] .bg-\[\#181821\] {
-  background-color: #0E1526 !important;
-}
-
-html[data-theme='oled'] {
-  --background: #000000;
-  --foreground: #FFFFFF;
-  color-scheme: dark;
-}
-
-html[data-theme='oled'] .bg-\[\#09090D\] {
-  background-color: #000000 !important;
-}
-
-html[data-theme='oled'] .bg-\[\#111119\] {
-  background-color: #08080B !important;
-}
-
-html[data-theme='oled'] .bg-\[\#181821\] {
-  background-color: #0E0E13 !important;
-}
-
-html[data-theme='cinema'] {
-  --background: #11090E;
-  --foreground: #FDF8FA;
-  color-scheme: dark;
-}
-
-html[data-theme='cinema'] .bg-\[\#09090D\] {
-  background-color: #11090E !important;
-}
-
-html[data-theme='cinema'] .bg-\[\#111119\],
-html[data-theme='cinema'] .bg-\[\#181821\] {
-  background-color: #1B1016 !important;
-}
-
 body {
   color: var(--foreground);
   background-color: var(--background);
