@@ -74,22 +74,25 @@ function cleanQueryCandidates(title?: string, originalTitle?: string): string[] 
     if (!list.includes(s)) list.push(s);
     const noHyphen = s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
     if (noHyphen && !list.includes(noHyphen)) list.push(noHyphen);
-    const basePart = s.split(/[:—–(]/)[0]?.trim();
-    if (basePart && basePart.length >= 3 && !list.includes(basePart)) {
-      list.push(basePart);
-    }
-    const baseNoHyphen = basePart?.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-    if (baseNoHyphen && baseNoHyphen.length >= 3 && !list.includes(baseNoHyphen)) {
-      list.push(baseNoHyphen);
+    // Only strip parenthetical notes like "(2022)" — do NOT strip subtitle after ":" (e.g. "Блич: Тысячелетняя кровавая война" -> "Блич")
+    const noParens = s.split('(')[0]?.trim();
+    if (noParens && noParens.length >= 3 && !list.includes(noParens)) {
+      list.push(noParens);
     }
   };
   add(title);
   add(originalTitle);
-  if (list.some((q) => /ван[\s-]*пис|^one\s*piece$|большой\s*куш/i.test(q))) {
-    add('Ван Пис');
-    add('One Piece');
-  }
   return list;
+}
+
+async function fetchTimed(url: string, init?: RequestInit, timeoutMs = 3500): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal, cache: 'no-store' });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchAniLibertyRelease(params: {
@@ -100,9 +103,10 @@ async function fetchAniLibertyRelease(params: {
 }): Promise<any | null> {
   if (params.anilibertyId) {
     try {
-      const res = await fetch(
+      const res = await fetchTimed(
         `${ANILIBERTY_BASE}/api/v1/anime/releases/${params.anilibertyId}`,
-        { cache: 'no-store' }
+        undefined,
+        3500
       );
       if (res.ok) {
         const raw: any = await res.json();
@@ -117,9 +121,10 @@ async function fetchAniLibertyRelease(params: {
   for (const q of queries) {
     try {
       const sp = new URLSearchParams({ page: '1', limit: '10', 'f[search]': q });
-      const res = await fetch(
+      const res = await fetchTimed(
         `${ANILIBERTY_BASE}/api/v1/anime/catalog/releases?${sp.toString()}`,
-        { cache: 'no-store' }
+        undefined,
+        3500
       );
       if (!res.ok) continue;
       const json: any = await res.json();
@@ -196,10 +201,13 @@ async function fetchKodikData(params: {
         );
       }
 
+      let foundByExactId = false;
       for (const sp of searchAttempts) {
-        const res = await fetch(`https://kodik-api.com/search?${sp.toString()}`, {
-          cache: 'no-store',
-        }).catch(() => null);
+        if (foundByExactId) break;
+        const isShikimoriQuery = sp.has('shikimori_id');
+        const res = await fetchTimed(`https://kodik-api.com/search?${sp.toString()}`, undefined, 3200).catch(
+          () => null
+        );
         if (!res || !res.ok) continue;
 
         const data: any = await res.json().catch(() => null);
@@ -210,6 +218,9 @@ async function fetchKodikData(params: {
         for (const item of results) {
           const itemShikiId = Number(item?.shikimori_id || 0);
           const idMatches = Boolean(params.malId && itemShikiId === params.malId);
+          if (isShikimoriQuery && idMatches) {
+            foundByExactId = true;
+          }
           const otherTitles = String(item?.other_title || '')
             .split('/')
             .map((t) => t.trim())

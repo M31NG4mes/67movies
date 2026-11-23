@@ -513,9 +513,9 @@ export function VideoPlayer({
     [setCurrentTime, showOsd]
   );
 
-  // Record to local watch history ONLY when user actually plays video (>= 3s) and track stopped episode
+  // Record to local watch history ONLY when user actually plays video (>= 0.5s) and track stopped episode
   useEffect(() => {
-    if (!mediaId || !title || duration <= 0 || currentTime < 3) return;
+    if (!mediaId || !title || duration <= 0 || currentTime < 0.5) return;
     const ep = episodeNumber || activeStream?.episode;
     const season = seasonNumber || activeStream?.season;
     const prev = lastHistorySavedRef.current;

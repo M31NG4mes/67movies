@@ -134,7 +134,7 @@ export function EpisodePicker({
                       : 'bg-cinema-card hover:bg-cinema-surface text-cinema-muted hover:text-white border border-cinema-border'
                   }`}
                 >
-                  {season.name} ({allEpisodes.length})
+                  {season.name}
                 </button>
               );
             })}

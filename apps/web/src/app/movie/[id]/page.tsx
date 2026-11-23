@@ -176,6 +176,7 @@ export default function MovieDetailPage() {
   const {
     watchlist,
     favorites,
+    history,
     hydrate: hydrateLibrary,
     toggleWatchlist,
     isInWatchlist,
@@ -262,6 +263,20 @@ export default function MovieDetailPage() {
   useEffect(() => {
     hydrateLibrary();
   }, [hydrateLibrary]);
+
+  useEffect(() => {
+    if (!media) return;
+    const hist = history.find(
+      (h) =>
+        h.id === mediaId ||
+        (media.anilibertyId && h.id === `al-${media.anilibertyId}`) ||
+        (media.tmdbId && h.tmdbId === media.tmdbId)
+    );
+    if (hist?.episodeNumber) {
+      setSelectedEpisode(hist.episodeNumber);
+      if (hist.seasonNumber) setSelectedSeason(hist.seasonNumber);
+    }
+  }, [media?.id, history, mediaId]);
 
   useEffect(() => {
     if (media && media.title) {
@@ -567,6 +582,14 @@ export default function MovieDetailPage() {
     setSelectedEpisode(episodeNum);
 
     if (isAnimeMedia) {
+      if (media) {
+        addToHistory({
+          ...media,
+          routeId: mediaId,
+          seasonNumber: seasonNum,
+          episodeNumber: episodeNum,
+        });
+      }
       router.push(buildAnimeWatchUrl(seasonNum, episodeNum));
       return;
     }
@@ -850,7 +873,18 @@ export default function MovieDetailPage() {
                 >
                   <Play className="w-5 h-5 fill-white text-white ml-0.5" />
                   <span>
-                    {isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть'}
+                    {(() => {
+                      const hist = history.find(
+                        (h) =>
+                          h.id === mediaId ||
+                          (media.anilibertyId && h.id === `al-${media.anilibertyId}`) ||
+                          (media.tmdbId && h.tmdbId === media.tmdbId)
+                      );
+                      if (isTv && hist?.episodeNumber) {
+                        return `Продолжить (Серия ${hist.episodeNumber})`;
+                      }
+                      return isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть';
+                    })()}
                   </span>
                 </Link>
               ) : (
@@ -903,7 +937,18 @@ export default function MovieDetailPage() {
                 >
                   <Play className="w-5 h-5 fill-white text-white ml-0.5" />
                   <span>
-                    {isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть'}
+                    {(() => {
+                      const hist = history.find(
+                        (h) =>
+                          h.id === mediaId ||
+                          (media.anilibertyId && h.id === `al-${media.anilibertyId}`) ||
+                          (media.tmdbId && h.tmdbId === media.tmdbId)
+                      );
+                      if (isTv && hist?.episodeNumber) {
+                        return `Продолжить (Серия ${hist.episodeNumber})`;
+                      }
+                      return isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть';
+                    })()}
                   </span>
                 </Link>
               ) : (

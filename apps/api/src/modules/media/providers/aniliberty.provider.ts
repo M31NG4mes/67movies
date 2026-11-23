@@ -319,9 +319,9 @@ export class AniLibertyProviderService {
       if (clean && !candidateQueries.includes(clean)) {
         candidateQueries.push(clean);
       }
-      const basePart = clean.split(/[:—–-]/)[0]?.trim();
-      if (basePart && basePart.length >= 3 && !candidateQueries.includes(basePart)) {
-        candidateQueries.push(basePart);
+      const noParens = clean.split('(')[0]?.trim();
+      if (noParens && noParens.length >= 3 && !candidateQueries.includes(noParens)) {
+        candidateQueries.push(noParens);
       }
     };
 
