@@ -2,15 +2,16 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { SkipForward, ShieldCheck, X } from 'lucide-react';
 import { HlsEngine } from '../../lib/hls-engine';
 import { PlayerControls } from './PlayerControls';
 import { TrackSelectorModal } from './TrackSelectorModal';
 import { SourceSelectorModal } from './SourceSelectorModal';
+import { EpisodePicker } from '../media/EpisodePicker';
 import { usePlayerStore } from '../../stores/player.store';
 import { usePlayerHotkeys } from '../../hooks/use-hotkeys';
 import { usePlayerSync } from '../../hooks/use-player-sync';
-import { useSpatialNav } from '../../hooks/use-spatial-nav';
-import { StreamSourceGroup, VideoStream } from '@cinemaflow/types';
+import { Season, StreamSourceGroup, VideoStream } from '@cinemaflow/types';
 
 interface VideoPlayerProps {
   mediaId: string;
@@ -20,6 +21,14 @@ interface VideoPlayerProps {
   initialStream?: VideoStream;
   seasonNumber?: number;
   episodeNumber?: number;
+  seasons?: Season[];
+  hasPrevEpisode?: boolean;
+  hasNextEpisode?: boolean;
+  nextEpisodeLabel?: string;
+  onPrevEpisode?: () => void;
+  onNextEpisode?: () => void;
+  onSelectSeason?: (seasonNum: number) => void;
+  onSelectEpisode?: (seasonNum: number, episodeNum: number) => void;
 }
 
 export function VideoPlayer({
@@ -30,6 +39,14 @@ export function VideoPlayer({
   initialStream,
   seasonNumber,
   episodeNumber,
+  seasons = [],
+  hasPrevEpisode = false,
+  hasNextEpisode = false,
+  nextEpisodeLabel,
+  onPrevEpisode,
+  onNextEpisode,
+  onSelectSeason,
+  onSelectEpisode,
 }: VideoPlayerProps) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -37,10 +54,25 @@ export function VideoPlayer({
   const hlsEngineRef = useRef<HlsEngine | null>(null);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // Web Audio API refs for Audio Boost (up to 200%)
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const mediaSourceConnectedRef = useRef<boolean>(false);
+
+  const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
+  const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+
   // Zustand Store
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
+  const volume = usePlayerStore((s) => s.volume);
+  const isMuted = usePlayerStore((s) => s.isMuted);
+  const audioBoost = usePlayerStore((s) => s.audioBoost);
+  const playbackRate = usePlayerStore((s) => s.playbackRate);
+  const autoPlayNext = usePlayerStore((s) => s.autoPlayNext);
+  const useSafeProxy = usePlayerStore((s) => s.useSafeProxy);
+  const osdMessage = usePlayerStore((s) => s.osdMessage);
   const activeStream = usePlayerStore((s) => s.activeStream);
   const isControlsVisible = usePlayerStore((s) => s.isControlsVisible);
   const isAudioSubsModalOpen = usePlayerStore((s) => s.isAudioSubsModalOpen);
@@ -52,7 +84,12 @@ export function VideoPlayer({
   const setCurrentTime = usePlayerStore((s) => s.setCurrentTime);
   const setDuration = usePlayerStore((s) => s.setDuration);
   const setBufferedEnd = usePlayerStore((s) => s.setBufferedEnd);
+  const setVolume = usePlayerStore((s) => s.setVolume);
+  const setIsFullscreen = usePlayerStore((s) => s.setIsFullscreen);
   const setIsControlsVisible = usePlayerStore((s) => s.setIsControlsVisible);
+  const setUseSafeProxy = usePlayerStore((s) => s.setUseSafeProxy);
+  const setIsUsingProxy = usePlayerStore((s) => s.setIsUsingProxy);
+  const showOsd = usePlayerStore((s) => s.showOsd);
   const setActiveStream = usePlayerStore((s) => s.setActiveStream);
   const setAvailableQualities = usePlayerStore((s) => s.setAvailableQualities);
   const setAvailableAudioTracks = usePlayerStore((s) => s.setAvailableAudioTracks);
@@ -64,11 +101,57 @@ export function VideoPlayer({
   const setError = usePlayerStore((s) => s.setError);
   const reset = usePlayerStore((s) => s.reset);
 
-  // Keyboard hotkeys
-  usePlayerHotkeys(videoRef);
+  // Fullscreen handler (targets player container so overlays, episodes, and controls stay visible)
+  const handleToggleFullscreen = useCallback(async () => {
+    try {
+      const doc = document as any;
+      const isFs = Boolean(doc.fullscreenElement || doc.webkitFullscreenElement);
+      if (!isFs) {
+        const container = containerRef.current as any;
+        const video = videoRef.current as any;
+        if (container?.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if (container?.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen();
+        } else if (video?.webkitEnterFullscreen) {
+          video.webkitEnterFullscreen();
+        }
+        setIsFullscreen(true);
+        showOsd('⛶ Полноэкранный режим');
+      } else {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        }
+        setIsFullscreen(false);
+        showOsd('⛶ Обычный режим');
+      }
+    } catch {
+      // ignore fullscreen permission errors
+    }
+  }, [setIsFullscreen, showOsd]);
 
-  // Smart TV spatial navigation
-  useSpatialNav({ itemSelector: '[data-nav-item="true"]' });
+  // Keep fullscreen state synced with browser fullscreenchange event (e.g., when user presses Esc)
+  useEffect(() => {
+    const onFsChange = () => {
+      const doc = document as any;
+      setIsFullscreen(Boolean(doc.fullscreenElement || doc.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
+  }, [setIsFullscreen]);
+
+  // Keyboard hotkeys (Left/Right arrows to seek ±10s, Up/Down arrows for volume, F for fullscreen, N/P for episodes)
+  usePlayerHotkeys(videoRef, {
+    onToggleFullscreen: handleToggleFullscreen,
+    onPrevEpisode: hasPrevEpisode ? onPrevEpisode : undefined,
+    onNextEpisode: hasNextEpisode ? onNextEpisode : undefined,
+  });
 
   // History sync
   usePlayerSync({
@@ -80,8 +163,59 @@ export function VideoPlayer({
     isPlaying,
   });
 
+  // Sync volume, mute, and playbackRate from store to HTMLVideoElement
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+    video.muted = isMuted;
+  }, [volume, isMuted]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  // Sync Web Audio API GainNode when audioBoost > 1
+  useEffect(() => {
+    if (audioBoost > 1 && !useSafeProxy) {
+      // Ensure CORS-safe same-origin stream proxy is active when boosting audio via Web Audio API
+      setUseSafeProxy(true);
+    }
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (audioBoost > 1 && !mediaSourceConnectedRef.current) {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          const source = ctx.createMediaElementSource(video);
+          const gain = ctx.createGain();
+          gain.gain.value = audioBoost;
+          source.connect(gain);
+          gain.connect(ctx.destination);
+          audioCtxRef.current = ctx;
+          gainNodeRef.current = gain;
+          mediaSourceConnectedRef.current = true;
+        }
+      } catch {
+        // Fallback smoothly if MediaElementSource cannot attach
+      }
+    }
+
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = audioBoost;
+      if (audioCtxRef.current?.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    }
+  }, [audioBoost, useSafeProxy, setUseSafeProxy]);
+
   // Pick stream
   useEffect(() => {
+    setAutoNextCountdown(null);
     if (initialStream) {
       setActiveStream(initialStream);
     } else if (sourceGroups.length > 0 && sourceGroups[0].streams.length > 0) {
@@ -107,7 +241,8 @@ export function VideoPlayer({
 
     if (activeStream.audioTracks) {
       setAvailableAudioTracks(activeStream.audioTracks);
-      const defaultTrack = activeStream.audioTracks.find((t) => t.isDefault) || activeStream.audioTracks[0];
+      const defaultTrack =
+        activeStream.audioTracks.find((t) => t.isDefault) || activeStream.audioTracks[0];
       if (defaultTrack) setActiveAudioTrackId(defaultTrack.id);
     }
 
@@ -118,24 +253,35 @@ export function VideoPlayer({
     const engine = new HlsEngine();
     hlsEngineRef.current = engine;
 
-    engine.init(videoRef.current, activeStream.streamUrl, {
-      onQualitiesLoaded: (qualities) => {
-        setAvailableQualities(qualities);
-        if (resumeTime > 0 && videoRef.current) {
-          videoRef.current.currentTime = resumeTime;
-        }
+    engine.init(
+      videoRef.current,
+      activeStream.streamUrl,
+      {
+        onQualitiesLoaded: (qualities) => {
+          setAvailableQualities(qualities);
+          if (videoRef.current) {
+            const st = usePlayerStore.getState();
+            videoRef.current.volume = st.isMuted ? 0 : st.volume;
+            videoRef.current.muted = st.isMuted;
+            videoRef.current.playbackRate = st.playbackRate;
+            if (resumeTime > 0) {
+              videoRef.current.currentTime = resumeTime;
+            }
+          }
+        },
+        onAudioTracksLoaded: (tracks) => setAvailableAudioTracks(tracks),
+        onBuffering: (buffering) => setIsBuffering(buffering),
+        onError: (err) => setError(err),
+        onProxyModeChange: (proxied) => setIsUsingProxy(proxied),
       },
-      onAudioTracksLoaded: (tracks) => setAvailableAudioTracks(tracks),
-      onBuffering: (buffering) => setIsBuffering(buffering),
-      onError: (err) => setError(err),
-    });
+      useSafeProxy
+    );
 
     const playPromise = videoRef.current.play();
     if (playPromise !== undefined) {
       playPromise
         .then(() => setIsPlaying(true))
         .catch(() => {
-          // Autoplay policy prevented playback, wait for user gesture
           setIsPlaying(false);
         });
     }
@@ -145,15 +291,34 @@ export function VideoPlayer({
     };
   }, [
     activeStream,
+    useSafeProxy,
     reset,
     setIsBuffering,
     setIsPlaying,
+    setIsUsingProxy,
     setAvailableQualities,
     setAvailableAudioTracks,
     setActiveAudioTrackId,
     setAvailableSubtitles,
     setError,
   ]);
+
+  // Auto-Next Episode Countdown Timer
+  useEffect(() => {
+    if (autoNextCountdown === null) return;
+    if (autoNextCountdown <= 0) {
+      setAutoNextCountdown(null);
+      if (hasNextEpisode && onNextEpisode) {
+        onNextEpisode();
+        showOsd('⏭️ Включаем следующую серию');
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      setAutoNextCountdown((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [autoNextCountdown, hasNextEpisode, onNextEpisode, showOsd]);
 
   // Video event listeners
   const onTimeUpdate = () => {
@@ -168,6 +333,16 @@ export function VideoPlayer({
   const onLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
+      videoRef.current.volume = isMuted ? 0 : volume;
+      videoRef.current.muted = isMuted;
+      videoRef.current.playbackRate = playbackRate;
+    }
+  };
+
+  const handleVideoEnded = () => {
+    setIsPlaying(false);
+    if (hasNextEpisode && onNextEpisode && autoPlayNext) {
+      setAutoNextCountdown(5);
     }
   };
 
@@ -178,11 +353,17 @@ export function VideoPlayer({
       clearTimeout(hideControlsTimer.current);
     }
     hideControlsTimer.current = setTimeout(() => {
-      if (isPlaying && !isAudioSubsModalOpen && !isSourceModalOpen) {
+      if (isPlaying && !isAudioSubsModalOpen && !isSourceModalOpen && !showEpisodesDrawer) {
         setIsControlsVisible(false);
       }
     }, 3500);
-  }, [isPlaying, isAudioSubsModalOpen, isSourceModalOpen, setIsControlsVisible]);
+  }, [
+    isPlaying,
+    isAudioSubsModalOpen,
+    isSourceModalOpen,
+    showEpisodesDrawer,
+    setIsControlsVisible,
+  ]);
 
   const handleSeek = (time: number) => {
     if (videoRef.current) {
@@ -194,29 +375,60 @@ export function VideoPlayer({
   const handleTogglePlay = () => {
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
-      videoRef.current.play();
+      videoRef.current.play().catch(() => {});
       setIsPlaying(true);
+      showOsd('▶️ Воспроизведение');
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
+      showOsd('⏸️ Пауза');
     }
   };
 
   const handleSkip = (seconds: number) => {
     if (videoRef.current) {
-      videoRef.current.currentTime = Math.max(
-        0,
-        Math.min(videoRef.current.duration, videoRef.current.currentTime + seconds)
-      );
+      const maxDur =
+        Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0
+          ? videoRef.current.duration
+          : videoRef.current.currentTime + Math.abs(seconds);
+      const nextTime = Math.max(0, Math.min(maxDur, videoRef.current.currentTime + seconds));
+      videoRef.current.currentTime = nextTime;
+      setCurrentTime(nextTime);
+      showOsd(seconds > 0 ? `⏩ +${seconds} сек` : `⏪ ${seconds} сек`);
     }
   };
+
+  // Mouse wheel volume adjustment
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (isAudioSubsModalOpen || isSourceModalOpen || showEpisodesDrawer) return;
+    showControlsTemporarily();
+    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+    const currentEffective = isMuted ? 0 : volume;
+    const nextVol = Math.max(0, Math.min(1, Math.round((currentEffective + delta) * 100) / 100));
+    setVolume(nextVol);
+    if (videoRef.current) {
+      videoRef.current.muted = nextVol === 0;
+      videoRef.current.volume = nextVol;
+    }
+    showOsd(
+      nextVol === 0
+        ? '🔇 Без звука (0%)'
+        : `${delta > 0 ? '🔊' : '🔉'} Громкость: ${Math.round(nextVol * 100)}%`
+    );
+  };
+
+  const activeSeasonObj =
+    seasons.find((s) => s.seasonNumber === (seasonNumber || 1)) || seasons[0];
+  const episodeCount =
+    activeSeasonObj?.episodes?.length || activeSeasonObj?.episodeCount || 0;
 
   return (
     <div
       ref={containerRef}
       onMouseMove={showControlsTemporarily}
       onClick={showControlsTemporarily}
-      className={`relative w-screen h-screen bg-black overflow-hidden ${
+      onWheel={handleWheel}
+      className={`relative w-screen h-screen bg-black overflow-hidden select-none ${
         !isControlsVisible && isPlaying ? 'cursor-none' : 'cursor-default'
       }`}
     >
@@ -225,32 +437,104 @@ export function VideoPlayer({
         ref={videoRef}
         className="w-full h-full object-contain"
         playsInline
+        crossOrigin="anonymous"
         onTimeUpdate={onTimeUpdate}
         onLoadedMetadata={onLoadedMetadata}
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => setIsBuffering(false)}
-        onEnded={() => setIsPlaying(false)}
+        onEnded={handleVideoEnded}
       />
+
+      {/* On-Screen Display (OSD) Feedback Pill for Volume / Seek / Fullscreen */}
+      {osdMessage && (
+        <div className="pointer-events-none absolute top-20 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 rounded-2xl bg-black/80 border border-white/20 text-white text-sm font-bold shadow-2xl backdrop-blur-md animate-fadeIn">
+          {osdMessage}
+        </div>
+      )}
+
+      {/* Auto-Next Episode Countdown Card */}
+      {autoNextCountdown !== null && hasNextEpisode && onNextEpisode && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-28 right-6 z-40 w-80 bg-cinema-surface/95 border border-brand-main/60 rounded-2xl p-4 text-white shadow-2xl backdrop-blur-xl space-y-3 animate-fadeIn"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-brand-light">
+              Автопереключение серии
+            </span>
+            <button
+              type="button"
+              onClick={() => setAutoNextCountdown(null)}
+              className="text-cinema-muted hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-sm font-bold text-white">
+            {nextEpisodeLabel || 'Следующая серия'} начнётся через{' '}
+            <span className="text-brand-light text-base">{autoNextCountdown}</span> сек.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setAutoNextCountdown(null);
+                onNextEpisode();
+              }}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-brand-main hover:bg-brand-light text-white text-xs font-bold shadow-brand-glow transition-all"
+            >
+              <SkipForward className="w-4 h-4" />
+              <span>Включить сейчас</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutoNextCountdown(null)}
+              className="px-3 py-2 rounded-xl bg-cinema-card hover:bg-cinema-border text-xs font-semibold text-cinema-muted hover:text-white transition-all"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white z-40 p-6 text-center">
-          <p className="text-xl font-bold text-red-500 mb-2">Ошибка воспроизведения</p>
-          <p className="text-slate-300 mb-6">{error}</p>
-          <button
-            onClick={() => openSourceModal(true)}
-            data-nav-item="true"
-            className="px-6 py-2.5 bg-cinema-accent hover:bg-red-700 font-semibold rounded-lg shadow-cinema-glow transition-all"
-          >
-            Выбрать другой источник
-          </button>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white z-40 p-6 text-center"
+        >
+          <p className="text-xl font-bold text-red-400 mb-2">Ошибка воспроизведения потока</p>
+          <p className="text-slate-300 mb-6 max-w-md text-sm">
+            {error}. Если браузер Microsoft Edge блокирует прямой CDN, включите безопасный
+            HTTPS-прокси или выберите другую студию озвучки.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setUseSafeProxy(true);
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-all text-sm"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Включить безопасный поток (для Edge)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openSourceModal(true)}
+              className="px-5 py-2.5 bg-brand-main hover:bg-brand-light font-semibold rounded-xl shadow-brand-glow transition-all text-sm"
+            >
+              Выбрать другую озвучку
+            </button>
+          </div>
         </div>
       )}
 
       {/* Controls Overlay */}
       <div
         className={`transition-opacity duration-300 ${
-          isControlsVisible || isAudioSubsModalOpen || isSourceModalOpen
+          isControlsVisible || isAudioSubsModalOpen || isSourceModalOpen || showEpisodesDrawer
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none'
         }`}
@@ -262,10 +546,49 @@ export function VideoPlayer({
           onSeek={handleSeek}
           onTogglePlay={handleTogglePlay}
           onSkip={handleSkip}
+          onToggleFullscreen={handleToggleFullscreen}
+          hasPrevEpisode={hasPrevEpisode}
+          hasNextEpisode={hasNextEpisode}
+          onPrevEpisode={onPrevEpisode}
+          onNextEpisode={onNextEpisode}
+          episodeCount={episodeCount}
+          showEpisodesDrawer={showEpisodesDrawer}
+          onToggleEpisodesDrawer={() => setShowEpisodesDrawer((v) => !v)}
         />
       </div>
 
-      {/* Audio & Subtitle Modal */}
+      {/* In-Player Episodes Drawer (works inside Fullscreen too!) */}
+      {showEpisodesDrawer && seasons.length > 0 && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-24 left-4 right-4 z-40 p-5 bg-cinema-surface/95 border border-cinema-border rounded-2xl max-h-72 overflow-y-auto shadow-2xl backdrop-blur-xl animate-fadeIn"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+              Выбор серии ({episodeCount})
+            </h3>
+            <button
+              type="button"
+              onClick={() => setShowEpisodesDrawer(false)}
+              className="p-1.5 rounded-lg bg-cinema-card hover:bg-cinema-border text-cinema-muted hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <EpisodePicker
+            seasons={seasons}
+            activeSeason={seasonNumber || 1}
+            activeEpisode={episodeNumber || 1}
+            onSelectSeason={(s) => onSelectSeason?.(s)}
+            onSelectEpisode={(s, ep) => {
+              onSelectEpisode?.(s, ep);
+              setShowEpisodesDrawer(false);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Audio, Boost, Speed & Subtitle Modal */}
       <TrackSelectorModal
         isOpen={isAudioSubsModalOpen}
         onClose={() => openAudioSubsModal(false)}
@@ -276,7 +599,7 @@ export function VideoPlayer({
         onSelectSubtitle={(id) => setActiveSubtitleId(id)}
       />
 
-      {/* Source & Scraper Modal */}
+      {/* Source & Voiceover Modal */}
       <SourceSelectorModal
         isOpen={isSourceModalOpen}
         onClose={() => openSourceModal(false)}

@@ -6,19 +6,63 @@ export interface HlsEngineCallbacks {
   onAudioTracksLoaded: (tracks: VideoAudioTrack[]) => void;
   onBuffering: (isBuffering: boolean) => void;
   onError: (errorMessage: string) => void;
+  onProxyModeChange?: (isUsingProxy: boolean) => void;
+}
+
+export function toHttpsUrl(rawUrl: string): string {
+  const trimmed = (rawUrl || '').trim();
+  if (trimmed.startsWith('//')) return `https:${trimmed}`;
+  return trimmed.replace(/^http:\/\//i, 'https://');
+}
+
+export function buildSameOriginProxyUrl(rawUrl: string): string {
+  if (!rawUrl || rawUrl.startsWith('/api/stream')) return rawUrl;
+  const httpsUrl = toHttpsUrl(rawUrl);
+  return `/api/stream?url=${encodeURIComponent(httpsUrl)}`;
+}
+
+export function isMicrosoftEdgeBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Edg\//i.test(navigator.userAgent);
 }
 
 export class HlsEngine {
   private hls: Hls | null = null;
   private videoElement: HTMLVideoElement | null = null;
+  private hasTriedFallback = false;
 
   init(
     video: HTMLVideoElement,
     streamUrl: string,
-    callbacks: HlsEngineCallbacks
+    callbacks: HlsEngineCallbacks,
+    preferSafeProxy?: boolean
   ) {
     this.videoElement = video;
+    this.hasTriedFallback = false;
     this.destroy();
+
+    const cleanHttpsUrl = toHttpsUrl(streamUrl);
+    const shouldStartWithProxy =
+      typeof preferSafeProxy === 'boolean'
+        ? preferSafeProxy
+        : isMicrosoftEdgeBrowser() && /\.fun\b/i.test(cleanHttpsUrl);
+
+    this.loadWithMode(video, cleanHttpsUrl, callbacks, shouldStartWithProxy);
+  }
+
+  private loadWithMode(
+    video: HTMLVideoElement,
+    cleanHttpsUrl: string,
+    callbacks: HlsEngineCallbacks,
+    useProxy: boolean
+  ) {
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+
+    const effectiveUrl = useProxy ? buildSameOriginProxyUrl(cleanHttpsUrl) : cleanHttpsUrl;
+    callbacks.onProxyModeChange?.(useProxy);
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -33,7 +77,7 @@ export class HlsEngine {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        hls.loadSource(streamUrl);
+        hls.loadSource(effectiveUrl);
       });
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
@@ -86,14 +130,33 @@ export class HlsEngine {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.warn('[HLS] Network error, recovering...');
-              hls.startLoad();
+              if (!this.hasTriedFallback) {
+                this.hasTriedFallback = true;
+                console.warn(
+                  `[HLS] Network error in ${useProxy ? 'proxy' : 'direct'} mode, switching to ${
+                    !useProxy ? 'safe HTTPS proxy' : 'direct HTTPS'
+                  }...`
+                );
+                this.loadWithMode(video, cleanHttpsUrl, callbacks, !useProxy);
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                  playPromise.catch(() => {});
+                }
+              } else {
+                console.warn('[HLS] Network error, recovering...');
+                hls.startLoad();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.warn('[HLS] Media error, recovering...');
               hls.recoverMediaError();
               break;
             default:
+              if (!this.hasTriedFallback) {
+                this.hasTriedFallback = true;
+                this.loadWithMode(video, cleanHttpsUrl, callbacks, !useProxy);
+                return;
+              }
               this.destroy();
               callbacks.onError('Не удалось воспроизвести поток');
               break;
@@ -102,12 +165,12 @@ export class HlsEngine {
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native Apple Safari HLS support
-      video.src = streamUrl;
+      video.src = effectiveUrl;
       callbacks.onQualitiesLoaded([{ quality: 'auto', height: 0 }]);
       callbacks.onBuffering(false);
     } else {
       // Direct video playback
-      video.src = streamUrl;
+      video.src = effectiveUrl;
       callbacks.onBuffering(false);
     }
   }

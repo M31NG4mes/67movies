@@ -29,10 +29,13 @@ export class ProxyController {
     }
 
     const host = req.get('host') || 'localhost:4000';
-    const protocol = req.protocol || 'http';
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const isLocalHost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+    const protocol = forwardedProto || (isLocalHost ? req.protocol || 'http' : 'https');
     const proxyBase = `${protocol}://${host}/api/proxy`;
+    const safeTargetUrl = targetUrl.replace(/^http:\/\//i, 'https://');
 
-    return this.proxyService.proxyManifest(targetUrl, parsedHeaders, proxyBase, res);
+    return this.proxyService.proxyManifest(safeTargetUrl, parsedHeaders, proxyBase, res);
   }
 
   @Get('segment')

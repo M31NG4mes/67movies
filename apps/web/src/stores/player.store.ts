@@ -7,6 +7,8 @@ import {
   VideoSubtitle,
 } from '@cinemaflow/types';
 
+let osdTimeout: ReturnType<typeof setTimeout> | null = null;
+
 interface PlayerStore {
   // Playback state
   isPlaying: boolean;
@@ -16,9 +18,14 @@ interface PlayerStore {
   bufferedEnd: number;
   volume: number;
   isMuted: boolean;
+  audioBoost: number;
   playbackRate: number;
   isFullscreen: boolean;
   isControlsVisible: boolean;
+  autoPlayNext: boolean;
+  useSafeProxy: boolean | undefined;
+  isUsingProxy: boolean;
+  osdMessage: string | null;
 
   // Active stream and tracks
   activeStream: VideoStream | null;
@@ -43,9 +50,14 @@ interface PlayerStore {
   setBufferedEnd: (bufferedEnd: number) => void;
   setVolume: (volume: number) => void;
   toggleMute: () => void;
+  setAudioBoost: (boost: number) => void;
   setPlaybackRate: (rate: number) => void;
   setIsFullscreen: (isFullscreen: boolean) => void;
   setIsControlsVisible: (visible: boolean) => void;
+  setAutoPlayNext: (autoPlayNext: boolean) => void;
+  setUseSafeProxy: (useSafeProxy: boolean | undefined) => void;
+  setIsUsingProxy: (isUsingProxy: boolean) => void;
+  showOsd: (msg: string) => void;
   setActiveStream: (stream: VideoStream | null) => void;
   setActiveQuality: (quality: VideoQuality) => void;
   setAvailableQualities: (qualities: PlayerQualityOption[]) => void;
@@ -68,9 +80,14 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   bufferedEnd: 0,
   volume: 1.0,
   isMuted: false,
+  audioBoost: 1.0,
   playbackRate: 1.0,
   isFullscreen: false,
   isControlsVisible: true,
+  autoPlayNext: true,
+  useSafeProxy: undefined,
+  isUsingProxy: false,
+  osdMessage: null,
 
   activeStream: null,
   activeQuality: 'auto',
@@ -90,11 +107,30 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   setCurrentTime: (currentTime) => set({ currentTime }),
   setDuration: (duration) => set({ duration }),
   setBufferedEnd: (bufferedEnd) => set({ bufferedEnd }),
-  setVolume: (volume) => set({ volume, isMuted: volume === 0 }),
-  toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
+  setVolume: (rawVolume) => {
+    const clamped = Math.max(0, Math.min(1, Math.round(rawVolume * 100) / 100));
+    set({ volume: clamped, isMuted: clamped === 0 });
+  },
+  toggleMute: () =>
+    set((state) => {
+      const nextMuted = !state.isMuted;
+      const nextVol = !nextMuted && state.volume === 0 ? 0.5 : state.volume;
+      return { isMuted: nextMuted, volume: nextVol };
+    }),
+  setAudioBoost: (audioBoost) => set({ audioBoost }),
   setPlaybackRate: (playbackRate) => set({ playbackRate }),
   setIsFullscreen: (isFullscreen) => set({ isFullscreen }),
   setIsControlsVisible: (isControlsVisible) => set({ isControlsVisible }),
+  setAutoPlayNext: (autoPlayNext) => set({ autoPlayNext }),
+  setUseSafeProxy: (useSafeProxy) => set({ useSafeProxy }),
+  setIsUsingProxy: (isUsingProxy) => set({ isUsingProxy }),
+  showOsd: (msg) => {
+    if (osdTimeout) clearTimeout(osdTimeout);
+    set({ osdMessage: msg });
+    osdTimeout = setTimeout(() => {
+      set({ osdMessage: null });
+    }, 1400);
+  },
   setActiveStream: (activeStream) => set({ activeStream, error: null }),
   setActiveQuality: (activeQuality) => set({ activeQuality }),
   setAvailableQualities: (availableQualities) => set({ availableQualities }),

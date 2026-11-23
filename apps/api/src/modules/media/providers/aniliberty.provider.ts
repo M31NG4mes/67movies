@@ -286,7 +286,7 @@ export class AniLibertyProviderService {
           episode: Number(ep.ordinal),
           quality,
           format: 'hls',
-          streamUrl: String(ep[field]),
+          streamUrl: String(ep[field]).replace(/^http:\/\//i, 'https://'),
           audioTracks: [{ id: '0', language: 'ru', label: voiceLabel, isDefault: true }],
         }));
 

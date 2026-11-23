@@ -910,7 +910,7 @@ export const api = {
                     episode: Number(ep.ordinal),
                     quality,
                     format: 'hls' as const,
-                    streamUrl: String(ep[f]),
+                    streamUrl: String(ep[f]).replace(/^http:\/\//i, 'https://'),
                     audioTracks: [
                       { id: '0', language: 'ru', label: studio.label, isDefault: true },
                     ],

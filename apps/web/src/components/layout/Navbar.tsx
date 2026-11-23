@@ -159,8 +159,12 @@ function NavbarContent() {
     };
   }, []);
 
-  // Hide regular user navigation chrome on /auth and dedicated /admin dashboard
-  if (pathname === '/auth' || pathname.startsWith('/admin')) {
+  // Hide regular user navigation chrome on /auth, /watch player, and dedicated /admin dashboard
+  if (
+    pathname === '/auth' ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/watch')
+  ) {
     return null;
   }
 
