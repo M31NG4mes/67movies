@@ -1,13 +1,13 @@
 FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@10.6.5 --activate
+RUN apk add --no-cache openssl && corepack enable && corepack prepare pnpm@10.6.5 --activate
 WORKDIR /app
 
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/types/package.json packages/types/package.json
 COPY apps/api/package.json apps/api/package.json
 COPY apps/api/prisma apps/api/prisma
 
-RUN pnpm install --frozen-lockfile --filter @cinemaflow/api...
+RUN pnpm install --no-frozen-lockfile --filter @cinemaflow/api...
 
 COPY packages/types packages/types
 COPY apps/api apps/api

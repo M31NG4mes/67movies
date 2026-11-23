@@ -140,23 +140,39 @@ async function findDirectAniLibertyReleaseRaw(params: {
 
   const queries: string[] = [];
   const pushQ = (q?: string) => {
-    const clean = (q || '').trim();
-    if (clean && !queries.includes(clean)) queries.push(clean);
-    const base = clean.split(/[:—–-]/)[0]?.trim();
-    if (base && base.length >= 3 && !queries.includes(base)) queries.push(base);
+    const clean = (q || '').replace(/\[[^\]]*\]/g, '').trim();
+    if (!clean) return;
+    if (!queries.includes(clean)) queries.push(clean);
+    const noParens = clean.split('(')[0]?.trim();
+    if (noParens && noParens.length >= 3 && !queries.includes(noParens)) {
+      queries.push(noParens);
+    }
   };
   pushQ(params.title);
   pushQ(params.originalTitle);
 
   const norm = (s?: string) =>
     String(s || '')
+      .replace(/\[[^\]]*\]/g, ' ')
       .toLowerCase()
       .replace(/ё/g, 'е')
       .replace(/[^a-zа-я0-9]+/gi, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
 
-  const qTitle = norm(params.title);
-  const qOrig = norm(params.originalTitle);
+  const strictMatch = (aRaw?: string, bRaw?: string) => {
+    const a = norm(aRaw);
+    const b = norm(bRaw);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const shorter = a.length <= b.length ? a : b;
+    const longer = a.length <= b.length ? b : a;
+    return (
+      shorter.length >= 5 &&
+      longer.startsWith(shorter) &&
+      shorter.length / longer.length >= 0.72
+    );
+  };
 
   for (const q of queries) {
     try {
@@ -180,17 +196,13 @@ async function findDirectAniLibertyReleaseRaw(params: {
               (r) => Number(r?.mal?.id) === params.malId || Number(r?.shikimori?.id) === params.malId
             )
           : undefined) ||
-        list.find((r) => {
-          const m = norm(r?.name?.main);
-          const e = norm(r?.name?.english);
-          return (
-            (qTitle && m === qTitle) ||
-            (qOrig && e === qOrig) ||
-            (qTitle && m.startsWith(qTitle)) ||
-            (qTitle && qTitle.startsWith(m))
-          );
-        }) ||
-        list[0];
+        list.find(
+          (r) =>
+            strictMatch(r?.name?.main, params.title) ||
+            strictMatch(r?.name?.english, params.originalTitle) ||
+            strictMatch(r?.name?.main, params.originalTitle) ||
+            strictMatch(r?.name?.english, params.title)
+        );
 
       if (hit?.id) {
         const full = await fetchDirectAniLibertyReleaseById(hit.id);
@@ -265,7 +277,7 @@ function mapTmdbToMedia(item: any, type: MediaType): MediaItem {
     type,
     title: isMovie ? item.title : item.name,
     originalTitle: isMovie ? item.original_title : item.original_name,
-    overview: item.overview || 'Описание отсутствует.',
+    overview: item.overview || '',
     posterPath: item.poster_path ? `${TMDB_IMAGE_BASE}/w500${item.poster_path}` : null,
     backdropPath: item.backdrop_path ? `${TMDB_IMAGE_BASE}/original${item.backdrop_path}` : null,
     releaseDate,
@@ -718,7 +730,7 @@ export const api = {
                   type: (a.format === 'MOVIE' ? 'movie' : 'tv') as MediaType,
                   title: a.title?.english || a.title?.romaji || `Anime #${malId}`,
                   originalTitle: a.title?.romaji,
-                  overview: String(a.description || '').replace(/<[^>]+>/g, '') || 'Описание отсутствует.',
+                  overview: String(a.description || '').replace(/<[^>]+>/g, ''),
                   posterPath: a.coverImage?.extraLarge || a.coverImage?.large || null,
                   backdropPath: a.bannerImage || a.coverImage?.extraLarge || null,
                   releaseYear: a.startDate?.year || 2024,
@@ -745,7 +757,7 @@ export const api = {
                   type: 'tv' as MediaType,
                   title: s.name,
                   originalTitle: s.name,
-                  overview: String(s.summary || '').replace(/<[^>]+>/g, '') || 'Описание отсутствует.',
+                  overview: String(s.summary || '').replace(/<[^>]+>/g, ''),
                   posterPath: s.image?.original || s.image?.medium || null,
                   backdropPath: s.image?.original || s.image?.medium || null,
                   releaseYear: s.premiered ? parseInt(String(s.premiered).slice(0, 4), 10) : 2024,

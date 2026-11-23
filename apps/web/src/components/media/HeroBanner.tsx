@@ -130,10 +130,21 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
             {currentMedia.title}
           </h1>
 
-          {/* Short Muted Description */}
-          <p className="text-xs sm:text-[15px] text-white/75 line-clamp-2 leading-relaxed max-w-lg">
-            {currentMedia.overview}
-          </p>
+          {/* Short Muted Description (hidden when overview is empty or placeholder) */}
+          {(() => {
+            const rawOverview = (currentMedia.overview || '').trim();
+            const isPlaceholder =
+              !rawOverview ||
+              /^(описание (пока )?(отсутствует|не добавлено|не найдено)|нет описания|no overview|overview not available)/i.test(
+                rawOverview
+              );
+            if (isPlaceholder) return null;
+            return (
+              <p className="text-xs sm:text-[15px] text-white/75 line-clamp-2 leading-relaxed max-w-lg">
+                {rawOverview}
+              </p>
+            );
+          })()}
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2.5 sm:gap-3 pt-1 sm:pt-2">
