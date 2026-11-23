@@ -394,7 +394,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto px-5 sm:px-8 pt-20 md:pt-16 pb-24 min-h-screen bg-[#09090D] space-y-6">
+    <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-20 md:pt-16 pb-24 min-h-screen bg-[#09090D] space-y-6">
       {/* Hidden File Inputs */}
       <input
         ref={avatarInputRef}
@@ -571,58 +571,81 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`relative inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
-                isActive
-                  ? 'brand-btn text-white shadow-lg'
-                  : 'bg-[#111119] border border-[#292936] text-[#92929F] hover:text-white hover:border-[#8065FF]/50'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              {Boolean(tab.badge) && (
-                <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* Main 2-Column Layout: Left Vertical Sidebar + Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] lg:items-start gap-6">
+        {/* Left Vertical Navigation Sidebar */}
+        <aside className="lg:sticky lg:top-24 rounded-2xl bg-[#111119]/95 border border-[#292936] p-2 shadow-xl">
+          <nav className="flex flex-row lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible no-scrollbar">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`relative w-auto lg:w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+                    isActive
+                      ? 'brand-btn text-white shadow-lg shadow-[#8065FF]/20'
+                      : 'text-[#92929F] hover:text-white hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                        isActive ? 'bg-white/15 text-white' : 'bg-[#181821] text-[#A18BFF]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className="truncate">{tab.label}</span>
+                  </span>
+                  {Boolean(tab.badge) && (
+                    <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shrink-0">
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
+        {/* Right Content Column */}
+        <div className="min-w-0 space-y-6">
       {/* =================================================================
           TAB 1: OVERVIEW (Favorite Movies, Watchlist, My Ratings, Collections)
          ================================================================= */}
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-fadeIn">
           {/* 1. Favorite Movies (Separated from Ratings) */}
-          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
-                <Heart className="w-5 h-5 text-rose-400 fill-rose-400" />
-                <span>
-                  {isEn ? 'Favorite Movies & Series' : 'Любимые фильмы и сериалы'} (
-                  {favoriteMovies.length})
-                </span>
+          <section className="p-5 sm:p-6 rounded-3xl bg-gradient-to-b from-[#13131E] to-[#101018] border border-[#292936] shadow-xl space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/[0.06]">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                  <Heart className="w-4 h-4 text-rose-400 fill-rose-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-white font-bold text-base sm:text-lg">
+                      {isEn ? 'Favorite Movies & Series' : 'Любимые фильмы и сериалы'}
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-[11px] font-bold text-rose-300">
+                      {favoriteMovies.length}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#92929F] mt-0.5">
+                    {isEn
+                      ? 'Titles added with the ❤️ Heart button on any movie, series, or anime page'
+                      : 'Тайтлы, добавленные нажатием на сердечко ❤️ на странице фильма, сериала или аниме'}
+                  </p>
+                </div>
               </div>
-              <span className="text-xs text-[#92929F]">
-                {isEn
-                  ? 'Titles added with the ❤️ Heart button on any movie, series, or anime page'
-                  : 'Тайтлы, добавленные нажатием на сердечко ❤️ на странице фильма, сериала или аниме'}
-              </span>
             </div>
 
             {favoriteMovies.length === 0 ? (
-              <div className="p-6 rounded-2xl bg-[#181821]/60 border border-[#292936] text-center">
+              <div className="p-7 rounded-2xl bg-[#181821]/60 border border-dashed border-[#292936] text-center">
+                <Heart className="w-7 h-7 text-rose-400/50 mx-auto mb-2" />
                 <p className="text-xs text-[#92929F]">
                   {isEn
                     ? 'No favorite movies yet. Click the ❤️ "В любимые" button on any movie or anime page!'
@@ -630,11 +653,11 @@ export default function ProfilePage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {favoriteMovies.map((item) => (
                   <div
                     key={`fav-${item.id}`}
-                    className="group relative rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-rose-500/60 brand-card-hover transition-all flex flex-col"
+                    className="group relative rounded-2xl overflow-hidden bg-[#171722] border border-[#292936] hover:border-rose-500/60 hover:shadow-lg hover:shadow-rose-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col"
                   >
                     <Link
                       href={`/movie/${item.routeId || item.tmdbId}?type=${
@@ -647,7 +670,7 @@ export default function ProfilePage() {
                           src={item.posterPath}
                           alt={item.title}
                           referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-[#1B1A2B] to-[#0D0D14]">
@@ -658,18 +681,21 @@ export default function ProfilePage() {
                         </div>
                       )}
 
-                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-rose-500/90 text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
+                      <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-lg bg-rose-500/90 backdrop-blur-md text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
                         <Heart className="w-2.5 h-2.5 fill-white" />
                         <span>{isEn ? 'Fav' : 'Любимый'}</span>
                       </div>
 
-                      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col justify-end p-2.5">
+                      <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/70 to-transparent flex flex-col justify-end p-3">
                         <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
                           {item.title}
                         </p>
-                        {item.releaseYear && (
-                          <p className="text-[10px] text-white/70 mt-0.5">{item.releaseYear}</p>
-                        )}
+                        <div className="flex items-center justify-between text-[10px] text-white/70 mt-1">
+                          <span>{item.releaseYear || ''}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-semibold uppercase tracking-wide">
+                            {item.mediaType === 'SERIES' ? t.seriesBadge : t.movieBadge}
+                          </span>
+                        </div>
                       </div>
                     </Link>
 
@@ -677,7 +703,7 @@ export default function ProfilePage() {
                       type="button"
                       onClick={() => handleRemoveFavoriteMovie(item)}
                       title={isEn ? 'Remove from Favorites' : 'Убрать из любимых'}
-                      className="absolute bottom-2.5 right-2.5 p-1.5 rounded-lg bg-black/75 hover:bg-red-500 text-white/80 hover:text-white opacity-0 group-hover:opacity-100 transition-all z-10"
+                      className="absolute top-2.5 right-2.5 p-1.5 rounded-lg bg-black/70 hover:bg-red-500 backdrop-blur-md text-white/85 hover:text-white opacity-85 sm:opacity-0 sm:group-hover:opacity-100 transition-all z-10"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -688,36 +714,44 @@ export default function ProfilePage() {
           </section>
 
           {/* 2. User Watchlist in Profile */}
-          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
-                <Bookmark className="w-5 h-5 text-[#A18BFF] fill-[#A18BFF]/20" />
-                <span>
-                  {isEn ? 'My Watchlist' : 'Мой вотчлист'} ({watchlist.length})
-                </span>
+          <section className="p-5 sm:p-6 rounded-3xl bg-gradient-to-b from-[#13131E] to-[#101018] border border-[#292936] shadow-xl space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/[0.06]">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/35 flex items-center justify-center shrink-0">
+                  <Bookmark className="w-4 h-4 text-[#A18BFF] fill-[#A18BFF]/30" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-white font-bold text-base sm:text-lg">
+                    {isEn ? 'My Watchlist' : 'Мой вотчлист'}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full bg-[#8065FF]/15 border border-[#8065FF]/35 text-[11px] font-bold text-[#A18BFF]">
+                    {watchlist.length}
+                  </span>
+                </div>
               </div>
               <Link
                 href="/watchlist"
-                className="text-xs font-semibold text-[#A18BFF] hover:underline"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[#A18BFF] hover:text-white transition-colors"
               >
                 {isEn ? 'Open full watchlist →' : 'Открыть весь вотчлист →'}
               </Link>
             </div>
 
             {watchlist.length === 0 ? (
-              <div className="p-6 rounded-2xl bg-[#181821]/60 border border-[#292936] text-center">
+              <div className="p-7 rounded-2xl bg-[#181821]/60 border border-dashed border-[#292936] text-center">
+                <Bookmark className="w-7 h-7 text-[#8065FF]/50 mx-auto mb-2" />
                 <p className="text-xs text-[#92929F]">
                   {isEn
                     ? 'Your watchlist is empty. Click the heart/bookmark button on any movie or anime.'
-                    : 'Ваш вотчлист пока пуст. Нажмите на сердечко на странице любого фильма, сериала или аниме.'}
+                    : 'Ваш вотчлист пока пуст. Нажмите на закладку на странице любого фильма, сериала или аниме.'}
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {watchlist.map((item) => (
                   <div
                     key={`wl-${item.id}`}
-                    className="group relative rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-[#8065FF] brand-card-hover transition-all flex flex-col"
+                    className="group relative rounded-2xl overflow-hidden bg-[#171722] border border-[#292936] hover:border-[#8065FF]/70 hover:shadow-lg hover:shadow-[#8065FF]/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col"
                   >
                     <Link
                       href={`/movie/${item.id}?type=${item.type || 'movie'}`}
@@ -728,7 +762,7 @@ export default function ProfilePage() {
                           src={item.posterPath}
                           alt={item.title}
                           referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-[#1B1A2B] to-[#0D0D14]">
@@ -740,18 +774,18 @@ export default function ProfilePage() {
                       )}
 
                       {item.voteAverage && item.voteAverage > 0 ? (
-                        <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-[#A18BFF] border border-white/10">
+                        <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-lg bg-black/75 backdrop-blur-md text-[11px] font-bold text-[#A18BFF] border border-white/10">
                           ★ {Number(item.voteAverage).toFixed(1)}
                         </div>
                       ) : null}
 
-                      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col justify-end p-2.5">
+                      <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/70 to-transparent flex flex-col justify-end p-3">
                         <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
                           {item.title}
                         </p>
                         <div className="flex items-center justify-between text-[10px] text-white/70 mt-1">
                           <span>{item.releaseYear || ''}</span>
-                          <span className="uppercase">
+                          <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-semibold uppercase tracking-wide">
                             {item.type === 'tv' ? t.seriesBadge : t.movieBadge}
                           </span>
                         </div>
@@ -762,7 +796,7 @@ export default function ProfilePage() {
                       type="button"
                       onClick={() => removeFromWatchlist(item.id)}
                       title={isEn ? 'Remove from Watchlist' : 'Убрать из вотчлиста'}
-                      className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/75 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all z-10"
+                      className="absolute top-2.5 left-2.5 p-1.5 rounded-lg bg-black/70 hover:bg-red-500 backdrop-blur-md text-white opacity-85 sm:opacity-0 sm:group-hover:opacity-100 transition-all z-10"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -772,24 +806,34 @@ export default function ProfilePage() {
             )}
           </section>
 
-          {/* 3. My Ratings & Reviews (Separated from Favorite Movies) */}
-          <section className="p-6 rounded-3xl bg-[#111119] border border-[#292936] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 text-white font-bold text-lg">
-                <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
-                <span>
-                  {isEn ? 'My Ratings & Reviews' : 'Мои оценки и отзывы'} ({myRatings.length})
-                </span>
+          {/* 3. My Ratings & Reviews (Rich Horizontal Review Cards) */}
+          <section className="p-5 sm:p-6 rounded-3xl bg-gradient-to-b from-[#13131E] to-[#101018] border border-[#292936] shadow-xl space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/[0.06]">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/35 flex items-center justify-center shrink-0">
+                  <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-white font-bold text-base sm:text-lg">
+                      {isEn ? 'My Ratings & Reviews' : 'Мои оценки и отзывы'}
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/35 text-[11px] font-bold text-amber-300">
+                      {myRatings.length}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#92929F] mt-0.5">
+                    {isEn
+                      ? 'All titles you have rated from 1 to 10'
+                      : 'Все фильмы, сериалы и аниме, которым вы поставили оценку 1–10'}
+                  </p>
+                </div>
               </div>
-              <span className="text-xs text-[#92929F]">
-                {isEn
-                  ? 'All titles you have rated from 1 to 10'
-                  : 'Все фильмы, сериалы и аниме, которым вы поставили оценку 1–10'}
-              </span>
             </div>
 
             {myRatings.length === 0 ? (
-              <div className="p-6 rounded-2xl bg-[#181821]/60 border border-[#292936] text-center">
+              <div className="p-7 rounded-2xl bg-[#181821]/60 border border-dashed border-[#292936] text-center">
+                <Star className="w-7 h-7 text-amber-400/50 mx-auto mb-2" />
                 <p className="text-xs text-[#92929F]">
                   {isEn
                     ? 'No ratings yet. Open any movie and click "Rate" (1–10).'
@@ -797,17 +841,17 @@ export default function ProfilePage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {myRatings.map((item) => (
                   <div
                     key={`rate-${item.id}`}
-                    className="group relative rounded-2xl overflow-hidden bg-[#181821] border border-[#292936] hover:border-[#8065FF] brand-card-hover transition-all flex flex-col"
+                    className="group relative p-3.5 rounded-2xl bg-[#171722] border border-[#292936] hover:border-amber-400/45 hover:shadow-lg hover:shadow-amber-500/5 transition-all flex gap-3.5"
                   >
                     <Link
                       href={`/movie/${item.tmdbId}?type=${
                         item.mediaType === 'SERIES' ? 'tv' : 'movie'
                       }`}
-                      className="block relative aspect-[2/3] w-full overflow-hidden bg-[#09090D]"
+                      className="w-20 sm:w-24 aspect-[2/3] rounded-xl overflow-hidden bg-[#09090D] shrink-0 border border-white/5"
                     >
                       {item.posterPath ? (
                         <img
@@ -817,39 +861,56 @@ export default function ProfilePage() {
                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         />
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-[#1B1A2B] to-[#0D0D14]">
-                          <Film className="w-8 h-8 text-[#8065FF]/70 mb-2" />
-                          <span className="text-xs font-bold text-white/80 line-clamp-2">
-                            {item.title}
-                          </span>
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1B1A2B] to-[#0D0D14]">
+                          <Film className="w-6 h-6 text-[#8065FF]/70" />
                         </div>
                       )}
-
-                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-amber-300 border border-amber-400/30 flex items-center gap-1">
-                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                        <span>{item.rating}/10</span>
-                      </div>
-
-                      <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/95 via-black/65 to-transparent flex flex-col justify-end p-2.5">
-                        <p className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
-                          {item.title}
-                        </p>
-                        {item.review && (
-                          <p className="text-[11px] text-white/75 line-clamp-2 mt-1 italic">
-                            «{item.review}»
-                          </p>
-                        )}
-                      </div>
                     </Link>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRating(item.tmdbId, item.mediaType)}
-                      title={isEn ? 'Delete rating' : 'Удалить оценку'}
-                      className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/75 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all z-10"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex-1 min-w-0 flex flex-col justify-between gap-2">
+                      <div className="space-y-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <Link
+                            href={`/movie/${item.tmdbId}?type=${
+                              item.mediaType === 'SERIES' ? 'tv' : 'movie'
+                            }`}
+                            className="text-sm sm:text-base font-bold text-white hover:text-[#A18BFF] transition-colors line-clamp-2 leading-snug"
+                          >
+                            {item.title}
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRating(item.tmdbId, item.mediaType)}
+                            title={isEn ? 'Delete rating' : 'Удалить оценку'}
+                            className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-red-500/20 text-[#92929F] hover:text-red-400 transition-colors shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500/15 border border-amber-400/30 text-xs font-extrabold text-amber-300">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            <span>{item.rating}/10</span>
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-white/[0.05] text-[10px] font-semibold uppercase tracking-wide text-[#92929F]">
+                            {item.mediaType === 'SERIES' ? t.seriesBadge : t.movieBadge}
+                          </span>
+                        </div>
+                      </div>
+
+                      {item.review ? (
+                        <div className="p-2.5 rounded-xl bg-[#0D0D14]/85 border border-white/[0.06]">
+                          <p className="text-xs text-[#D5D5E2] leading-relaxed line-clamp-3 italic">
+                            «{item.review}»
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-[#92929F]/70 italic">
+                          {isEn ? 'Rated without written review' : 'Оценка без текстового отзыва'}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1357,6 +1418,8 @@ export default function ProfilePage() {
           </div>
         </section>
       )}
+        </div>
+      </div>
     </div>
   );
 }

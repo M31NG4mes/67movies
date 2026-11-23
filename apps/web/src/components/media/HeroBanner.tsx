@@ -135,7 +135,7 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
             const rawOverview = (currentMedia.overview || '').trim();
             const isPlaceholder =
               !rawOverview ||
-              /^(описание (пока )?(отсутствует|не добавлено|не найдено)|нет описания|no overview|overview not available)/i.test(
+              /(описание.*(отсутствует|не добавлено|не найдено)|нет описания|no overview|overview not available)/i.test(
                 rawOverview
               );
             if (isPlaceholder) return null;

@@ -52,8 +52,8 @@ export default function WatchPage() {
             data?.source === 'shikimori' ||
             data?.anilibertyId ||
             data?.malId ||
-            data?.genres?.some(
-              (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+            data?.genres?.some((g) =>
+              /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
             ) ||
             (data?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(data.originalTitle))
         );
@@ -132,8 +132,8 @@ export default function WatchPage() {
         media?.source === 'shikimori' ||
         media?.anilibertyId ||
         media?.malId ||
-        media?.genres?.some(
-          (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+        media?.genres?.some((g) =>
+          /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
         ) ||
         (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
     );
@@ -149,14 +149,24 @@ export default function WatchPage() {
         ) {
           return [];
         }
+        const customSeasonName =
+          currentSeason > 1 &&
+          seasonData?.name &&
+          !/^(сезон|season|эпизоды|episodes)\s*\d*$/i.test(seasonData.name.trim())
+            ? seasonData.name.trim()
+            : '';
+        const effectiveAnimeTitle = customSeasonName
+          ? `${media?.title || titleHint}: ${customSeasonName}`
+          : media?.title || titleHint;
+
         return api.sources.getAnimeStreams(
-          media?.anilibertyId ? `al-${media.anilibertyId}` : mediaId,
+          media?.anilibertyId && !customSeasonName ? `al-${media.anilibertyId}` : mediaId,
           currentEpisode,
           {
-            anilibertyId: media?.anilibertyId,
-            malId: media?.malId || malIdHint,
-            title: media?.title || titleHint,
-            originalTitle: media?.originalTitle || origTitleHint,
+            anilibertyId: customSeasonName ? undefined : media?.anilibertyId,
+            malId: customSeasonName ? undefined : media?.malId || malIdHint,
+            title: effectiveAnimeTitle,
+            originalTitle: customSeasonName ? undefined : media?.originalTitle || origTitleHint,
           }
         );
       }

@@ -287,7 +287,9 @@ export default function MovieDetailPage() {
     process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
       const tmdbId = String(media.tmdbId || media.id);
       const isAnime = Boolean(
-        media.genres?.some((g) => g.id === 16) ||
+        media.genres?.some((g) =>
+          /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+        ) ||
           (media.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
       );
       const sp = new URLSearchParams({
@@ -547,8 +549,8 @@ export default function MovieDetailPage() {
       media?.source === 'shikimori' ||
       media?.malId ||
       extras.anime ||
-      media?.genres?.some(
-        (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+      media?.genres?.some((g) =>
+        /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
       ) ||
       (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
   );

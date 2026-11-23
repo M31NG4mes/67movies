@@ -55,7 +55,7 @@ function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem |
     type,
     title: String(title),
     originalTitle: r?.name?.english || undefined,
-    overview: String(r?.description || '').replace(/<[^>]+>/g, '').trim() || 'Описание аниме временно отсутствует.',
+    overview: String(r?.description || '').replace(/<[^>]+>/g, '').trim(),
     posterPath,
     backdropPath: posterPath,
     releaseDate: `${year}-01-01`,
