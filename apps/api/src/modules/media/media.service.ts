@@ -149,7 +149,7 @@ export class MediaService {
             const json: any = await res.json();
             const kpId = json?.results?.bindings?.[0]?.kp?.value;
             if (kpId && /^\d+$/.test(kpId)) {
-              const directUrl = `https://www.kinopoisk.cx/${kpPathType}/${kpId}/`;
+              const directUrl = `https://www.kinokino.win/${kpPathType}/${kpId}/`;
               this.kpUrlCache.set(cacheKey, directUrl);
               this.logger.log(`Resolved Kinopoisk URL via Wikidata: ${directUrl}`);
               return directUrl;
@@ -181,7 +181,7 @@ export class MediaService {
             // Extract first Kinopoisk film/series ID from suggest JSON payload (e.g. "/film/4540126/" or "film/4540126")
             const pathMatch = rawText.match(/\/(film|series)\/(\d+)/i);
             if (pathMatch) {
-              const directUrl = `https://www.kinopoisk.cx/${pathMatch[1].toLowerCase()}/${pathMatch[2]}/`;
+              const directUrl = `https://www.kinokino.win/${pathMatch[1].toLowerCase()}/${pathMatch[2]}/`;
               this.kpUrlCache.set(cacheKey, directUrl);
               this.logger.log(`Resolved Kinopoisk URL via Suggest: ${directUrl}`);
               return directUrl;
