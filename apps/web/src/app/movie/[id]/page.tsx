@@ -61,8 +61,6 @@ function getNumericMediaId(media: MediaItem | null): number {
   if (omdb) return 1_600_000_000 + (Number(omdb[1]) % 200_000_000);
   const al = /^al-(\d+)$/i.exec(raw);
   if (al) return 1_800_000_000 + (Number(al[1]) % 200_000_000);
-  const rz = /^rezka-(\d+)$/i.exec(raw);
-  if (rz) return 1_900_000_000 + (Number(rz[1]) % 100_000_000);
   if (media.kinopoiskId) return 1_000_000_000 + (Number(media.kinopoiskId) % 200_000_000);
   return 0;
 }
@@ -138,9 +136,8 @@ export default function MovieDetailPage() {
       [...mockMoviesCatalog, ...mockSeriesCatalog].find((m) => m.id === mediaId) ||
       mockMoviesCatalog[0];
 
-    const rezkaUrlParam = searchParams?.get('url') || undefined;
     api.media
-      .getById(mediaId, mediaTypeParam, rezkaUrlParam)
+      .getById(mediaId, mediaTypeParam)
       .then((data) => {
         if (!isMounted) return;
         const currentData = data || fallbackItem;
@@ -270,9 +267,6 @@ export default function MovieDetailPage() {
     if (media && media.title) {
       addToHistory({ ...media, routeId: mediaId });
       loadCommunityReviews();
-
-      const isHdRezkaItem = media.source === 'hdrezka' || /^rezka-\d+$/i.test(mediaId);
-      if (isHdRezkaItem) return;
 
       // Load trailers, OMDb, KinopoiskDev, and Jikan/MAL extras
       const apiBase =
@@ -531,21 +525,18 @@ export default function MovieDetailPage() {
     ? `al-${media.anilibertyId}`
     : null;
 
-  const isHdRezkaSource = media?.source === 'hdrezka' || /^rezka-\d+$/i.test(mediaId);
-
   const isAnimeMedia = Boolean(
-    !isHdRezkaSource &&
-      (anilibertyTargetId ||
-        /^mal-\d+$/i.test(mediaId) ||
-        media?.source === 'aniliberty' ||
-        media?.source === 'jikan' ||
-        media?.source === 'shikimori' ||
-        media?.malId ||
-        extras.anime ||
-        media?.genres?.some(
-          (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
-        ) ||
-        (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle)))
+    anilibertyTargetId ||
+      /^mal-\d+$/i.test(mediaId) ||
+      media?.source === 'aniliberty' ||
+      media?.source === 'jikan' ||
+      media?.source === 'shikimori' ||
+      media?.malId ||
+      extras.anime ||
+      media?.genres?.some(
+        (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+      ) ||
+      (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
   );
 
   const POPULAR_ANIME_VOICES = [
@@ -572,23 +563,6 @@ export default function MovieDetailPage() {
     return `/watch/${encodeURIComponent(watchId)}?${sp.toString()}`;
   };
 
-  const buildHdRezkaWatchUrl = (seasonNum: number, episodeNum: number) => {
-    const resolvedType = media?.type || (isTv ? 'tv' : 'movie');
-    const sp = new URLSearchParams({
-      type: resolvedType,
-      source: 'hdrezka',
-    });
-    if (resolvedType === 'tv') {
-      sp.set('season', String(seasonNum));
-      sp.set('episode', String(episodeNum));
-    }
-    if (media?.title) sp.set('title', media.title);
-    if (media?.originalTitle) sp.set('originalTitle', media.originalTitle);
-    if (media?.releaseYear) sp.set('year', String(media.releaseYear));
-    if (media?.rezkaUrl) sp.set('rezkaUrl', media.rezkaUrl);
-    return `/watch/${encodeURIComponent(mediaId)}?${sp.toString()}`;
-  };
-
   const handleEpisodeChange = (seasonNum: number, episodeNum: number) => {
     setSelectedSeason(seasonNum);
     setSelectedEpisode(episodeNum);
@@ -598,7 +572,17 @@ export default function MovieDetailPage() {
       return;
     }
 
-    router.push(buildHdRezkaWatchUrl(seasonNum, episodeNum));
+    const apiBase =
+      process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
+    const kpParam = media?.kinopoiskId
+      ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
+      : '';
+    const url = `${apiBase}/media/kinopoisk-redirect?tmdbId=${encodeURIComponent(
+      String(media?.tmdbId || mediaId)
+    )}${kpParam}&type=${encodeURIComponent(media?.type || 'tv')}&title=${encodeURIComponent(
+      media?.title || ''
+    )}&year=${encodeURIComponent(String(media?.releaseYear || ''))}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleAddComment = async (e: React.FormEvent) => {
@@ -697,6 +681,17 @@ export default function MovieDetailPage() {
       </div>
     );
   }
+  const apiBase =
+    process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
+  const kpParam = media.kinopoiskId
+    ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
+    : '';
+  const kinopoiskUrl = `${apiBase}/media/kinopoisk-redirect?tmdbId=${encodeURIComponent(
+    String(media.tmdbId || media.id)
+  )}${kpParam}&type=${encodeURIComponent(media.type || 'movie')}&title=${encodeURIComponent(
+    media.title || ''
+  )}&year=${encodeURIComponent(String(media.releaseYear || ''))}`;
+
   const allSeasons: Season[] = (
     media.seasons?.map((s) => {
       if (s.seasonNumber === selectedSeason && seasonData?.episodes) {
@@ -851,7 +846,7 @@ export default function MovieDetailPage() {
 
             {/* Primary Action Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              {/* Button: «Смотреть» -> built-in player on 67movies for all movies, series, and anime */}
+              {/* Button: «Смотреть» -> built-in HLS player for ALL anime, Kinopoisk for movies/series */}
               {isAnimeMedia ? (
                 <Link
                   href={buildAnimeWatchUrl(selectedSeason, selectedEpisode)}
@@ -864,16 +859,16 @@ export default function MovieDetailPage() {
                   </span>
                 </Link>
               ) : (
-                <Link
-                  href={buildHdRezkaWatchUrl(selectedSeason, selectedEpisode)}
+                <a
+                  href={kinopoiskUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   data-nav-item="true"
                   className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
                 >
                   <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                  <span>
-                    {isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть'}
-                  </span>
-                </Link>
+                  <span>Смотреть на Кинопоиске</span>
+                </a>
               )}
 
               {/* Button: «Трейлер» (Official YouTube Trailer) */}

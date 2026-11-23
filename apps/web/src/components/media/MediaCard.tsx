@@ -54,11 +54,10 @@ function MediaCardInner({ media, fluid = false }: MediaCardProps) {
     ? media.id
     : media.tmdbId || media.id;
   const targetType = media.type === 'tv' ? 'tv' : 'movie';
-  const rezkaUrlQuery = media.rezkaUrl ? `&url=${encodeURIComponent(media.rezkaUrl)}` : '';
 
   return (
     <Link
-      href={`/movie/${targetId}?type=${targetType}${rezkaUrlQuery}`}
+      href={`/movie/${targetId}?type=${targetType}`}
       className={`group relative block rounded-2xl overflow-hidden bg-[#181821] brand-card-hover focus:outline-none ${
         fluid ? 'w-full' : 'flex-none w-36 sm:w-44 md:w-48'
       }`}

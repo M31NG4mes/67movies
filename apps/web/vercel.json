@@ -1,9 +1,4 @@
 {
   "installCommand": "npm install --legacy-peer-deps",
-  "buildCommand": "npm run build",
-  "functions": {
-    "api/hdrezka.py": {
-      "maxDuration": 30
-    }
-  }
+  "buildCommand": "npm run build"
 }

@@ -6,8 +6,7 @@ export type MediaSourceProvider =
   | 'jikan'
   | 'tvmaze'
   | 'omdb'
-  | 'aniliberty'
-  | 'hdrezka';
+  | 'aniliberty';
 
 export interface Genre {
   id: number;
@@ -58,7 +57,6 @@ export interface MediaItem {
   malId?: number;
   tvmazeId?: number;
   anilibertyId?: number;
-  rezkaUrl?: string;
   source?: MediaSourceProvider;
   voiceovers?: VoiceoverMember[]; // AniLiberty dubbing team
   voiceTeamName?: string;

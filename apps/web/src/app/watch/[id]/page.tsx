@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { api, rememberRezkaUrl } from '../../../lib/api-client';
+import { api } from '../../../lib/api-client';
 import { VideoPlayer } from '../../../components/player/VideoPlayer';
-import { MediaItem, MediaType, Season, StreamSourceGroup } from '@cinemaflow/types';
+import { MediaItem, Season, StreamSourceGroup } from '@cinemaflow/types';
 import { usePlayerStore } from '../../../stores/player.store';
 
 export default function WatchPage() {
@@ -18,13 +18,6 @@ export default function WatchPage() {
     : undefined;
   const isAnimeParam = searchParams?.get('anime') === '1';
   const voiceHint = searchParams?.get('voice') || 'aniliberty';
-  const rezkaUrlHint = searchParams?.get('rezkaUrl') || undefined;
-  const typeHint = (searchParams?.get('type') as MediaType | null) || undefined;
-  const yearHint = Number(searchParams?.get('year') || 0) || undefined;
-
-  if (mediaId && rezkaUrlHint) {
-    rememberRezkaUrl(mediaId, rezkaUrlHint);
-  }
 
   const [media, setMedia] = useState<MediaItem | null>(null);
   const [sourceGroups, setSourceGroups] = useState<StreamSourceGroup[]>([]);
@@ -45,28 +38,24 @@ export default function WatchPage() {
     setIsInitialLoading(true);
 
     api.media
-      .getById(mediaId, typeHint)
+      .getById(mediaId)
       .catch(() => null)
       .then(async (data) => {
         if (!isMounted) return;
 
-        const isHdRezkaItem = Boolean(
-          rezkaUrlHint || data?.source === 'hdrezka' || /^rezka-\d+$/i.test(mediaId)
-        );
         const isAnimeItem = Boolean(
-          !isHdRezkaItem &&
-            (isAnimeParam ||
-              /^al-\d+$/i.test(mediaId) ||
-              /^mal-\d+$/i.test(mediaId) ||
-              data?.source === 'aniliberty' ||
-              data?.source === 'jikan' ||
-              data?.source === 'shikimori' ||
-              data?.anilibertyId ||
-              data?.malId ||
-              data?.genres?.some(
-                (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
-              ) ||
-              (data?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(data.originalTitle)))
+          isAnimeParam ||
+            /^al-\d+$/i.test(mediaId) ||
+            /^mal-\d+$/i.test(mediaId) ||
+            data?.source === 'aniliberty' ||
+            data?.source === 'jikan' ||
+            data?.source === 'shikimori' ||
+            data?.anilibertyId ||
+            data?.malId ||
+            data?.genres?.some(
+              (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+            ) ||
+            (data?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(data.originalTitle))
         );
 
         let resolvedMedia = data;
@@ -134,23 +123,19 @@ export default function WatchPage() {
     let isMounted = true;
     usePlayerStore.getState().setIsBuffering(true);
 
-    const isHdRezkaItem = Boolean(
-      rezkaUrlHint || media?.source === 'hdrezka' || /^rezka-\d+$/i.test(mediaId)
-    );
     const isAnimeItem = Boolean(
-      !isHdRezkaItem &&
-        (isAnimeParam ||
-          /^al-\d+$/i.test(mediaId) ||
-          /^mal-\d+$/i.test(mediaId) ||
-          media?.source === 'aniliberty' ||
-          media?.source === 'jikan' ||
-          media?.source === 'shikimori' ||
-          media?.anilibertyId ||
-          media?.malId ||
-          media?.genres?.some(
-            (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
-          ) ||
-          (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle)))
+      isAnimeParam ||
+        /^al-\d+$/i.test(mediaId) ||
+        /^mal-\d+$/i.test(mediaId) ||
+        media?.source === 'aniliberty' ||
+        media?.source === 'jikan' ||
+        media?.source === 'shikimori' ||
+        media?.anilibertyId ||
+        media?.malId ||
+        media?.genres?.some(
+          (g) => g.id === 16 || /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
+        ) ||
+        (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
     );
 
     const fetchStreams = async () => {
@@ -167,23 +152,14 @@ export default function WatchPage() {
         );
       }
 
-      if (!media?.title && !titleHint && !media?.rezkaUrl && !rezkaUrlHint) {
-        return [];
-      }
-
-      const resolvedType: MediaType = media?.type || typeHint || 'movie';
       return api.sources
         .resolve({
           title: media?.title || titleHint || 'Video',
-          originalTitle: media?.originalTitle || origTitleHint,
-          type: resolvedType,
-          year: media?.releaseYear || yearHint || 2024,
+          type: media?.type || 'movie',
+          year: media?.releaseYear || 2024,
           tmdbId: media?.tmdbId,
-          imdbId: media?.imdbId,
-          kinopoiskId: media?.kinopoiskId,
-          season: resolvedType === 'tv' ? currentSeason : undefined,
-          episode: resolvedType === 'tv' ? currentEpisode : undefined,
-          rezkaUrl: media?.rezkaUrl || rezkaUrlHint,
+          season: media?.type === 'tv' ? currentSeason : undefined,
+          episode: media?.type === 'tv' ? currentEpisode : undefined,
         })
         .catch(() => []);
     };
