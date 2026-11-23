@@ -66,6 +66,8 @@ export function PlayerControls({
   const setVolume = usePlayerStore((s) => s.setVolume);
   const toggleMute = usePlayerStore((s) => s.toggleMute);
   const isFullscreen = usePlayerStore((s) => s.isFullscreen);
+  const activeStream = usePlayerStore((s) => s.activeStream);
+  const activeQuality = usePlayerStore((s) => s.activeQuality);
   const autoPlayNext = usePlayerStore((s) => s.autoPlayNext);
   const setAutoPlayNext = usePlayerStore((s) => s.setAutoPlayNext);
   const showOsd = usePlayerStore((s) => s.showOsd);
@@ -88,6 +90,9 @@ export function PlayerControls({
 
   const effectiveVol = isMuted ? 0 : volume;
   const showEpisodeButtons = hasPrevEpisode || hasNextEpisode || episodeCount > 1;
+  const currentQualityLabel =
+    activeStream?.quality ||
+    (activeQuality && activeQuality !== 'auto' ? activeQuality : '1080p');
 
   return (
     <div
@@ -316,15 +321,15 @@ export function PlayerControls({
               <Mic className="w-5 h-5" />
             </button>
 
-            {/* Separate Quality Selector Icon Button */}
+            {/* Separate Quality Selector Badge Button (1080p / 720p) */}
             <button
               type="button"
               onClick={() => openQualityModal(true)}
               aria-label="Выбор качества"
-              title="Выбор качества"
-              className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
+              title={`Качество видео: ${currentQualityLabel}`}
+              className="px-2.5 py-1.5 text-xs font-extrabold tracking-tight text-white/90 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all"
             >
-              <Sparkles className="w-5 h-5" />
+              {currentQualityLabel}
             </button>
 
             {/* Sound Settings, Boost & Speed Icon Button */}

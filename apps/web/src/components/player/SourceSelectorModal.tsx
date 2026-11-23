@@ -71,8 +71,9 @@ export function SourceSelectorModal({
           ) : (
             sourceGroups.map((group, gIdx) => {
               const isSelected =
-                activeStream?.providerId === group.providerId ||
-                group.streams.some((s) => s.id === activeStream?.id);
+                group.streams.some((s) => s.id === activeStream?.id) ||
+                (activeStream?.voiceActing &&
+                  activeStream.voiceActing === group.voiceActing);
               return (
                 <button
                   key={`${group.providerId}-${gIdx}`}
@@ -128,8 +129,11 @@ export function QualitySelectorModal({
   if (!isOpen) return null;
 
   const currentGroup =
-    sourceGroups.find((g) => g.providerId === activeStream?.providerId) ||
     sourceGroups.find((g) => g.streams.some((s) => s.id === activeStream?.id)) ||
+    sourceGroups.find(
+      (g) => activeStream?.voiceActing && g.voiceActing === activeStream.voiceActing
+    ) ||
+    sourceGroups.find((g) => g.providerId === activeStream?.providerId) ||
     sourceGroups[0];
 
   const streams = currentGroup?.streams || (activeStream ? [activeStream] : []);

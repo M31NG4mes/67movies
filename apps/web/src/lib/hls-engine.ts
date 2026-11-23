@@ -61,8 +61,24 @@ export class HlsEngine {
       this.hls = null;
     }
 
-    const effectiveUrl = useProxy ? buildSameOriginProxyUrl(cleanHttpsUrl) : cleanHttpsUrl;
-    callbacks.onProxyModeChange?.(useProxy);
+    const isLocalApiStream = cleanHttpsUrl.startsWith('/api/stream');
+    const isDirectMp4 =
+      !isLocalApiStream &&
+      /\.mp4(\?|$)/i.test(cleanHttpsUrl) &&
+      !cleanHttpsUrl.includes('.m3u8');
+
+    const effectiveUrl =
+      useProxy && !isLocalApiStream
+        ? buildSameOriginProxyUrl(cleanHttpsUrl)
+        : cleanHttpsUrl;
+    callbacks.onProxyModeChange?.(useProxy || isLocalApiStream);
+
+    if (isDirectMp4) {
+      video.src = effectiveUrl;
+      callbacks.onQualitiesLoaded([{ quality: 'auto', height: 0 }]);
+      callbacks.onBuffering(false);
+      return;
+    }
 
     if (Hls.isSupported()) {
       const hls = new Hls({

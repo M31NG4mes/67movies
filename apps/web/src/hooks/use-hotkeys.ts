@@ -21,6 +21,7 @@ export function usePlayerHotkeys(
   const toggleMute = usePlayerStore((s) => s.toggleMute);
   const setIsControlsVisible = usePlayerStore((s) => s.setIsControlsVisible);
   const showOsd = usePlayerStore((s) => s.showOsd);
+  const flashCenterIcon = usePlayerStore((s) => s.flashCenterIcon);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -49,11 +50,11 @@ export function usePlayerHotkeys(
           if (video.paused) {
             video.play().catch(() => {});
             setIsPlaying(true);
-            showOsd('▶️ Воспроизведение');
+            flashCenterIcon('play');
           } else {
             video.pause();
             setIsPlaying(false);
-            showOsd('⏸️ Пауза');
+            flashCenterIcon('pause');
           }
           break;
 
@@ -168,6 +169,7 @@ export function usePlayerHotkeys(
     toggleMute,
     setIsControlsVisible,
     showOsd,
+    flashCenterIcon,
     options,
   ]);
 }

@@ -830,11 +830,42 @@ export const api = {
       }
     ): Promise<StreamSourceGroup[]> => {
       const targetId = extra?.anilibertyId ? `al-${extra.anilibertyId}` : id;
+      const alMatch = /^al-(\d+)$/i.exec(targetId);
+      const malMatch = /^mal-(\d+)$/i.exec(targetId);
+      const resolvedAlId =
+        extra?.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined);
+      const resolvedMalId =
+        extra?.malId || (malMatch ? Number(malMatch[1]) : undefined);
+
+      // 1. Primary multi-voiceover aggregator (AniLiberty + Kodik real voiceovers + AnimeVost)
+      if (typeof window !== 'undefined') {
+        try {
+          const sp = new URLSearchParams({
+            id: targetId,
+            episode: String(episode),
+          });
+          if (extra?.title) sp.set('title', extra.title);
+          if (extra?.originalTitle) sp.set('originalTitle', extra.originalTitle);
+          if (resolvedMalId) sp.set('malId', String(resolvedMalId));
+          if (resolvedAlId) sp.set('anilibertyId', String(resolvedAlId));
+
+          const localRes = await fetch(`/api/anime-streams?${sp.toString()}`, {
+            cache: 'no-store',
+          });
+          if (localRes.ok) {
+            const localJson: { groups?: StreamSourceGroup[] } = await localRes.json();
+            if (localJson?.groups && localJson.groups.length > 0) {
+              return localJson.groups;
+            }
+          }
+        } catch {}
+      }
+
       try {
         const sp = new URLSearchParams({ episode: String(episode) });
         if (extra?.title) sp.set('title', extra.title);
         if (extra?.originalTitle) sp.set('originalTitle', extra.originalTitle);
-        if (extra?.malId) sp.set('malId', String(extra.malId));
+        if (resolvedMalId) sp.set('malId', String(resolvedMalId));
         const r = await fetcher<{ groups: StreamSourceGroup[] }>(
           `/media/anime/${encodeURIComponent(targetId)}/streams?${sp.toString()}`,
           { cache: 'no-store' }
@@ -843,11 +874,9 @@ export const api = {
       } catch {}
 
       try {
-        const alMatch = /^al-(\d+)$/i.exec(targetId);
-        const malMatch = /^mal-(\d+)$/i.exec(targetId);
         const r = await findDirectAniLibertyReleaseRaw({
-          anilibertyId: extra?.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined),
-          malId: extra?.malId || (malMatch ? Number(malMatch[1]) : undefined),
+          anilibertyId: resolvedAlId,
+          malId: resolvedMalId,
           title: extra?.title,
           originalTitle: extra?.originalTitle,
         });

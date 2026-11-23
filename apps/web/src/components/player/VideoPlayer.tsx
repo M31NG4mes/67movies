@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { SkipForward, ShieldCheck, X } from 'lucide-react';
+import { Play, Pause, SkipForward, ShieldCheck, X } from 'lucide-react';
 import { HlsEngine } from '../../lib/hls-engine';
 import { PlayerControls } from './PlayerControls';
 import { TrackSelectorModal } from './TrackSelectorModal';
@@ -73,6 +73,7 @@ export function VideoPlayer({
   const autoPlayNext = usePlayerStore((s) => s.autoPlayNext);
   const useSafeProxy = usePlayerStore((s) => s.useSafeProxy);
   const osdMessage = usePlayerStore((s) => s.osdMessage);
+  const centerActionIcon = usePlayerStore((s) => s.centerActionIcon);
   const activeStream = usePlayerStore((s) => s.activeStream);
   const activeQuality = usePlayerStore((s) => s.activeQuality);
   const isControlsVisible = usePlayerStore((s) => s.isControlsVisible);
@@ -92,6 +93,7 @@ export function VideoPlayer({
   const setUseSafeProxy = usePlayerStore((s) => s.setUseSafeProxy);
   const setIsUsingProxy = usePlayerStore((s) => s.setIsUsingProxy);
   const showOsd = usePlayerStore((s) => s.showOsd);
+  const flashCenterIcon = usePlayerStore((s) => s.flashCenterIcon);
   const setActiveStream = usePlayerStore((s) => s.setActiveStream);
   const setActiveQuality = usePlayerStore((s) => s.setActiveQuality);
   const setAvailableQualities = usePlayerStore((s) => s.setAvailableQualities);
@@ -229,6 +231,7 @@ export function VideoPlayer({
 
   // Stream loader (preserves playback position when switching quality or voiceover on same episode)
   const lastEpisodeRef = useRef<number | undefined>(undefined);
+  const pendingResumeTimeRef = useRef<number>(0);
   useEffect(() => {
     if (!videoRef.current || !activeStream) return;
 
@@ -239,6 +242,7 @@ export function VideoPlayer({
         ? videoRef.current.currentTime
         : 0;
     lastEpisodeRef.current = activeStream.episode;
+    pendingResumeTimeRef.current = resumeTime;
 
     reset();
     setIsBuffering(true);
@@ -340,6 +344,10 @@ export function VideoPlayer({
       videoRef.current.volume = isMuted ? 0 : volume;
       videoRef.current.muted = isMuted;
       videoRef.current.playbackRate = playbackRate;
+      if (pendingResumeTimeRef.current > 0) {
+        videoRef.current.currentTime = pendingResumeTimeRef.current;
+        pendingResumeTimeRef.current = 0;
+      }
     }
   };
 
@@ -381,11 +389,11 @@ export function VideoPlayer({
     if (videoRef.current.paused) {
       videoRef.current.play().catch(() => {});
       setIsPlaying(true);
-      showOsd('▶️ Воспроизведение');
+      flashCenterIcon('play');
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
-      showOsd('⏸️ Пауза');
+      flashCenterIcon('pause');
     }
   };
 
@@ -448,6 +456,19 @@ export function VideoPlayer({
         onPlaying={() => setIsBuffering(false)}
         onEnded={handleVideoEnded}
       />
+
+      {/* Center Play / Pause Icon Indicator */}
+      {centerActionIcon && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-40">
+          <div className="w-20 h-20 rounded-full bg-black/65 border border-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-2xl animate-scaleIn">
+            {centerActionIcon === 'play' ? (
+              <Play className="w-9 h-9 ml-1 fill-white text-white" />
+            ) : (
+              <Pause className="w-9 h-9 fill-white text-white" />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* On-Screen Display (OSD) Feedback Pill for Volume / Seek / Fullscreen */}
       {osdMessage && (

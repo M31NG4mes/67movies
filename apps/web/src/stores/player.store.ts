@@ -8,6 +8,7 @@ import {
 } from '@cinemaflow/types';
 
 let osdTimeout: ReturnType<typeof setTimeout> | null = null;
+let centerIconTimeout: ReturnType<typeof setTimeout> | null = null;
 
 interface PlayerStore {
   // Playback state
@@ -26,6 +27,7 @@ interface PlayerStore {
   useSafeProxy: boolean | undefined;
   isUsingProxy: boolean;
   osdMessage: string | null;
+  centerActionIcon: 'play' | 'pause' | null;
 
   // Active stream and tracks
   activeStream: VideoStream | null;
@@ -58,6 +60,7 @@ interface PlayerStore {
   setUseSafeProxy: (useSafeProxy: boolean | undefined) => void;
   setIsUsingProxy: (isUsingProxy: boolean) => void;
   showOsd: (msg: string) => void;
+  flashCenterIcon: (icon: 'play' | 'pause') => void;
   setActiveStream: (stream: VideoStream | null) => void;
   setActiveQuality: (quality: VideoQuality) => void;
   setAvailableQualities: (qualities: PlayerQualityOption[]) => void;
@@ -88,6 +91,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   useSafeProxy: undefined,
   isUsingProxy: false,
   osdMessage: null,
+  centerActionIcon: null,
 
   activeStream: null,
   activeQuality: 'auto',
@@ -130,6 +134,13 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     osdTimeout = setTimeout(() => {
       set({ osdMessage: null });
     }, 1400);
+  },
+  flashCenterIcon: (icon) => {
+    if (centerIconTimeout) clearTimeout(centerIconTimeout);
+    set({ centerActionIcon: icon });
+    centerIconTimeout = setTimeout(() => {
+      set({ centerActionIcon: null });
+    }, 650);
   },
   setActiveStream: (activeStream) => set({ activeStream, error: null }),
   setActiveQuality: (activeQuality) => set({ activeQuality }),
