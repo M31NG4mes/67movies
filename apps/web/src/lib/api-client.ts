@@ -1,4 +1,4 @@
-﻿import {
+import {
   Genre,
   MediaItem,
   MediaType,
@@ -69,14 +69,14 @@ function mapHdRezkaItemToMedia(raw: any): MediaItem {
     ? raw.seasons.map((s: any) => ({
         id: s.id || `rezka-s-${s.seasonNumber}`,
         seasonNumber: Number(s.seasonNumber) || 1,
-        name: s.title || `РЎРµР·РѕРЅ ${s.seasonNumber}`,
+        name: s.title || `Сезон ${s.seasonNumber}`,
         episodeCount: Number(s.episodeCount) || (Array.isArray(s.episodes) ? s.episodes.length : 0),
         episodes: Array.isArray(s.episodes)
           ? s.episodes.map((ep: any) => ({
               id: ep.id || `rezka-ep-${s.seasonNumber}-${ep.episodeNumber}`,
               seasonNumber: Number(ep.seasonNumber || s.seasonNumber) || 1,
               episodeNumber: Number(ep.episodeNumber) || 1,
-              name: ep.title || `РЎРµСЂРёСЏ ${ep.episodeNumber}`,
+              name: ep.title || `Серия ${ep.episodeNumber}`,
               overview: '',
             }))
           : [],
@@ -88,9 +88,9 @@ function mapHdRezkaItemToMedia(raw: any): MediaItem {
     rezkaUrl: raw?.rezkaUrl,
     source: 'hdrezka',
     type: raw?.type === 'tv' ? 'tv' : 'movie',
-    title: String(raw?.title || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ'),
+    title: String(raw?.title || 'Без названия'),
     originalTitle: raw?.originalTitle ? String(raw.originalTitle) : undefined,
-    overview: String(raw?.description || raw?.status || '').trim() || 'Р”РѕСЃС‚СѓРїРЅРѕ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР° РЅР° 67movies.',
+    overview: String(raw?.description || raw?.status || '').trim() || 'Доступно для просмотра на 67movies.',
     posterPath: raw?.posterUrl || null,
     backdropPath: raw?.backdropUrl || raw?.posterUrl || null,
     releaseDate: raw?.releaseYear ? `${raw.releaseYear}-01-01` : undefined,
@@ -103,7 +103,7 @@ function mapHdRezkaItemToMedia(raw: any): MediaItem {
       ? raw.cast.map((p: any) => ({
           id: Number(p?.id) || 0,
           name: String(p?.name || ''),
-          role: p?.role ? String(p.role) : 'РђРєС‚С‘СЂ',
+          role: p?.role ? String(p.role) : 'Актёр',
           profilePath: p?.profilePath || null,
         }))
       : undefined,
@@ -162,7 +162,7 @@ function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem |
     type,
     title: String(title),
     originalTitle: r?.name?.english || undefined,
-    overview: String(r?.description || '').replace(/<[^>]+>/g, '').trim() || 'РћРїРёСЃР°РЅРёРµ Р°РЅРёРјРµ РІСЂРµРјРµРЅРЅРѕ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚.',
+    overview: String(r?.description || '').replace(/<[^>]+>/g, '').trim() || 'Описание аниме временно отсутствует.',
     posterPath,
     backdropPath: posterPath,
     releaseDate: `${year}-01-01`,
@@ -181,7 +181,7 @@ function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem |
           .filter((m: any) => m?.nickname)
           .map((m: any) => ({
             name: String(m.nickname),
-            role: String(m.role?.description || m.role?.value || 'РЈС‡Р°СЃС‚РЅРёРє'),
+            role: String(m.role?.description || m.role?.value || 'Участник'),
           }))
       : [];
     base.voiceTeamName = 'AniLibria';
@@ -194,7 +194,7 @@ function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem |
             id: String(e?.id || `al-${id}-e${ord}`),
             seasonNumber: 1,
             episodeNumber: ord,
-            name: e?.name || `РЎРµСЂРёСЏ ${ord}`,
+            name: e?.name || `Серия ${ord}`,
             stillPath: prev
               ? /^https?:\/\//i.test(prev)
                 ? prev
@@ -209,7 +209,7 @@ function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem |
         {
           id: `al-${id}-s1`,
           seasonNumber: 1,
-          name: 'Р­РїРёР·РѕРґС‹',
+          name: 'Эпизоды',
           posterPath,
           episodeCount: episodes.length,
           episodes,
@@ -249,7 +249,7 @@ async function findDirectAniLibertyReleaseRaw(params: {
   const pushQ = (q?: string) => {
     const clean = (q || '').trim();
     if (clean && !queries.includes(clean)) queries.push(clean);
-    const base = clean.split(/[:вЂ”вЂ“-]/)[0]?.trim();
+    const base = clean.split(/[:—–-]/)[0]?.trim();
     if (base && base.length >= 3 && !queries.includes(base)) queries.push(base);
   };
   pushQ(params.title);
@@ -258,8 +258,8 @@ async function findDirectAniLibertyReleaseRaw(params: {
   const norm = (s?: string) =>
     String(s || '')
       .toLowerCase()
-      .replace(/С‘/g, 'Рµ')
-      .replace(/[^a-zР°-СЏ0-9]+/gi, ' ')
+      .replace(/ё/g, 'е')
+      .replace(/[^a-zа-я0-9]+/gi, ' ')
       .trim();
 
   const qTitle = norm(params.title);
@@ -364,7 +364,7 @@ function mapTmdbToMedia(item: any, type: MediaType): MediaItem {
     type,
     title: isMovie ? item.title : item.name,
     originalTitle: isMovie ? item.original_title : item.original_name,
-    overview: item.overview || 'РћРїРёСЃР°РЅРёРµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚.',
+    overview: item.overview || 'Описание отсутствует.',
     posterPath: item.poster_path ? `${TMDB_IMAGE_BASE}/w500${item.poster_path}` : null,
     backdropPath: item.backdrop_path ? `${TMDB_IMAGE_BASE}/original${item.backdrop_path}` : null,
     releaseDate,
@@ -713,14 +713,14 @@ export const api = {
                   type: (a.format === 'MOVIE' ? 'movie' : 'tv') as MediaType,
                   title: a.title?.english || a.title?.romaji || `Anime #${malId}`,
                   originalTitle: a.title?.romaji,
-                  overview: String(a.description || '').replace(/<[^>]+>/g, '') || 'РћРїРёСЃР°РЅРёРµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚.',
+                  overview: String(a.description || '').replace(/<[^>]+>/g, '') || 'Описание отсутствует.',
                   posterPath: a.coverImage?.extraLarge || a.coverImage?.large || null,
                   backdropPath: a.bannerImage || a.coverImage?.extraLarge || null,
                   releaseYear: a.startDate?.year || 2024,
                   voteAverage: a.averageScore ? Number((a.averageScore / 10).toFixed(1)) : 0,
                   durationMinutes: a.duration || 24,
                   ageRating: '16+',
-                  genres: [{ id: 16, name: 'РђРЅРёРјРµ' }],
+                  genres: [{ id: 16, name: 'Аниме' }],
                 };
               }
             }
@@ -740,7 +740,7 @@ export const api = {
                   type: 'tv' as MediaType,
                   title: s.name,
                   originalTitle: s.name,
-                  overview: String(s.summary || '').replace(/<[^>]+>/g, '') || 'РћРїРёСЃР°РЅРёРµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚.',
+                  overview: String(s.summary || '').replace(/<[^>]+>/g, '') || 'Описание отсутствует.',
                   posterPath: s.image?.original || s.image?.medium || null,
                   backdropPath: s.image?.original || s.image?.medium || null,
                   releaseYear: s.premiered ? parseInt(String(s.premiered).slice(0, 4), 10) : 2024,
@@ -793,7 +793,7 @@ export const api = {
                   {
                     id: `al-${mapped.anilibertyId || 'anime'}-s1`,
                     seasonNumber: 1,
-                    name: 'Р­РїРёР·РѕРґС‹',
+                    name: 'Эпизоды',
                     posterPath: mapped.posterPath,
                     episodeCount: fullEps.length,
                     episodes: fullEps,
@@ -806,20 +806,20 @@ export const api = {
                   malId: params.malId,
                   source: 'aniliberty',
                   type: 'tv',
-                  title: params.title || params.originalTitle || 'РђРЅРёРјРµ',
+                  title: params.title || params.originalTitle || 'Аниме',
                   originalTitle: params.originalTitle,
                   overview: '',
                   posterPath: null,
                   backdropPath: null,
                   releaseYear: 2024,
                   voteAverage: 0,
-                  genres: [{ id: 16, name: 'РђРЅРёРјРµ' }],
+                  genres: [{ id: 16, name: 'Аниме' }],
                   episodesTotal: fullEps.length,
                   seasons: [
                     {
                       id: 'anime-s1',
                       seasonNumber: 1,
-                      name: 'Р­РїРёР·РѕРґС‹',
+                      name: 'Эпизоды',
                       posterPath: null,
                       episodeCount: fullEps.length,
                       episodes: fullEps,
@@ -914,7 +914,7 @@ export const api = {
                   .filter(
                     (m: any) =>
                       m?.nickname &&
-                      /РѕР·РІСѓС‡|voic/i.test(String(m?.role?.description || m?.role?.value || ''))
+                      /озвуч|voic/i.test(String(m?.role?.description || m?.role?.value || ''))
                   )
                   .map((m: any) => String(m.nickname))
               : [];
@@ -940,7 +940,7 @@ export const api = {
                 id: `al-${alId}-e${ep.ordinal}-aniliberty-${quality}`,
                 providerId: 'aniliberty',
                 providerName: 'AniLibria',
-                title: ep.name || `РЎРµСЂРёСЏ ${ep.ordinal}`,
+                title: ep.name || `Серия ${ep.ordinal}`,
                 voiceActing: primaryVoice,
                 season: 1,
                 episode: Number(ep.ordinal),
@@ -1030,7 +1030,7 @@ export const api = {
       const res = await fetch(`/api/hdrezka?${sp.toString()}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.message || `РћС€РёР±РєР° HDRezka (${res.status})`);
+        throw new Error(data?.message || `Ошибка HDRezka (${res.status})`);
       }
       return {
         sourceGroups: Array.isArray(data?.sourceGroups) ? data.sourceGroups : [],
@@ -1118,7 +1118,7 @@ export const api = {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.message || `РћС€РёР±РєР° ${res.status}`);
+        throw new Error(data?.message || `Ошибка ${res.status}`);
       }
       return data;
     },

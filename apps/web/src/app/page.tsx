@@ -1,33 +1,39 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api-client';
 import { HeroBanner } from '../components/media/HeroBanner';
 import { MediaRail } from '../components/media/MediaRail';
 import { T } from '../components/common/T';
-import { mockMoviesCatalog, mockSeriesCatalog } from '../lib/catalog-data';
 import { MediaItem } from '@cinemaflow/types';
 
-export const revalidate = 60;
+export default function HomePage() {
+  const [trending, setTrending] = useState<MediaItem[]>([]);
+  const [popularMovies, setPopularMovies] = useState<MediaItem[]>([]);
+  const [popularSeries, setPopularSeries] = useState<MediaItem[]>([]);
+  const [newMovies, setNewMovies] = useState<MediaItem[]>([]);
+  const [newSeries, setNewSeries] = useState<MediaItem[]>([]);
 
-export default async function HomePage() {
-  const [
-    trendingRes,
-    popularMoviesRes,
-    popularTvRes,
-    newMoviesRes,
-    newTvRes,
-  ] = await Promise.all([
-    api.media.getTrending('all', 'day', 1).catch(() => null),
-    api.media.getPopularMovies(1).catch(() => null),
-    api.media.getPopularTv(1).catch(() => null),
-    api.media.getNewMovies(1).catch(() => null),
-    api.media.getNewTv(1).catch(() => null),
-  ]);
-
-  const trending = trendingRes?.items?.length ? trendingRes.items : mockMoviesCatalog;
-  const popularMovies = popularMoviesRes?.items?.length ? popularMoviesRes.items : mockMoviesCatalog;
-  const popularSeries = popularTvRes?.items?.length ? popularTvRes.items : mockSeriesCatalog;
-  const newMovies = newMoviesRes?.items?.length ? newMoviesRes.items : mockMoviesCatalog.slice(0, 6);
-  const newSeries = newTvRes?.items?.length ? newTvRes.items : mockSeriesCatalog;
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      api.media.getTrending('all', 'day', 1).catch(() => null),
+      api.media.getPopularMovies(1).catch(() => null),
+      api.media.getPopularTv(1).catch(() => null),
+      api.media.getNewMovies(1).catch(() => null),
+      api.media.getNewTv(1).catch(() => null),
+    ]).then(([trendingRes, popMoviesRes, popTvRes, newMoviesRes, newTvRes]) => {
+      if (!mounted) return;
+      if (trendingRes?.items?.length) setTrending(trendingRes.items);
+      if (popMoviesRes?.items?.length) setPopularMovies(popMoviesRes.items);
+      if (popTvRes?.items?.length) setPopularSeries(popTvRes.items);
+      if (newMoviesRes?.items?.length) setNewMovies(newMoviesRes.items);
+      if (newTvRes?.items?.length) setNewSeries(newTvRes.items);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const heroItems: MediaItem[] = (
     trending.length >= 5
@@ -36,7 +42,7 @@ export default async function HomePage() {
   ).filter((item: MediaItem) => Boolean(item.backdropPath || item.posterPath));
 
   const editorsChoice = [...popularMovies, ...popularSeries]
-    .filter((item) => item.voteAverage >= 7.6)
+    .filter((item) => item.voteAverage >= 7.0)
     .sort((a, b) => b.voteAverage - a.voteAverage)
     .slice(0, 12);
 
