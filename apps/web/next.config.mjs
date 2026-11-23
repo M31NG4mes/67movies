@@ -22,6 +22,9 @@ const nextConfig = {
       { protocol: 'https', hostname: 'st.kp.yandex.net' },
       { protocol: 'https', hostname: 'kinopoiskapiunofficial.tech' },
       { protocol: 'https', hostname: 'm.media-amazon.com' },
+      { protocol: 'https', hostname: 'static.hdrezka.ac' },
+      { protocol: 'https', hostname: 'rezka.ag' },
+      { protocol: 'https', hostname: 'hdrezka.ag' },
     ],
   },
   experimental: {

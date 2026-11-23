@@ -23,6 +23,84 @@ const API_BASE =
 const TMDB_KEY = process.env.TMDB_API_KEY || '9cea7e9e78f99a9f9468c4f74f3d7eab';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 const ANILIBERTY_BASE = 'https://api.anilibria.app';
+const rezkaUrlCache = new Map<string, string>();
+
+export function rememberRezkaUrl(id: string | number, url?: string | null) {
+  if (!url) return;
+  const key = String(id);
+  rezkaUrlCache.set(key, url);
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.setItem(`rezka_url_${key}`, url);
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+}
+
+export function getRememberedRezkaUrl(id: string | number): string | undefined {
+  const key = String(id);
+  const mem = rezkaUrlCache.get(key);
+  if (mem) return mem;
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = window.sessionStorage.getItem(`rezka_url_${key}`);
+      if (stored) {
+        rezkaUrlCache.set(key, stored);
+        return stored;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return undefined;
+}
+
+function mapHdRezkaItemToMedia(raw: any): MediaItem {
+  const id = String(raw?.id || `rezka-${raw?.rezkaId || Date.now()}`);
+  if (raw?.rezkaUrl) rememberRezkaUrl(id, raw.rezkaUrl);
+  const genres: Genre[] = Array.isArray(raw?.genres)
+    ? raw.genres.map((g: any, idx: number) => ({
+        id: idx + 1,
+        name: typeof g === 'string' ? g : String(g?.name || ''),
+      }))
+    : [];
+  const seasons: Season[] | undefined = Array.isArray(raw?.seasons)
+    ? raw.seasons.map((s: any) => ({
+        id: s.id || `rezka-s-${s.seasonNumber}`,
+        seasonNumber: Number(s.seasonNumber) || 1,
+        name: s.title || `Сезон ${s.seasonNumber}`,
+        episodeCount: Number(s.episodeCount) || (Array.isArray(s.episodes) ? s.episodes.length : 0),
+        episodes: Array.isArray(s.episodes)
+          ? s.episodes.map((ep: any) => ({
+              id: ep.id || `rezka-ep-${s.seasonNumber}-${ep.episodeNumber}`,
+              seasonNumber: Number(ep.seasonNumber || s.seasonNumber) || 1,
+              episodeNumber: Number(ep.episodeNumber) || 1,
+              name: ep.title || `Серия ${ep.episodeNumber}`,
+              overview: '',
+            }))
+          : [],
+      }))
+    : undefined;
+
+  return {
+    id,
+    rezkaUrl: raw?.rezkaUrl,
+    source: 'hdrezka',
+    type: raw?.type === 'tv' ? 'tv' : 'movie',
+    title: String(raw?.title || 'Без названия'),
+    originalTitle: raw?.originalTitle ? String(raw.originalTitle) : undefined,
+    overview: String(raw?.description || raw?.status || '').trim() || 'Доступно для просмотра на 67movies.',
+    posterPath: raw?.posterUrl || null,
+    backdropPath: raw?.backdropUrl || raw?.posterUrl || null,
+    releaseDate: raw?.releaseYear ? `${raw.releaseYear}-01-01` : undefined,
+    releaseYear: Number(raw?.releaseYear) || 0,
+    voteAverage: Number(raw?.rating) || 0,
+    voteCount: Number(raw?.voteCount) || 0,
+    genres,
+    seasons,
+  };
+}
 
 function mapDirectAniLibertyRelease(r: any, includeDetails = false): MediaItem | null {
   const id = Number(r?.id);
@@ -355,12 +433,21 @@ export const api = {
     },
 
     search: async (query: string, page = 1) => {
+      const rezkaPromise =
+        typeof window !== 'undefined'
+          ? fetch(`/api/hdrezka?action=search&q=${encodeURIComponent(query)}&page=${page}`, { cache: 'no-store' })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => (Array.isArray(d?.items) ? d.items.map(mapHdRezkaItemToMedia) : []))
+              .catch(() => [] as MediaItem[])
+          : Promise.resolve([] as MediaItem[]);
+
+      let primary: PaginatedResult<MediaItem> | null = null;
       try {
-        return await fetcher<PaginatedResult<MediaItem>>(`/media/search?q=${encodeURIComponent(query)}&page=${page}`);
+        primary = await fetcher<PaginatedResult<MediaItem>>(`/media/search?q=${encodeURIComponent(query)}&page=${page}`);
       } catch (err) {
         const tmdbData: any = await fetchDirectTmdb('/search/multi', { query, page: String(page) });
         if (tmdbData?.results) {
-          return {
+          primary = {
             items: tmdbData.results
               .filter((r: any) => r.media_type === 'movie' || r.media_type === 'tv')
               .map((r: any) => mapTmdbToMedia(r, r.media_type)),
@@ -368,12 +455,45 @@ export const api = {
             totalPages: tmdbData.total_pages,
             totalItems: tmdbData.total_results,
           };
+        } else {
+          const rezkaItems = await rezkaPromise;
+          if (rezkaItems.length > 0) {
+            return {
+              items: rezkaItems,
+              page,
+              totalPages: page,
+              totalItems: rezkaItems.length,
+            };
+          }
+          throw err;
         }
-        throw err;
       }
+
+      const rezkaItems = await rezkaPromise;
+      if (!rezkaItems.length) return primary;
+
+      const existingKeys = new Set(
+        primary.items.map((item) => `${item.title.toLowerCase().trim()}::${item.releaseYear || 0}`),
+      );
+      const uniqueRezka = rezkaItems.filter(
+        (item: MediaItem) => !existingKeys.has(`${item.title.toLowerCase().trim()}::${item.releaseYear || 0}`),
+      );
+      return {
+        ...primary,
+        items: [...primary.items, ...uniqueRezka],
+        totalItems: (primary.totalItems || primary.items.length) + uniqueRezka.length,
+      };
     },
 
-    getMovieDetails: async (id: string | number) => {
+    getMovieDetails: async (id: string | number, rezkaUrl?: string) => {
+      const idStr = String(id);
+      if (/^rezka-\d+$/i.test(idStr)) {
+        const targetUrl = rezkaUrl || getRememberedRezkaUrl(idStr);
+        if (targetUrl && typeof window !== 'undefined') {
+          const res = await fetch(`/api/hdrezka?action=details&url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
+          if (res.ok) return mapHdRezkaItemToMedia(await res.json());
+        }
+      }
       try {
         return await fetcher<MediaItem>(`/media/movie/${id}`);
       } catch (err) {
@@ -383,7 +503,15 @@ export const api = {
       }
     },
 
-    getTvDetails: async (id: string | number) => {
+    getTvDetails: async (id: string | number, rezkaUrl?: string) => {
+      const idStr = String(id);
+      if (/^rezka-\d+$/i.test(idStr)) {
+        const targetUrl = rezkaUrl || getRememberedRezkaUrl(idStr);
+        if (targetUrl && typeof window !== 'undefined') {
+          const res = await fetch(`/api/hdrezka?action=details&url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
+          if (res.ok) return mapHdRezkaItemToMedia(await res.json());
+        }
+      }
       try {
         return await fetcher<MediaItem>(`/media/tv/${id}`);
       } catch (err) {
@@ -394,6 +522,12 @@ export const api = {
     },
 
     getTvSeason: async (tvId: string | number, seasonNumber: number) => {
+      const tvIdStr = String(tvId);
+      if (/^rezka-\d+$/i.test(tvIdStr)) {
+        const details = await api.media.getTvDetails(tvIdStr);
+        const found = details.seasons?.find((s) => s.seasonNumber === seasonNumber) || details.seasons?.[0];
+        if (found) return found;
+      }
       try {
         return await fetcher<Season>(`/media/tv/${encodeURIComponent(String(tvId))}/season/${seasonNumber}`);
       } catch (err) {
@@ -714,6 +848,13 @@ export const api = {
     },
 
     getById: async (id: string, type?: MediaType): Promise<MediaItem> => {
+      if (/^rezka-\d+$/i.test(id)) {
+        const targetUrl = getRememberedRezkaUrl(id);
+        if (targetUrl && typeof window !== 'undefined') {
+          const res = await fetch(`/api/hdrezka?action=details&url=${encodeURIComponent(targetUrl)}`, { cache: 'no-store' });
+          if (res.ok) return mapHdRezkaItemToMedia(await res.json());
+        }
+      }
       try {
         return await fetcher<MediaItem>(`/media/${encodeURIComponent(id)}${type ? `?type=${type}` : ''}`);
       } catch (err) {
@@ -1045,14 +1186,85 @@ export const api = {
       }>(`/sources/streams?${sp.toString()}`).catch(() => ({ streams: [], total: 0 }));
     },
 
-    resolve: (params: {
+    getHdRezkaStreams: async (params: {
+      url?: string;
+      title?: string;
+      originalTitle?: string;
+      type?: MediaType;
+      year?: number;
+      season?: number;
+      episode?: number;
+      translatorId?: number;
+      force?: boolean;
+    }): Promise<{
+      sourceGroups: StreamSourceGroup[];
+      media?: MediaItem;
+      activeSeason?: number;
+      activeEpisode?: number;
+      activeTranslatorId?: number;
+    }> => {
+      const sp = new URLSearchParams({ action: params.url ? 'streams' : 'resolve' });
+      if (params.url) sp.set('url', params.url);
+      if (params.title) sp.set('title', params.title);
+      if (params.originalTitle) sp.set('originalTitle', params.originalTitle);
+      if (params.type) sp.set('type', params.type);
+      if (params.year) sp.set('year', String(params.year));
+      if (params.season !== undefined) sp.set('season', String(params.season));
+      if (params.episode !== undefined) sp.set('episode', String(params.episode));
+      if (params.translatorId !== undefined) sp.set('translatorId', String(params.translatorId));
+      if (params.force) sp.set('force', '1');
+
+      const res = await fetch(`/api/hdrezka?${sp.toString()}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || `Ошибка HDRezka (${res.status})`);
+      }
+      return {
+        sourceGroups: Array.isArray(data?.sourceGroups) ? data.sourceGroups : [],
+        media: data?.media ? mapHdRezkaItemToMedia(data.media) : undefined,
+        activeSeason: data?.activeSeason,
+        activeEpisode: data?.activeEpisode,
+        activeTranslatorId: data?.activeTranslatorId,
+      };
+    },
+
+    resolve: async (params: {
       title: string;
+      originalTitle?: string;
       type: MediaType;
       year: number;
       tmdbId?: number;
       season?: number;
       episode?: number;
+      rezkaUrl?: string;
+      translatorId?: number;
     }) => {
+      if (typeof window !== 'undefined') {
+        try {
+          const sp = new URLSearchParams({
+            action: params.rezkaUrl ? 'streams' : 'resolve',
+            title: params.title,
+            type: params.type,
+            year: String(params.year),
+          });
+          if (params.rezkaUrl) sp.set('url', params.rezkaUrl);
+          if (params.originalTitle) sp.set('originalTitle', params.originalTitle);
+          if (params.season !== undefined) sp.set('season', String(params.season));
+          if (params.episode !== undefined) sp.set('episode', String(params.episode));
+          if (params.translatorId !== undefined) sp.set('translatorId', String(params.translatorId));
+
+          const rezkaRes = await fetch(`/api/hdrezka?${sp.toString()}`, { cache: 'no-store' });
+          if (rezkaRes.ok) {
+            const rezkaData = await rezkaRes.json();
+            if (Array.isArray(rezkaData?.sourceGroups) && rezkaData.sourceGroups.length > 0) {
+              return rezkaData.sourceGroups as StreamSourceGroup[];
+            }
+          }
+        } catch {
+          // Fall through to backend sources resolver
+        }
+      }
+
       const sp = new URLSearchParams({
         title: params.title,
         type: params.type,
