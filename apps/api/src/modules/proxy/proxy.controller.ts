@@ -29,13 +29,10 @@ export class ProxyController {
     }
 
     const host = req.get('host') || 'localhost:4000';
-    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-    const isLocalHost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
-    const protocol = forwardedProto || (isLocalHost ? req.protocol || 'http' : 'https');
+    const protocol = req.protocol || 'http';
     const proxyBase = `${protocol}://${host}/api/proxy`;
-    const safeTargetUrl = targetUrl.replace(/^http:\/\//i, 'https://');
 
-    return this.proxyService.proxyManifest(safeTargetUrl, parsedHeaders, proxyBase, res);
+    return this.proxyService.proxyManifest(targetUrl, parsedHeaders, proxyBase, res);
   }
 
   @Get('segment')
@@ -60,30 +57,5 @@ export class ProxyController {
     }
 
     return this.proxyService.proxySegment(targetUrl, parsedHeaders, range, res);
-  }
-
-  @Get('tmdb-image/*')
-  async proxyTmdbImage(@Req() req: Request, @Res() res: Response) {
-    const rawPath = (req.params as any)?.[0] || '';
-    const cleanPath = String(rawPath).replace(/^\/+/, '');
-    if (!cleanPath || cleanPath.includes('..')) {
-      return res.status(400).send('Invalid TMDB image path');
-    }
-    const targetUrl = `https://image.tmdb.org/t/p/${cleanPath}`;
-    return this.proxyService.proxyImage(targetUrl, res);
-  }
-
-  @Get('tmdb/*')
-  async proxyTmdbApi(
-    @Req() req: Request,
-    @Query() query: Record<string, any>,
-    @Headers('authorization') authHeader: string | undefined,
-    @Res() res: Response
-  ) {
-    const rawPath = (req.params as any)?.[0] || '';
-    if (!rawPath || String(rawPath).includes('..')) {
-      return res.status(400).json({ error: 'Invalid TMDB path' });
-    }
-    return this.proxyService.proxyTmdb(String(rawPath), query, authHeader, res);
   }
 }

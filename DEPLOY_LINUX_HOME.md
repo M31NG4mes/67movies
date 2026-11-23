@@ -68,3 +68,28 @@ docker compose -f docker-compose.home.yml logs -f
 ```bash
 docker compose -f docker-compose.home.yml down
 ```
+
+---
+
+## Шаг 5. Автообновление с GitHub (чтобы сервер сам подтягивал новые файлы)
+
+На домашнем Linux-ПК Docker сам не следит за GitHub. Чтобы сервер **автоматически** проверял новые коммиты раз в 2 минуты и сам пересобирал сайт, выполните в папке проекта:
+
+```bash
+sed -i 's/\r$//' scripts/auto-update-linux.sh
+chmod +x scripts/auto-update-linux.sh
+```
+
+И добавьте задачу в `cron`:
+```bash
+(crontab -l 2>/dev/null | grep -v "auto-update-linux.sh"; echo "*/2 * * * * $(pwd)/scripts/auto-update-linux.sh >> $HOME/67movies-update.log 2>&1") | crontab -
+```
+
+Проверить, как работает автообновление (логи):
+```bash
+tail -f ~/67movies-update.log
+```
+Запустить обновление вручную прямо сейчас:
+```bash
+./scripts/auto-update-linux.sh
+```

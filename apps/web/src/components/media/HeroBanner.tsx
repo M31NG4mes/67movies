@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Check, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaItem } from '@cinemaflow/types';
 import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
 import { useLibraryStore } from '../../stores/library.store';
@@ -13,41 +13,15 @@ interface HeroBannerProps {
 }
 
 export function HeroBanner({ items, media }: HeroBannerProps) {
-  const rawPool = items && items.length > 0 ? items : media ? [media] : [];
-  const [activeList, setActiveList] = useState<MediaItem[]>(() => rawPool.slice(0, 5));
+  const activeList = items && items.length > 0 ? items : media ? [media] : [];
   const [currentIndex, setCurrentIndex] = useState(0);
   const language = usePreferencesStore((s) => s.language);
   const t = TRANSLATIONS[language];
-  const {
-    watchlist,
-    favorites,
-    hydrate,
-    toggleWatchlist,
-    isInWatchlist,
-    toggleFavorite,
-    isInFavorites,
-  } = useLibraryStore();
+  const { watchlist, hydrate, toggleWatchlist } = useLibraryStore();
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
-
-  // Pick 5 random items from the full trending pool on every page visit / refresh
-  useEffect(() => {
-    const pool = items && items.length > 0 ? items : media ? [media] : [];
-    if (pool.length <= 5) {
-      setActiveList(pool);
-      setCurrentIndex(0);
-      return;
-    }
-    const shuffled = [...pool];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    setActiveList(shuffled.slice(0, 5));
-    setCurrentIndex(0);
-  }, [items, media]);
 
   const nextSlide = useCallback(() => {
     if (activeList.length <= 1) return;
@@ -68,17 +42,15 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
   if (activeList.length === 0) return null;
 
   const currentMedia = activeList[currentIndex];
-  const isSaved = watchlist.length >= 0 && isInWatchlist(currentMedia);
-  const isFav = favorites.length >= 0 && isInFavorites(currentMedia);
+  const isSaved = watchlist.some(
+    (w) => String(w.id) === String(currentMedia.tmdbId || currentMedia.id)
+  );
   const toggleSave = () => {
     toggleWatchlist(currentMedia);
   };
-  const toggleFav = () => {
-    toggleFavorite(currentMedia);
-  };
 
   return (
-    <section className="relative w-full h-[54vh] sm:h-[74vh] min-h-[340px] sm:min-h-[520px] [@media(max-height:500px)]:h-[86dvh] [@media(max-height:500px)]:min-h-[260px] max-h-[760px] flex items-center overflow-hidden bg-[#09090D]">
+    <section className="relative w-full h-[72vh] sm:h-[78vh] min-h-[480px] sm:min-h-[540px] max-h-[780px] flex items-center overflow-hidden select-none bg-[#09090D]">
       {/* Stacked Crossfading Backdrops (zero flicker!) */}
       {activeList.map((item, idx) => {
         const bg =
@@ -89,23 +61,24 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
         return (
           <div
             key={item.id}
-            className={`absolute inset-0 transition-opacity duration-700 ease-out ${
+            className={`absolute inset-0 bg-cover bg-no-repeat transition-opacity duration-700 ease-out ${
               isActive ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
             }`}
+            style={{
+              backgroundImage: `url(${bg})`,
+              backgroundPosition: 'center 20%',
+            }}
           >
-            <img
-              src={bg}
-              alt={item.title}
-              referrerPolicy="no-referrer"
-              onError={(e) => {
-                const img = e.currentTarget;
-                if (img.dataset.proxied === '1') return;
-                img.dataset.proxied = '1';
-                img.src = `/api/image?url=${encodeURIComponent(bg)}`;
-              }}
-              className={`w-full h-full object-cover ${isActive ? 'animate-heroZoom' : ''}`}
-              style={{ objectPosition: 'center 20%' }}
-            />
+            {isActive && (
+              <div
+                className="w-full h-full animate-heroZoom"
+                style={{
+                  backgroundImage: `url(${bg})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center 20%',
+                }}
+              />
+            )}
           </div>
         );
       })}
@@ -115,67 +88,36 @@ export function HeroBanner({ items, media }: HeroBannerProps) {
       <div className="absolute inset-0 z-[1] bg-hero-vignette-y" />
 
       {/* Content Container */}
-      <div className="relative z-10 w-full max-w-[1440px] mx-auto px-4 sm:px-8 lg:px-10 pt-12 pb-12 sm:pt-10 sm:pb-20 hero-keep-white">
-        <div key={currentMedia.id} className="max-w-xl space-y-3 sm:space-y-5 animate-slideUp">
+      <div className="relative z-10 w-full max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 pt-10 pb-20 hero-keep-white">
+        <div key={currentMedia.id} className="max-w-xl space-y-5 animate-slideUp">
           {/* Small Crimson Pill Badge */}
-          <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full border border-red-500/50 bg-red-500/15 backdrop-blur-sm">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-red-500/50 bg-red-500/15 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-[11px] sm:text-xs font-medium text-red-300 tracking-wide">
+            <span className="text-xs font-medium text-red-300 tracking-wide">
               {currentMedia.type === 'tv' ? t.series : language === 'en' ? 'Trending' : 'В тренде'}
             </span>
           </div>
 
           {/* Large Clean White Title */}
-          <h1 className="text-xl sm:text-5xl lg:text-[54px] font-bold text-white tracking-tight leading-[1.12] drop-shadow-2xl">
+          <h1 className="text-2xl sm:text-5xl lg:text-[54px] font-bold text-white tracking-tight leading-[1.12] drop-shadow-2xl">
             {currentMedia.title}
           </h1>
 
-          {/* Short Muted Description (hidden when overview is empty or placeholder) */}
-          {(() => {
-            const rawOverview = (currentMedia.overview || '').trim();
-            const isPlaceholder =
-              !rawOverview ||
-              /(описание.*(отсутствует|не добавлено|не найдено)|нет описания|no overview|overview not available)/i.test(
-                rawOverview
-              );
-            if (isPlaceholder) return null;
-            return (
-              <p className="text-xs sm:text-[15px] text-white/75 line-clamp-2 leading-relaxed max-w-lg">
-                {rawOverview}
-              </p>
-            );
-          })()}
+          {/* Short Muted Description */}
+          <p className="text-xs sm:text-[15px] text-white/75 line-clamp-2 leading-relaxed max-w-lg">
+            {currentMedia.overview}
+          </p>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2.5 sm:gap-3 pt-1 sm:pt-2">
+          <div className="flex items-center gap-3 pt-2">
             <Link
-              href={`/movie/${
-                currentMedia.anilibertyId
-                  ? `al-${currentMedia.anilibertyId}`
-                  : String(currentMedia.id || '').startsWith('al-')
-                  ? currentMedia.id
-                  : currentMedia.tmdbId || currentMedia.id
-              }?type=${
+              href={`/movie/${currentMedia.tmdbId || currentMedia.id}?type=${
                 currentMedia.type === 'tv' ? 'tv' : 'movie'
               }`}
-              className="inline-flex items-center justify-center px-5 sm:px-8 py-2.5 sm:py-3.5 brand-btn text-white font-semibold rounded-xl text-xs sm:text-base"
+              className="inline-flex items-center justify-center px-6 sm:px-8 py-3 sm:py-3.5 brand-btn text-white font-semibold rounded-xl text-sm sm:text-base"
             >
               {t.watch}
             </Link>
-
-            <button
-              type="button"
-              onClick={toggleFav}
-              title={isFav ? 'В любимых фильмах' : 'Добавить в любимые фильмы'}
-              aria-label="В любимые фильмы"
-              className={`inline-flex items-center justify-center px-3.5 h-11 sm:h-12 rounded-xl border text-xs sm:text-sm font-semibold transition-all backdrop-blur-sm ${
-                isFav
-                  ? 'border-rose-500 bg-rose-500/25 text-rose-300'
-                  : 'border-white/25 bg-white/10 hover:border-rose-500 text-white'
-              }`}
-            >
-              <Heart className={`w-4 h-4 ${isFav ? 'fill-rose-500 text-rose-500' : ''}`} />
-            </button>
 
             <button
               type="button"

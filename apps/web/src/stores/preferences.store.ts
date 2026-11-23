@@ -53,30 +53,6 @@ export const ACCENT_PRESETS: AccentPreset[] = [
     light: '#60A5FA',
     glow: 'rgba(59, 130, 246, 0.5)',
   },
-  {
-    id: 'cyan',
-    nameRu: 'Неон Циан',
-    nameEn: 'Neon Cyan',
-    main: '#06B6D4',
-    light: '#22D3EE',
-    glow: 'rgba(6, 182, 212, 0.5)',
-  },
-  {
-    id: 'coral',
-    nameRu: 'Коралловый',
-    nameEn: 'Coral',
-    main: '#FF6B4A',
-    light: '#FF8A70',
-    glow: 'rgba(255, 107, 74, 0.5)',
-  },
-  {
-    id: 'gold',
-    nameRu: 'Золотой',
-    nameEn: 'Gold',
-    main: '#EAB308',
-    light: '#FACC15',
-    glow: 'rgba(234, 179, 8, 0.5)',
-  },
 ];
 
 export const TRANSLATIONS = {
@@ -266,9 +242,8 @@ function applyPreferencesToDom(
   const root = document.documentElement;
   root.setAttribute('data-theme', theme);
   root.setAttribute('data-newyear', newYearMode ? 'true' : 'false');
-  const isLight = theme === 'light';
-  root.classList.toggle('dark', !isLight);
-  root.classList.toggle('light', isLight);
+  root.classList.toggle('dark', theme === 'dark');
+  root.classList.toggle('light', theme === 'light');
   root.lang = language;
 
   const preset =

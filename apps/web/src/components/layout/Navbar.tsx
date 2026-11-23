@@ -26,7 +26,6 @@ import { MediaItem } from '@cinemaflow/types';
 import { api } from '../../lib/api-client';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
 import { TRANSLATIONS, usePreferencesStore } from '../../stores/preferences.store';
-import { Logo } from './Logo';
 
 function SidebarTooltip({ label }: { label: string }) {
   return (
@@ -47,12 +46,12 @@ function NavbarContent() {
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const searchBoxRef = useRef<HTMLDivElement>(null);
-  const desktopSearchInputRef = useRef<HTMLInputElement>(null);
 
   const { user, accessToken, profiles, activeProfileId, hydrate } = useAuthStore();
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
-  const { language, setLanguage } = usePreferencesStore();
+  const { theme, language, newYearMode, setTheme, setLanguage, setNewYearMode } =
+    usePreferencesStore();
   const t = TRANSLATIONS[language];
   const currentAccountProfile =
     profiles.find((p) => p.id === activeProfileId) || profiles[0] || null;
@@ -124,10 +123,7 @@ function NavbarContent() {
       try {
         const res = await api.media.search(trimmed, 1);
         if (!cancelled) {
-          const sorted = [...(res?.items || [])].sort(
-            (a, b) => (Number(b.voteAverage) || 0) - (Number(a.voteAverage) || 0)
-          );
-          setSuggestions(sorted.slice(0, 6));
+          setSuggestions((res?.items || []).slice(0, 6));
         }
       } catch {
         if (!cancelled) setSuggestions([]);
@@ -150,15 +146,6 @@ function NavbarContent() {
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        if (window.innerWidth >= 768) {
-          desktopSearchInputRef.current?.focus();
-          setShowDropdown(true);
-        } else {
-          setIsSearchOpen(true);
-        }
-      }
       if (e.key === 'Escape') {
         setShowDropdown(false);
         setIsSearchOpen(false);
@@ -172,13 +159,8 @@ function NavbarContent() {
     };
   }, []);
 
-  // Hide regular user navigation chrome on /auth, /watch player, and dedicated /admin dashboard
-  if (
-    pathname === '/auth' ||
-    pathname.startsWith('/admin') ||
-    pathname === '/watch' ||
-    pathname.startsWith('/watch/')
-  ) {
+  // Hide regular user navigation chrome on /auth and dedicated /admin dashboard
+  if (pathname === '/auth' || pathname.startsWith('/admin')) {
     return null;
   }
 
@@ -232,16 +214,24 @@ function NavbarContent() {
   return (
     <>
       {/* =================================================================
-          DESKTOP: Expandable Left Sidebar (expands smoothly on hover)
+          DESKTOP: All Controls Consolidated into Left Slim Sidebar
+          (with sleek hover tooltips sliding out to the right)
          ================================================================= */}
-      <aside className="group/sidebar hidden md:flex fixed top-0 left-0 bottom-0 w-16 hover:w-56 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] z-50 bg-[#09090D]/95 hover:bg-[#09090D]/98 backdrop-blur-xl border-r border-white/[0.06] hover:shadow-[16px_0_40px_rgba(0,0,0,0.65)] flex-col justify-between py-5 px-2.5 overflow-hidden">
-        {/* Top: Brand Logo (shows '67' collapsed, '67 movies' expanded) */}
-        <div className="w-full px-0.5 flex items-center">
-          <Logo expandOnSidebarHover className="w-full" />
-        </div>
+      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-16 z-50 bg-[#09090D]/95 border-r border-white/[0.06] flex-col items-center justify-between py-5 select-none">
+        {/* Top: Brand Logo */}
+        <Link
+          href="/"
+          aria-label="67movies"
+          className="group relative w-10 h-10 rounded-xl brand-logo-badge flex items-center justify-center transition-transform duration-200 hover:scale-105 active:scale-95"
+        >
+          <span className="text-[17px] font-black text-white tracking-tighter leading-none">
+            67
+          </span>
+          <SidebarTooltip label="67movies" />
+        </Link>
 
-        {/* Middle: Navigation Links */}
-        <nav className="w-full flex flex-col gap-2">
+        {/* Middle: Navigation + Search Icons */}
+        <nav className="flex flex-col items-center gap-3.5">
           {sideLinks.map((item) => {
             const Icon = item.icon;
             return (
@@ -249,54 +239,70 @@ function NavbarContent() {
                 key={item.href}
                 href={item.href}
                 aria-label={item.label}
-                className={`relative w-full h-11 px-3 rounded-xl flex items-center gap-3.5 transition-all duration-200 overflow-hidden ${
+                className={`group relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 ${
                   item.isActive
                     ? 'text-[#A18BFF] bg-[#8065FF]/15 shadow-[0_0_16px_rgba(128,101,255,0.2)]'
                     : 'text-[#8C8A9A] hover:text-white hover:bg-white/5'
                 }`}
               >
                 {item.isActive && (
-                  <motion.span
-                    layoutId="sidebar-active-pill"
-                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                  <span
                     className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
                     style={{ backgroundColor: 'var(--brand-main)' }}
                   />
                 )}
-                <span className="relative shrink-0 flex items-center justify-center">
-                  <Icon className="w-[20px] h-[20px] stroke-[1.75]" />
-                  {Boolean((item as any).badge) && (
-                    <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center shadow-lg">
-                      {(item as any).badge > 9 ? '9+' : (item as any).badge}
-                    </span>
-                  )}
-                </span>
-                <span className="text-sm font-semibold whitespace-nowrap opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
-                  {item.label}
-                </span>
+                <Icon className="w-[20px] h-[20px] stroke-[1.75]" />
+                {Boolean((item as any).badge) && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg">
+                    {(item as any).badge > 9 ? '9+' : (item as any).badge}
+                  </span>
+                )}
+                <SidebarTooltip label={item.label} />
               </Link>
             );
           })}
 
+          <div className="w-6 h-px bg-white/10 my-1" />
+
           {canAccessAdmin && (
-            <>
-              <div className="w-full h-px bg-white/10 my-1" />
-              <Link
-                href="/admin"
-                aria-label="Админ-панель"
-                className="relative w-full h-11 px-3 rounded-xl flex items-center gap-3.5 text-[#A18BFF] bg-[#8065FF]/15 hover:bg-[#8065FF]/25 border border-[#8065FF]/35 transition-all duration-200 overflow-hidden"
-              >
-                <Shield className="w-[19px] h-[19px] stroke-[1.9] shrink-0" />
-                <span className="text-sm font-semibold whitespace-nowrap opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
-                  {t.adminPanel}
-                </span>
-              </Link>
-            </>
+            <Link
+              href="/admin"
+              aria-label="Админ-панель"
+              className="group relative w-11 h-11 rounded-xl flex items-center justify-center text-[#A18BFF] bg-[#8065FF]/15 hover:bg-[#8065FF]/25 border border-[#8065FF]/35 transition-all duration-200"
+            >
+              <Shield className="w-[19px] h-[19px] stroke-[1.9]" />
+              <SidebarTooltip label="Админ-панель" />
+            </Link>
           )}
         </nav>
 
-        {/* Bottom: Language & Account */}
-        <div className="w-full flex flex-col gap-2.5">
+        {/* Bottom: New Year, Language, Theme & Account */}
+        <div className="flex flex-col items-center gap-3">
+          {/* New Year Festive Toggle */}
+          <button
+            type="button"
+            onClick={() => setNewYearMode(!newYearMode)}
+            aria-label="Новогодняя тема"
+            className={`group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+              newYearMode
+                ? 'text-sky-300 bg-sky-400/15 border border-sky-400/40 shadow-[0_0_16px_rgba(56,189,248,0.35)]'
+                : 'text-[#8C8A9A] hover:text-sky-300 hover:bg-white/5'
+            }`}
+          >
+            <Snowflake className={`w-[19px] h-[19px] stroke-[1.75] ${newYearMode ? 'animate-spin' : ''}`} style={newYearMode ? { animationDuration: '9s' } : undefined} />
+            <SidebarTooltip
+              label={
+                newYearMode
+                  ? language === 'en'
+                    ? 'New Year Mode: ON'
+                    : 'Новогодняя тема: ВКЛ'
+                  : language === 'en'
+                  ? 'New Year Mode'
+                  : 'Новогодняя тема'
+              }
+            />
+          </button>
+
           {/* Language Switcher */}
           <button
             type="button"
@@ -311,42 +317,70 @@ function NavbarContent() {
               }
             }}
             aria-label="Сменить язык"
-            className="w-full h-10 px-2.5 rounded-xl flex items-center gap-3.5 text-[#92929F] hover:text-white hover:bg-white/5 border border-white/10 hover:border-[#8065FF] transition-all overflow-hidden"
+            className="group relative w-10 h-9 rounded-xl flex items-center justify-center text-[11px] font-bold uppercase tracking-wider text-[#92929F] hover:text-white border border-white/10 hover:border-[#8065FF] transition-all"
           >
-            <span className="w-6 text-center text-[11px] font-bold uppercase tracking-wider shrink-0">
-              {language.toUpperCase()}
-            </span>
-            <span className="text-xs font-semibold whitespace-nowrap opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
-              {language === 'ru' ? 'Русский' : 'English'}
-            </span>
+            <span>{language.toUpperCase()}</span>
+            <SidebarTooltip label={language === 'ru' ? 'Язык: Русский' : 'Language: English'} />
+          </button>
+
+          {/* Theme Switcher */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextTheme = theme === 'dark' ? 'light' : 'dark';
+              setTheme(nextTheme);
+              if (accessToken) {
+                authFetch('/settings', {
+                  method: 'PATCH',
+                  body: JSON.stringify({ theme: nextTheme }),
+                }).catch(() => {});
+              }
+            }}
+            aria-label="Переключить тему"
+            className="group relative w-10 h-10 rounded-xl flex items-center justify-center text-[#8C8A9A] hover:text-white hover:bg-white/5 transition-all"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-[19px] h-[19px] stroke-[1.75]" />
+            ) : (
+              <Moon className="w-[19px] h-[19px] stroke-[1.75]" />
+            )}
+            <SidebarTooltip
+              label={
+                theme === 'dark'
+                  ? language === 'en'
+                    ? 'Light theme'
+                    : 'Светлая тема'
+                  : language === 'en'
+                  ? 'Dark theme'
+                  : 'Тёмная тема'
+              }
+            />
           </button>
 
           {/* Account / Login */}
           <Link
             href={user ? '/profile' : '/auth'}
             aria-label={user ? user.name : t.signIn}
-            className="w-full h-11 px-0.5 rounded-xl flex items-center gap-3 hover:bg-white/5 transition-all overflow-hidden"
+            className="group relative w-10 h-10 rounded-xl overflow-visible flex items-center justify-center transition-transform hover:scale-105"
           >
             {user ? (
               currentAccountProfile?.avatarUrl ? (
                 <img
                   src={currentAccountProfile.avatarUrl}
                   alt={user.name}
-                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/15 shrink-0"
+                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/15 group-hover:ring-[#8065FF] transition-all"
                 />
               ) : (
-                <span className="w-10 h-10 rounded-xl brand-btn text-white text-sm font-black flex items-center justify-center uppercase shrink-0">
+                <span className="w-10 h-10 rounded-xl brand-btn text-white text-sm font-black flex items-center justify-center uppercase">
                   {user.name.slice(0, 1)}
                 </span>
               )
             ) : (
-              <span className="w-10 h-10 rounded-xl bg-[#181821] border border-[#292936] text-[#A18BFF] flex items-center justify-center shrink-0">
+              <span className="w-10 h-10 rounded-xl bg-[#181821] border border-[#292936] group-hover:border-[#8065FF] text-[#A18BFF] flex items-center justify-center transition-all">
                 <UserIcon className="w-5 h-5" />
               </span>
             )}
-            <span className="text-sm font-bold text-white truncate opacity-0 -translate-x-2 group-hover/sidebar:opacity-100 group-hover/sidebar:translate-x-0 transition-all duration-200">
-              {user ? user.name : t.signIn}
-            </span>
+            <SidebarTooltip label={user ? user.name : t.signIn} />
           </Link>
         </div>
       </aside>
@@ -359,7 +393,6 @@ function NavbarContent() {
           <form onSubmit={handleSearchSubmit} className="relative group">
             <Search className="w-4 h-4 text-[#92929F] group-focus-within:text-[#A18BFF] absolute left-4 top-1/2 -translate-y-1/2 transition-colors pointer-events-none" />
             <input
-              ref={desktopSearchInputRef}
               type="text"
               value={searchQuery}
               onFocus={() => setShowDropdown(true)}
@@ -368,13 +401,8 @@ function NavbarContent() {
                 setShowDropdown(true);
               }}
               placeholder={t.searchPlaceholder}
-              className="w-full pl-11 pr-16 py-2.5 rounded-2xl bg-[#111119]/85 backdrop-blur-xl border border-white/15 focus:border-[#8065FF] text-sm text-white placeholder-[#92929F] shadow-xl focus:outline-none transition-all"
+              className="w-full pl-11 pr-10 py-2.5 rounded-2xl bg-[#111119]/85 backdrop-blur-xl border border-white/15 focus:border-[#8065FF] text-sm text-white placeholder-[#92929F] shadow-xl focus:outline-none transition-all"
             />
-            {!searchQuery && (
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-[#92929F]">
-                Ctrl K
-              </span>
-            )}
             {searchQuery && (
               <button
                 type="button"
@@ -404,11 +432,7 @@ function NavbarContent() {
               ) : (
                 <div className="divide-y divide-white/[0.06]">
                   {suggestions.map((item) => {
-                    const targetId = item.anilibertyId
-                      ? `al-${item.anilibertyId}`
-                      : String(item.id || '').startsWith('al-')
-                      ? item.id
-                      : item.tmdbId || item.id;
+                    const targetId = item.tmdbId || item.id;
                     const targetType = item.type === 'tv' ? 'tv' : 'movie';
                     return (
                       <Link
@@ -464,32 +488,30 @@ function NavbarContent() {
           MOBILE ONLY: Minimal Floating Controls (Menu + Search)
           All navigation & settings are tucked cleanly inside the Slide-Out Drawer
          ================================================================= */}
-      {!(pathname === '/watch' || pathname?.startsWith('/watch/')) && (
-        <div className="md:hidden fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label="Открыть меню"
-            className="pointer-events-auto relative w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
-          >
-            <Menu className="w-5 h-5" />
-            {unreadMessages > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow">
-                {unreadMessages > 9 ? '9+' : unreadMessages}
-              </span>
-            )}
-          </button>
+      <div className="md:hidden fixed top-3 left-3 right-3 z-40 flex items-center justify-between pointer-events-none">
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(true)}
+          aria-label="Открыть меню"
+          className="pointer-events-auto relative w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+        >
+          <Menu className="w-5 h-5" />
+          {unreadMessages > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center shadow">
+              {unreadMessages > 9 ? '9+' : unreadMessages}
+            </span>
+          )}
+        </button>
 
-          <button
-            type="button"
-            onClick={() => setIsSearchOpen(true)}
-            aria-label="Поиск"
-            className="pointer-events-auto w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+        <button
+          type="button"
+          onClick={() => setIsSearchOpen(true)}
+          aria-label="Поиск"
+          className="pointer-events-auto w-10 h-10 rounded-2xl bg-[#111119]/80 backdrop-blur-xl border border-white/15 text-white flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* MOBILE ONLY: Smooth Slide-Out Navigation Drawer */}
       <AnimatePresence>
@@ -603,8 +625,26 @@ function NavbarContent() {
                 </nav>
               </div>
 
-              {/* Drawer Footer: Language Toggle */}
-              <div className="pt-4 border-t border-[#292936]">
+              {/* Drawer Footer: Theme, Language & New Year Toggles */}
+              <div className="pt-4 border-t border-[#292936] grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+                    setTheme(nextTheme);
+                    if (accessToken) {
+                      authFetch('/settings', {
+                        method: 'PATCH',
+                        body: JSON.stringify({ theme: nextTheme }),
+                      }).catch(() => {});
+                    }
+                  }}
+                  className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
+                >
+                  {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-[#A18BFF]" />}
+                  <span>{theme === 'dark' ? t.themeLight : t.themeDark}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -617,10 +657,23 @@ function NavbarContent() {
                       }).catch(() => {});
                     }
                   }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-xs font-bold text-[#B8B6C8] hover:text-white"
+                  className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-[#181821] border border-[#292936] text-[10px] font-bold text-[#B8B6C8]"
                 >
-                  <span className="font-black text-white">{language.toUpperCase()}</span>
-                  <span>{language === 'ru' ? 'Язык: Русский' : 'Language: English'}</span>
+                  <span className="text-xs font-black text-white">{language.toUpperCase()}</span>
+                  <span>{t.langShort}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNewYearMode(!newYearMode)}
+                  className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-[10px] font-bold ${
+                    newYearMode
+                      ? 'bg-sky-500/20 border-sky-400/40 text-sky-300'
+                      : 'bg-[#181821] border-[#292936] text-[#B8B6C8]'
+                  }`}
+                >
+                  <Snowflake className="w-4 h-4" />
+                  <span>{t.winterLabel}</span>
                 </button>
               </div>
             </motion.aside>
@@ -632,11 +685,11 @@ function NavbarContent() {
       {isSearchOpen && (
         <div
           onClick={() => setIsSearchOpen(false)}
-          className="fixed inset-0 z-50 flex items-start justify-center pt-4 sm:pt-20 px-4 pb-4 overflow-y-auto bg-black/80 backdrop-blur-md animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/80 backdrop-blur-md animate-fadeIn"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl max-h-[90dvh] overflow-y-auto bg-[#111119] border border-[#292936] rounded-2xl shadow-2xl p-4 sm:p-6 text-white animate-scaleIn"
+            className="w-full max-w-2xl bg-[#111119] border border-[#292936] rounded-2xl shadow-2xl p-4 sm:p-6 text-white animate-scaleIn"
           >
             <div className="flex items-center justify-between pb-4 border-b border-[#292936]">
               <div className="flex items-center gap-3 flex-1 mr-4">

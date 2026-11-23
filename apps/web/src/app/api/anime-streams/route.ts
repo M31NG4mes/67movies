@@ -162,6 +162,104 @@ async function fetchAniLibertyRelease(params: {
   return null;
 }
 
+async function probeKodikPlayable(embedUrl: string): Promise<boolean> {
+  try {
+    const embedParsed = new URL(embedUrl);
+    const htmlRes = await fetchTimed(
+      embedUrl,
+      {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          Referer: `${embedParsed.protocol}//${embedParsed.host}/`,
+        },
+      },
+      3000
+    );
+    if (!htmlRes.ok) return false;
+    const html = await htmlRes.text();
+
+    let urlParams: Record<string, any> = {};
+    const urlParamsMatch =
+      /urlParams\s*=\s*'([^']+)'/.exec(html) ||
+      /urlParams\s*=\s*"([^"]+)"/.exec(html);
+    if (urlParamsMatch?.[1]) {
+      try {
+        urlParams = JSON.parse(urlParamsMatch[1]);
+      } catch {}
+    }
+
+    const pathMatch = /\/(video|seria|movie|episode)\/(\d+)\/([a-zA-Z0-9]+)\//.exec(
+      embedParsed.pathname
+    );
+    const vType =
+      /videoInfo\.type\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      /vInfo\.type\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      pathMatch?.[1] ||
+      'seria';
+    const vId =
+      /videoInfo\.id\s*=\s*['"]?(\d+)['"]?/.exec(html)?.[1] ||
+      /vInfo\.id\s*=\s*['"]?(\d+)['"]?/.exec(html)?.[1] ||
+      pathMatch?.[2] ||
+      '';
+    const vHash =
+      /videoInfo\.hash\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      /vInfo\.hash\s*=\s*['"]([^'"]+)['"]/.exec(html)?.[1] ||
+      pathMatch?.[3] ||
+      '';
+
+    if (!vId || !vHash) return false;
+
+    const pdHost = urlParams.pd || embedParsed.host;
+    let decodedRef = urlParams.ref || '';
+    try {
+      if (decodedRef.includes('%')) decodedRef = decodeURIComponent(decodedRef);
+    } catch {}
+
+    const form = new URLSearchParams();
+    if (urlParams.d) form.set('d', String(urlParams.d));
+    if (urlParams.d_sign) form.set('d_sign', String(urlParams.d_sign));
+    if (urlParams.pd) form.set('pd', String(urlParams.pd));
+    if (urlParams.pd_sign) form.set('pd_sign', String(urlParams.pd_sign));
+    if (decodedRef) form.set('ref', String(decodedRef));
+    if (urlParams.ref_sign) form.set('ref_sign', String(urlParams.ref_sign));
+    form.set('bad_user', 'true');
+    form.set('cdn_is_working', 'true');
+    form.set('type', vType);
+    form.set('hash', vHash);
+    form.set('id', vId);
+    form.set('info', '{}');
+
+    for (const epPath of ['/ftor', '/gvi', '/video-links']) {
+      const ftorRes = await fetchTimed(
+        `https://${pdHost}${epPath}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            Origin: `https://${pdHost}`,
+            Referer: embedUrl,
+          },
+          body: form.toString(),
+        },
+        3000
+      ).catch(() => null);
+
+      if (!ftorRes || !ftorRes.ok) continue;
+      const json: any = await ftorRes.json().catch(() => null);
+      if (json?.links && typeof json.links === 'object' && Object.keys(json.links).length > 0) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchKodikData(params: {
   malId?: number;
   title?: string;
@@ -326,7 +424,22 @@ async function fetchKodikData(params: {
         }
 
         if (groups.length > 0) {
-          return { groups, episodeNumbers: Array.from(epSet) };
+          // Probe up to first 12 Kodik voiceovers in parallel and keep only actually playable ones
+          const candidates = groups.slice(0, 12);
+          const checks = await Promise.all(
+            candidates.map(async (g) => {
+              const rawUrl = g.streams[0]?.streamUrl || '';
+              const match = /kodikLink=([^&]+)/.exec(rawUrl);
+              if (!match?.[1]) return true;
+              const embedUrl = decodeURIComponent(match[1]);
+              return probeKodikPlayable(embedUrl);
+            })
+          );
+          const playableGroups = candidates.filter((_, idx) => checks[idx]);
+          return {
+            groups: playableGroups.length > 0 ? playableGroups : groups,
+            episodeNumbers: Array.from(epSet),
+          };
         }
       }
     } catch {

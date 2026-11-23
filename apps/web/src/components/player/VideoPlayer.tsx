@@ -80,6 +80,7 @@ export function VideoPlayer({
   const [isExternalPlayerModalOpen, setIsExternalPlayerModalOpen] = useState(false);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const [failedVoiceKeys, setFailedVoiceKeys] = useState<string[]>([]);
+  const failedVoiceKeysRef = useRef<string[]>([]);
   const [skipSegments, setSkipSegments] = useState<EpisodeSkipSegments>({ op: null, ed: null });
   const autoTriggeredSkipRef = useRef<Set<string>>(new Set());
   const lastHistorySavedRef = useRef<{ time: number; ep?: number; season?: number }>({ time: 0 });
@@ -313,6 +314,7 @@ export function VideoPlayer({
   useEffect(() => {
     setAutoNextCountdown(null);
     setFailedVoiceKeys([]);
+    failedVoiceKeysRef.current = [];
     if (initialStream) {
       setActiveStream(initialStream);
     } else if (sourceGroups.length > 0 && sourceGroups[0].streams.length > 0) {
@@ -384,18 +386,28 @@ export function VideoPlayer({
           const failedKey = `${activeStream.providerId}:${
             activeStream.voiceActing || activeStream.providerName
           }`;
-          setFailedVoiceKeys((prev) =>
-            prev.includes(failedKey) ? prev : [...prev, failedKey]
-          );
-          const nextGroup = sourceGroups.find(
+          if (!failedVoiceKeysRef.current.includes(failedKey)) {
+            failedVoiceKeysRef.current = [...failedVoiceKeysRef.current, failedKey];
+          }
+          setFailedVoiceKeys(failedVoiceKeysRef.current);
+
+          const remaining = sourceGroups.filter(
             (g) =>
               g.streams.length > 0 &&
-              `${g.providerId}:${g.voiceActing || g.providerName}` !== failedKey &&
-              !failedVoiceKeys.includes(
+              !failedVoiceKeysRef.current.includes(
                 `${g.providerId}:${g.voiceActing || g.providerName}`
               )
           );
+          // Prefer real voiceovers over subtitles when falling back
+          const isSubGroup = (g: StreamSourceGroup) =>
+            /субтитр|subtitles/i.test(`${g.providerName} ${g.voiceActing || ''}`);
+          const nextGroup =
+            remaining.find((g) => !isSubGroup(g)) || remaining[0];
+
           if (nextGroup && nextGroup.streams[0]) {
+            const failedName = activeStream.voiceActing || activeStream.providerName;
+            const nextName = nextGroup.voiceActing || nextGroup.providerName;
+            showOsd(`⚠️ «${failedName}» недоступна → ${nextName}`);
             setActiveStream(nextGroup.streams[0]);
           } else {
             setError(err);

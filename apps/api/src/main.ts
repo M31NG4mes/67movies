@@ -9,9 +9,9 @@ async function bootstrap() {
   const logger = new Logger('CinemaFlow-Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // Allow JSON payloads for compressed avatar/banner/chat photo uploads while bounding RAM
-  app.use(json({ limit: '4mb' }));
-  app.use(urlencoded({ extended: true, limit: '4mb' }));
+  // Allow larger JSON payloads for base64 avatar/banner/chat photo uploads
+  app.use(json({ limit: '15mb' }));
+  app.use(urlencoded({ extended: true, limit: '15mb' }));
 
   // Security headers (XSS, Clickjacking, MIME-sniffing protection)
   app.use((req: Request, res: Response, next: NextFunction) => {

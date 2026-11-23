@@ -53,30 +53,8 @@ export class MediaController {
   }
 
   @Get('genres')
-  async getGenres(@Query('type') type: MediaType = 'movie', @Query('category') category?: string) {
-    return this.mediaService.getGenres(type, category);
-  }
-
-  @Get('anime/:id/streams')
-  async getAnimeStreams(
-    @Param('id') id: string,
-    @Query('episode') episode = '1',
-    @Query('title') title?: string,
-    @Query('originalTitle') originalTitle?: string,
-    @Query('malId') malId?: string,
-  ) {
-    const ep = parseFloat(episode);
-    return {
-      groups: await this.mediaService.getAnimeStreams(
-        id,
-        Number.isFinite(ep) && ep > 0 ? ep : 1,
-        {
-          title,
-          originalTitle,
-          malId: malId ? parseInt(malId, 10) || undefined : undefined,
-        },
-      ),
-    };
+  async getGenres(@Query('type') type: MediaType = 'movie') {
+    return this.mediaService.getGenres(type);
   }
 
   @Get('discover')
@@ -84,50 +62,24 @@ export class MediaController {
     @Query('type') type: MediaType = 'movie',
     @Query('category') category?: string,
     @Query('genreId') genreId?: string,
-    @Query('genres') genres?: string,
-    @Query('sort')
-    sort: 'popularity' | 'rating' | 'date' | 'date_asc' | 'title_asc' | 'title_desc' | 'votes' = 'popularity',
+    @Query('sort') sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
     @Query('yearFrom') yearFrom?: string,
     @Query('yearTo') yearTo?: string,
     @Query('minRating') minRating?: string,
     @Query('lang') originalLanguage?: string,
-    @Query('countries') countries?: string,
-    @Query('runtime') runtime?: 'short' | 'medium' | 'long',
-    @Query('q') q?: string,
     @Query('page') page = '1'
   ) {
-    const parsedGenreIds = Array.from(
-      new Set(
-        [genres, genreId]
-          .filter(Boolean)
-          .flatMap((v) => String(v).split(','))
-          .map((s) => parseInt(s.trim(), 10))
-          .filter((n) => Number.isFinite(n) && n > 0)
-      )
-    );
-    const parsedCountries = Array.from(
-      new Set(
-        String(countries || '')
-          .split(',')
-          .map((s) => s.trim().toUpperCase())
-          .filter((s) => /^[A-Z]{2}$/.test(s))
-      )
-    );
     return this.mediaService.discoverByGenre(
       type,
-      parsedGenreIds[0],
+      genreId ? parseInt(genreId, 10) : undefined,
       parseInt(page, 10) || 1,
       sort,
       {
         category,
-        genreIds: parsedGenreIds.length > 0 ? parsedGenreIds : undefined,
         yearFrom: yearFrom ? parseInt(yearFrom, 10) : undefined,
         yearTo: yearTo ? parseInt(yearTo, 10) : undefined,
         minRating: minRating ? parseFloat(minRating) : undefined,
         originalLanguage: originalLanguage || undefined,
-        countries: parsedCountries.length > 0 ? parsedCountries : undefined,
-        runtime: runtime || undefined,
-        query: q ? q.slice(0, 120) : undefined,
       }
     );
   }
@@ -189,7 +141,6 @@ export class MediaController {
   @Get('kinopoisk-redirect')
   async kinopoiskRedirect(
     @Query('tmdbId') tmdbId: string,
-    @Query('kinopoiskId') kinopoiskId = '',
     @Query('type') type: MediaType = 'movie',
     @Query('title') title = '',
     @Query('year') year = '',
@@ -197,7 +148,6 @@ export class MediaController {
   ) {
     const targetUrl = await this.mediaService.resolveKinopoiskUrl({
       tmdbId,
-      kinopoiskId,
       type,
       title,
       year,

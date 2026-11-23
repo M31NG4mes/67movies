@@ -80,8 +80,6 @@ export class ExternalMediaService {
    * 1. Official YouTube Trailers from TMDB (Russian first, English fallback)
    */
   async getTrailers(tmdbId: string, type: 'movie' | 'tv' = 'movie'): Promise<TrailerItem[]> {
-    if (!/^\d+$/.test(String(tmdbId || '').trim())) return [];
-
     const cacheKey = `ext:trailers:${type}:${tmdbId}`;
     const cached = await this.redisService.get<TrailerItem[]>(cacheKey);
     if (cached) return cached;
@@ -165,61 +163,39 @@ export class ExternalMediaService {
   }
 
   /**
-   * 3. Kinopoisk API (Kinopoisk.dev v1.4 or Kinopoisk Unofficial API v2.2 fallback)
-   * Requires optional KINOPOISK_DEV_API_KEY or KINOPOISK_UNOFFICIAL_API_KEY in .env
+   * 3. KinopoiskDev API (Official Kinopoisk rating, budget, facts)
+   * Requires optional KINOPOISK_DEV_API_KEY in .env (free tier at kinopoisk.dev)
    */
   async getKinopoiskDevMeta(title?: string, year?: string): Promise<KinopoiskExtra | null> {
-    const kpDevKey = this.configService.get<string>('KINOPOISK_DEV_API_KEY', '').trim();
-    const kpUnofficialKey = this.configService.get<string>('KINOPOISK_UNOFFICIAL_API_KEY', '').trim();
-    if ((!kpDevKey && !kpUnofficialKey) || !title) return null;
+    const apiKey = this.configService.get<string>('KINOPOISK_DEV_API_KEY', '').trim();
+    if (!apiKey || !title) return null;
 
     const cacheKey = `ext:kpdev:${title}:${year || ''}`;
     const cached = await this.redisService.get<KinopoiskExtra>(cacheKey);
     if (cached) return cached;
 
-    if (kpDevKey) {
-      const data = await this.fetchJson<any>(
-        `https://api.kinopoisk.dev/v1.4/movie/search?page=1&limit=1&query=${encodeURIComponent(title)}`,
-        { 'X-API-KEY': kpDevKey },
-      );
+    const data = await this.fetchJson<any>(
+      `https://api.kinopoisk.dev/v1.4/movie/search?page=1&limit=1&query=${encodeURIComponent(title)}`,
+      { 'X-API-KEY': apiKey },
+    );
 
-      const doc = data?.docs?.[0];
-      if (doc) {
-        const extra: KinopoiskExtra = {
-          kpId: doc.id,
-          kpRating: doc.rating?.kp ? Math.round(doc.rating.kp * 10) / 10 : undefined,
-          imdbRating: doc.rating?.imdb ? Math.round(doc.rating.imdb * 10) / 10 : undefined,
-          facts: Array.isArray(doc.facts)
-            ? doc.facts
-                .filter((f: any) => !f.spoiler && f.value)
-                .slice(0, 3)
-                .map((f: any) => String(f.value).replace(/<[^>]+>/g, ''))
-            : undefined,
-        };
+    const doc = data?.docs?.[0];
+    if (!doc) return null;
 
-        await this.redisService.set(cacheKey, extra, 86400);
-        return extra;
-      }
-    }
+    const extra: KinopoiskExtra = {
+      kpId: doc.id,
+      kpRating: doc.rating?.kp ? Math.round(doc.rating.kp * 10) / 10 : undefined,
+      imdbRating: doc.rating?.imdb ? Math.round(doc.rating.imdb * 10) / 10 : undefined,
+      facts: Array.isArray(doc.facts)
+        ? doc.facts
+            .filter((f: any) => !f.spoiler && f.value)
+            .slice(0, 3)
+            .map((f: any) => String(f.value).replace(/<[^>]+>/g, ''))
+        : undefined,
+    };
 
-    if (kpUnofficialKey) {
-      const data = await this.fetchJson<any>(
-        `https://kinopoiskapiunofficial.tech/api/v2.1/films/search-by-keyword?keyword=${encodeURIComponent(title)}&page=1`,
-        { 'X-API-KEY': kpUnofficialKey },
-      );
-      const film = data?.films?.[0];
-      if (film) {
-        const kpRating = parseFloat(String(film.rating || 0));
-        const extra: KinopoiskExtra = {
-          kpId: Number(film.filmId) || undefined,
-          kpRating: !isNaN(kpRating) && kpRating > 0 ? Math.round(kpRating * 10) / 10 : undefined,
-        };
-        await this.redisService.set(cacheKey, extra, 86400);
-        return extra;
-      }
-    }
-
-    return null;
+    await this.redisService.set(cacheKey, extra, 86400);
+    return extra;
   }
 
   /**
@@ -285,48 +261,14 @@ export class ExternalMediaService {
   }
 
   /**
-   * 6. Live GIF Search (GIPHY primary + Tenor fallback) — thousands of GIFs for chat
+   * 6. Live GIF Search (Tenor public API) — thousands of GIFs for chat
    */
   async searchGifs(query?: string, limit = 32): Promise<Array<{ id: string; title: string; url: string; preview: string }>> {
     const q = (query || '').trim();
     const safeLimit = Math.min(40, Math.max(8, Number(limit) || 32));
-    const cacheKey = `ext:gifs:v2:${q.toLowerCase() || 'trending'}:${safeLimit}`;
+    const cacheKey = `ext:gifs:${q.toLowerCase() || 'trending'}:${safeLimit}`;
     const cached = await this.redisService.get<any[]>(cacheKey);
     if (cached && cached.length > 0) return cached;
-
-    const giphyKeys = [
-      this.configService.get<string>('GIPHY_API_KEY', '').trim(),
-      'GlVGYHkr3WSBnllca54iNt0yFbjz7L65',
-      'sXpGFDGZs0Dv1mmNFvYaGUvYwKX0PWIh',
-    ].filter(Boolean);
-
-    for (const gKey of giphyKeys) {
-      const gEndpoint = q
-        ? `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(gKey)}&q=${encodeURIComponent(q)}&limit=${safeLimit}&rating=pg-13`
-        : `https://api.giphy.com/v1/gifs/trending?api_key=${encodeURIComponent(gKey)}&limit=${safeLimit}&rating=pg-13`;
-      const gData = await this.fetchJson<any>(gEndpoint);
-      const gItems = Array.isArray(gData?.data) ? gData.data : [];
-      if (gItems.length > 0) {
-        const mapped = gItems
-          .map((item: any) => {
-            const images = item?.images || {};
-            const url = images.downsized?.url || images.fixed_height?.url || images.original?.url;
-            const preview = images.fixed_height_small?.url || images.fixed_height?.url || url;
-            if (!url) return null;
-            return {
-              id: String(item.id),
-              title: String(item.title || 'GIPHY GIF'),
-              url: String(url),
-              preview: String(preview),
-            };
-          })
-          .filter(Boolean);
-        if (mapped.length > 0) {
-          await this.redisService.set(cacheKey, mapped, 600);
-          return mapped;
-        }
-      }
-    }
 
     const apiKey = this.configService.get<string>('TENOR_API_KEY') || 'LIVDSRZULELA';
     const endpoint = q

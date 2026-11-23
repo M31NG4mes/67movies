@@ -15,9 +15,7 @@ import { AuthenticatedUser, CurrentUser } from '../auth/decorators/current-user.
 import { MediaTypeDto } from '../users/dto/users.dto';
 import {
   AddCollectionItemDto,
-  AddGroupMembersDto,
   CreateCollectionDto,
-  CreateGroupDto,
   EditMessageDto,
   SendFriendRequestDto,
   SendMessageDto,
@@ -84,15 +82,6 @@ export class SocialController {
     @Param('friendshipId') friendshipId: string,
   ) {
     return this.socialService.removeFriendship(user.userId, friendshipId);
-  }
-
-  @Post('friends/:targetUserId/block')
-  @UseGuards(JwtAuthGuard)
-  blockUser(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('targetUserId') targetUserId: string,
-  ) {
-    return this.socialService.blockUser(user.userId, targetUserId);
   }
 
   // --- My Shared Ratings & Favorites (protected) ---
@@ -220,97 +209,5 @@ export class SocialController {
     @Body() dto: ToggleReactionDto,
   ) {
     return this.socialService.toggleMessageReaction(user.userId, messageId, dto);
-  }
-
-  @Delete('messages/conversation/:friendId')
-  @UseGuards(JwtAuthGuard)
-  clearDirectConversation(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('friendId') friendId: string,
-  ) {
-    return this.socialService.clearDirectConversation(user.userId, friendId);
-  }
-
-  @Delete('messages/:messageId')
-  @UseGuards(JwtAuthGuard)
-  deleteMessage(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('messageId') messageId: string,
-  ) {
-    return this.socialService.deleteMessage(user.userId, messageId);
-  }
-
-  // ==================== ГРУППОВЫЕ ЧАТЫ ====================
-
-  @Get('groups')
-  @UseGuards(JwtAuthGuard)
-  getMyGroups(@CurrentUser() user: AuthenticatedUser) {
-    return this.socialService.getMyGroups(user.userId);
-  }
-
-  @Post('groups')
-  @UseGuards(JwtAuthGuard)
-  createGroup(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateGroupDto,
-  ) {
-    return this.socialService.createGroup(user.userId, dto);
-  }
-
-  @Delete('groups/:groupId')
-  @UseGuards(JwtAuthGuard)
-  deleteGroup(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('groupId') groupId: string,
-  ) {
-    return this.socialService.deleteGroup(user.userId, groupId);
-  }
-
-  @Post('groups/:groupId/members')
-  @UseGuards(JwtAuthGuard)
-  addGroupMembers(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('groupId') groupId: string,
-    @Body() dto: AddGroupMembersDto,
-  ) {
-    return this.socialService.addGroupMembers(user.userId, groupId, dto);
-  }
-
-  @Delete('groups/:groupId/members/:memberId')
-  @UseGuards(JwtAuthGuard)
-  removeGroupMember(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('groupId') groupId: string,
-    @Param('memberId') memberId: string,
-  ) {
-    return this.socialService.removeGroupMember(user.userId, groupId, memberId);
-  }
-
-  @Get('groups/:groupId/messages')
-  @UseGuards(JwtAuthGuard)
-  getGroupMessages(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('groupId') groupId: string,
-  ) {
-    return this.socialService.getGroupMessages(user.userId, groupId);
-  }
-
-  @Post('groups/:groupId/messages')
-  @UseGuards(JwtAuthGuard)
-  sendGroupMessage(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('groupId') groupId: string,
-    @Body() dto: SendMessageDto,
-  ) {
-    return this.socialService.sendGroupMessage(user.userId, groupId, dto);
-  }
-
-  @Delete('groups/:groupId/messages')
-  @UseGuards(JwtAuthGuard)
-  clearGroupMessages(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('groupId') groupId: string,
-  ) {
-    return this.socialService.clearGroupMessages(user.userId, groupId);
   }
 }

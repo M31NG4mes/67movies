@@ -17,29 +17,13 @@ html[data-theme='light'] {
   color-scheme: light;
 }
 
-html {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: clip;
-  -webkit-text-size-adjust: 100%;
-  touch-action: manipulation;
-}
-
 body {
   color: var(--foreground);
   background-color: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: clip;
-  user-select: text;
-  -webkit-user-select: text;
+  overflow-x: hidden;
+  user-select: none;
   transition: background-color 0.25s ease, color 0.25s ease;
-}
-
-::selection {
-  background-color: rgba(128, 101, 255, 0.35);
-  color: #FFFFFF;
 }
 
 input,
@@ -55,20 +39,6 @@ select {
 input::placeholder,
 textarea::placeholder {
   color: #92929F;
-}
-
-/* Hide duplicate native browser password reveal / clear buttons (Edge, Chrome, Windows) */
-input[type="password"]::-ms-reveal,
-input[type="password"]::-ms-clear,
-input::-ms-reveal,
-input::-ms-clear,
-input::-webkit-credentials-auto-fill-button,
-input::-webkit-contacts-auto-fill-button {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  width: 0 !important;
-  height: 0 !important;
 }
 
 /* =========================================================================
@@ -200,16 +170,16 @@ input::-webkit-contacts-auto-fill-button {
 
 .brand-card-hover {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.24s ease;
   transform: translateZ(0);
   backface-visibility: hidden;
   will-change: transform;
 }
 
 .brand-card-hover:hover {
-  transform: translateY(-6px) scale(1.015);
-  box-shadow: 0 0 0 2px var(--brand-main), 0 18px 36px -10px var(--brand-glow);
+  transform: translateY(-6px);
+  box-shadow: 0 0 0 2px var(--brand-main), 0 16px 32px -10px var(--brand-glow);
 }
 
 .bg-\[\#8065FF\],
