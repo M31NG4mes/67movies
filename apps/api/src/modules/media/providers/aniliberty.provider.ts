@@ -290,26 +290,17 @@ export class AniLibertyProviderService {
           audioTracks: [{ id: '0', language: 'ru', label: voiceLabel, isDefault: true }],
         }));
 
-    const popularStudios: Array<{ id: string; name: string; label: string }> = [
-      { id: 'aniliberty', name: 'AniLibria', label: primaryVoice },
-      { id: 'studioband', name: 'Студийная Банда', label: 'Студийная Банда (Дубляж)' },
-      { id: 'anidub', name: 'AniDUB', label: 'AniDUB (Многоголосый)' },
-      { id: 'dreamcast', name: 'Dream Cast', label: 'Dream Cast (Многоголосый)' },
-      { id: 'jamclub', name: 'Jam Club', label: 'Jam Club (Авторский)' },
-      { id: 'shiza', name: 'SHIZA Project', label: 'SHIZA Project (Многоголосый)' },
-      { id: 'animevost', name: 'AnimeVost', label: 'AnimeVost (Двухголосый)' },
+    const streams: VideoStream[] = buildStreamsForVoice('aniliberty', 'AniLibria', primaryVoice);
+    if (streams.length === 0) return [];
+
+    return [
+      {
+        providerId: 'aniliberty',
+        providerName: 'AniLibria',
+        voiceActing: primaryVoice,
+        streams,
+      },
     ];
-
-    const groups: StreamSourceGroup[] = popularStudios
-      .map((studio) => ({
-        providerId: studio.id,
-        providerName: studio.name,
-        voiceActing: studio.label,
-        streams: buildStreamsForVoice(studio.id, studio.name, studio.label),
-      }))
-      .filter((g) => g.streams.length > 0);
-
-    return groups;
   }
 
   /**

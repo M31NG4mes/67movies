@@ -61,6 +61,7 @@ export function VideoPlayer({
 
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+  const [failedVoiceKeys, setFailedVoiceKeys] = useState<string[]>([]);
 
   // Zustand Store
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -222,12 +223,23 @@ export function VideoPlayer({
   // Pick stream
   useEffect(() => {
     setAutoNextCountdown(null);
+    setFailedVoiceKeys([]);
     if (initialStream) {
       setActiveStream(initialStream);
     } else if (sourceGroups.length > 0 && sourceGroups[0].streams.length > 0) {
       setActiveStream(sourceGroups[0].streams[0]);
     }
   }, [initialStream, sourceGroups, setActiveStream]);
+
+  const workingSourceGroups = React.useMemo(
+    () =>
+      sourceGroups.filter(
+        (g) =>
+          g.streams.length > 0 &&
+          !failedVoiceKeys.includes(`${g.providerId}:${g.voiceActing || g.providerName}`)
+      ),
+    [sourceGroups, failedVoiceKeys]
+  );
 
   // Stream loader (preserves playback position when switching quality or voiceover on same episode)
   const lastEpisodeRef = useRef<number | undefined>(undefined);
@@ -279,7 +291,27 @@ export function VideoPlayer({
         },
         onAudioTracksLoaded: (tracks) => setAvailableAudioTracks(tracks),
         onBuffering: (buffering) => setIsBuffering(buffering),
-        onError: (err) => setError(err),
+        onError: (err) => {
+          const failedKey = `${activeStream.providerId}:${
+            activeStream.voiceActing || activeStream.providerName
+          }`;
+          setFailedVoiceKeys((prev) =>
+            prev.includes(failedKey) ? prev : [...prev, failedKey]
+          );
+          const nextGroup = sourceGroups.find(
+            (g) =>
+              g.streams.length > 0 &&
+              `${g.providerId}:${g.voiceActing || g.providerName}` !== failedKey &&
+              !failedVoiceKeys.includes(
+                `${g.providerId}:${g.voiceActing || g.providerName}`
+              )
+          );
+          if (nextGroup && nextGroup.streams[0]) {
+            setActiveStream(nextGroup.streams[0]);
+          } else {
+            setError(err);
+          }
+        },
         onProxyModeChange: (proxied) => setIsUsingProxy(proxied),
       },
       useSafeProxy
@@ -628,11 +660,11 @@ export function VideoPlayer({
         onSelectSubtitle={(id) => setActiveSubtitleId(id)}
       />
 
-      {/* Separate Voiceover Selector Modal */}
+      {/* Separate Voiceover Selector Modal (only shows working voiceovers) */}
       <SourceSelectorModal
         isOpen={isSourceModalOpen}
         onClose={() => openSourceModal(false)}
-        sourceGroups={sourceGroups}
+        sourceGroups={workingSourceGroups}
         activeStream={activeStream}
         onSelectStream={(stream) => {
           setActiveStream(stream);
@@ -645,7 +677,7 @@ export function VideoPlayer({
       <QualitySelectorModal
         isOpen={isQualityModalOpen}
         onClose={() => openQualityModal(false)}
-        sourceGroups={sourceGroups}
+        sourceGroups={workingSourceGroups}
         activeStream={activeStream}
         activeQuality={activeQuality}
         onSelectStreamQuality={(stream, quality, height) => {

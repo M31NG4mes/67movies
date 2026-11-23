@@ -81,6 +81,9 @@ export default function MovieDetailPage() {
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('aniliberty');
+  const [availableVoices, setAvailableVoices] = useState<
+    Array<{ id: string; name: string; tag: string }>
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Favorites & User Rating State
@@ -337,6 +340,31 @@ export default function MovieDetailPage() {
                   ? alRelease.seasons![0]
                   : prevS
               );
+            }
+          })
+          .catch(() => {});
+
+        // Fetch verified working voiceovers for this anime so non-working studios are never shown
+        api.sources
+          .getAnimeStreams(mediaId, 1, {
+            anilibertyId:
+              media.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined),
+            malId: media.malId,
+            title: media.title,
+            originalTitle: media.originalTitle,
+          })
+          .then((groups) => {
+            if (!groups || groups.length === 0) return;
+            const voices = groups
+              .filter((g) => g.streams && g.streams.length > 0)
+              .map((g) => ({
+                id: g.providerId,
+                name: g.providerName,
+                tag: `${g.streams[0]?.quality || '1080p'} • ${g.voiceActing || g.providerName}`,
+              }));
+            setAvailableVoices(voices);
+            if (voices.length > 0 && !voices.some((v) => v.id === selectedVoiceId)) {
+              setSelectedVoiceId(voices[0].id);
             }
           })
           .catch(() => {});
@@ -665,13 +693,17 @@ export default function MovieDetailPage() {
     media.title || ''
   )}&year=${encodeURIComponent(String(media.releaseYear || ''))}`;
 
-  const allSeasons: Season[] =
+  const allSeasons: Season[] = (
     media.seasons?.map((s) => {
       if (s.seasonNumber === selectedSeason && seasonData?.episodes) {
         return { ...s, episodes: seasonData.episodes };
       }
       return s;
-    }) || (seasonData ? [seasonData] : []);
+    }) || (seasonData ? [seasonData] : [])
+  ).map((s) => ({
+    ...s,
+    posterPath: s.posterPath || media.backdropPath || media.posterPath || null,
+  }));
 
   return (
     <div className="bg-cinema-dark min-h-screen text-cinema-text pb-24">
@@ -1031,48 +1063,52 @@ export default function MovieDetailPage() {
           </section>
         )}
 
-        {/* 3b. Voiceover Studio Selector & Cast (Anime) */}
-        {isAnimeMedia && (
+        {/* 3b. Voiceover Studio Selector & Cast (Anime - only shows verified working voiceovers) */}
+        {isAnimeMedia && (availableVoices.length > 0 || (media.voiceovers && media.voiceovers.length > 0)) && (
           <section className="mt-14 pt-8 border-t border-cinema-border space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-xl sm:text-2xl font-bold text-cinema-text">
-                  Выбор озвучки
-                </h2>
-                <span className="px-3 py-1 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-bold text-[#A18BFF]">
-                  HD 720p / 1080p
-                </span>
-              </div>
-              <span className="text-xs text-cinema-muted">
-                Выбранная студия запустится в плеере (можно переключать и во время просмотра)
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-              {POPULAR_ANIME_VOICES.map((v) => {
-                const isSelected = selectedVoiceId === v.id;
-                return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => setSelectedVoiceId(v.id)}
-                    className={`flex flex-col items-start p-3.5 rounded-2xl border text-left transition-all ${
-                      isSelected
-                        ? 'bg-[#8065FF]/20 border-[#8065FF] text-white shadow-[0_0_20px_rgba(128,101,255,0.2)]'
-                        : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-sm font-bold text-white">{v.name}</span>
-                      {isSelected && <Check className="w-4 h-4 text-[#A18BFF]" />}
-                    </div>
-                    <span className="text-[11px] text-[#A18BFF]/80 mt-1 font-medium">
-                      {v.tag}
+            {availableVoices.length > 0 && (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-xl sm:text-2xl font-bold text-cinema-text">
+                      Доступные озвучки ({availableVoices.length})
+                    </h2>
+                    <span className="px-3 py-1 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-bold text-[#A18BFF]">
+                      HD 720p / 1080p
                     </span>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                  <span className="text-xs text-cinema-muted">
+                    Отображаются только рабочие озвучки для данного аниме
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {availableVoices.map((v, vIdx) => {
+                    const isSelected = selectedVoiceId === v.id;
+                    return (
+                      <button
+                        key={`${v.id}-${vIdx}`}
+                        type="button"
+                        onClick={() => setSelectedVoiceId(v.id)}
+                        className={`flex flex-col items-start p-3.5 rounded-2xl border text-left transition-all ${
+                          isSelected
+                            ? 'bg-[#8065FF]/20 border-[#8065FF] text-white shadow-[0_0_20px_rgba(128,101,255,0.2)]'
+                            : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-sm font-bold text-white">{v.name}</span>
+                          {isSelected && <Check className="w-4 h-4 text-[#A18BFF]" />}
+                        </div>
+                        <span className="text-[11px] text-[#A18BFF]/80 mt-1 font-medium line-clamp-1">
+                          {v.tag}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
             {media.voiceovers && media.voiceovers.length > 0 && (
               <div className="pt-2">

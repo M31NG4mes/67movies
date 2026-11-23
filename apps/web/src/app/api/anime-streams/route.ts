@@ -57,6 +57,46 @@ function normalizeStudioId(name: string): string {
   return lower.replace(/[^a-zа-я0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'voice';
 }
 
+function normTitle(raw?: string | null): string {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Strict title matcher so we NEVER pull episodes or streams from a different anime.
+ */
+function titlesStrictlyMatch(
+  candidateA?: string | null,
+  candidateB?: string | null
+): boolean {
+  const a = normTitle(candidateA);
+  const b = normTitle(candidateB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  // One Piece special synonyms in Russian
+  const isOnePieceA = /^(ван пис|one piece|большой куш)(\s|$)/.test(a);
+  const isOnePieceB = /^(ван пис|one piece|большой куш)(\s|$)/.test(b);
+  if (isOnePieceA && isOnePieceB) return true;
+
+  // Allow prefix match only when the shorter title is at least 5 chars and >= 65% of the longer title
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  if (
+    shorter.length >= 5 &&
+    longer.startsWith(shorter) &&
+    shorter.length / longer.length >= 0.65
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function cleanQueryCandidates(title?: string, originalTitle?: string): string[] {
   const list: string[] = [];
   const add = (raw?: string) => {
@@ -76,11 +116,9 @@ function cleanQueryCandidates(title?: string, originalTitle?: string): string[] 
   };
   add(title);
   add(originalTitle);
-  // Common Russian aliases for popular long-running anime
-  if (list.some((q) => /ван\s*пис|one\s*piece|большой\s*куш/i.test(q))) {
+  if (list.some((q) => /ван[\s-]*пис|^one\s*piece$|большой\s*куш/i.test(q))) {
     add('Ван Пис');
     add('One Piece');
-    add('Большой куш');
   }
   return list;
 }
@@ -109,7 +147,7 @@ async function fetchAniLibertyRelease(params: {
 
   for (const q of queries) {
     try {
-      const sp = new URLSearchParams({ page: '1', limit: '8', 'f[search]': q });
+      const sp = new URLSearchParams({ page: '1', limit: '10', 'f[search]': q });
       const res = await fetch(
         `${ANILIBERTY_BASE}/api/v1/anime/catalog/releases?${sp.toString()}`,
         { cache: 'no-store' }
@@ -119,6 +157,7 @@ async function fetchAniLibertyRelease(params: {
       const list: any[] = Array.isArray(json?.data) ? json.data : [];
       if (list.length === 0) continue;
 
+      // Strictly verify title or malId — never blindly pick list[0] if it's a different anime
       const hit =
         (params.malId
           ? list.find(
@@ -126,7 +165,14 @@ async function fetchAniLibertyRelease(params: {
                 Number(r?.mal?.id) === params.malId ||
                 Number(r?.shikimori?.id) === params.malId
             )
-          : undefined) || list[0];
+          : undefined) ||
+        list.find(
+          (r) =>
+            titlesStrictlyMatch(r?.name?.main, params.title) ||
+            titlesStrictlyMatch(r?.name?.english, params.originalTitle) ||
+            titlesStrictlyMatch(r?.name?.main, params.originalTitle) ||
+            titlesStrictlyMatch(r?.name?.english, params.title)
+        );
 
       if (hit?.id) {
         const detailRes = await fetch(
@@ -143,15 +189,45 @@ async function fetchAniLibertyRelease(params: {
   return null;
 }
 
+/**
+ * Probes a Kodik embed page to confirm it exists and has urlParams / videoInfo
+ * so non-working voiceovers are never displayed.
+ */
+async function isKodikEmbedPlayable(embedUrl: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    try {
+      const parsed = new URL(embedUrl);
+      const res = await fetch(embedUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          Referer: `${parsed.protocol}//${parsed.host}/`,
+        },
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      if (!res.ok) return false;
+      const html = await res.text();
+      return html.includes('urlParams') || html.includes('videoInfo');
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return false;
+  }
+}
+
 async function fetchKodikData(params: {
   malId?: number;
   title?: string;
   originalTitle?: string;
   episode: number;
-}): Promise<{ groups: StreamSourceGroup[]; maxEpisode: number }> {
-  const groups: StreamSourceGroup[] = [];
+}): Promise<{ groups: StreamSourceGroup[]; episodeNumbers: number[] }> {
+  const candidateGroups: Array<{ group: StreamSourceGroup; embedUrl: string }> = [];
   const seenStudios = new Set<string>();
-  let maxEpisode = 0;
+  const epSet = new Set<number>();
 
   const tokens = await getKodikTokens();
   const queries = cleanQueryCandidates(params.originalTitle, params.title);
@@ -171,7 +247,7 @@ async function fetchKodikData(params: {
         );
       }
 
-      for (const q of queries.slice(0, 4)) {
+      for (const q of queries.slice(0, 3)) {
         searchAttempts.push(
           new URLSearchParams({
             token,
@@ -194,8 +270,16 @@ async function fetchKodikData(params: {
           if (results.length === 0) continue;
 
           for (const item of results) {
-            const lastEp = Number(item?.last_episode || item?.episodes_count || 0);
-            if (lastEp > maxEpisode) maxEpisode = lastEp;
+            // Strictly verify title if not matched by shikimori_id
+            const itemShikiId = Number(item?.shikimori_id || 0);
+            const idMatches = Boolean(params.malId && itemShikiId === params.malId);
+            const titleMatches =
+              titlesStrictlyMatch(item?.title, params.title) ||
+              titlesStrictlyMatch(item?.title_orig, params.originalTitle) ||
+              titlesStrictlyMatch(item?.title, params.originalTitle) ||
+              titlesStrictlyMatch(item?.title_orig, params.title);
+
+            if (!idMatches && !titleMatches) continue;
 
             const studioTitle = String(item?.translation?.title || 'Озвучка').trim();
             const trType =
@@ -204,7 +288,7 @@ async function fetchKodikData(params: {
             const uniqueKey = `${normId}:${studioTitle.toLowerCase()}`;
             if (seenStudios.has(uniqueKey)) continue;
 
-            // Locate episode embed link
+            // Locate exact episode embed link
             let epLink: string | null = null;
             const epKey = String(params.episode);
 
@@ -214,28 +298,22 @@ async function fetchKodikData(params: {
                 if (seasonObj?.episodes) {
                   for (const k of Object.keys(seasonObj.episodes)) {
                     const n = parseInt(k, 10);
-                    if (n > maxEpisode) maxEpisode = n;
+                    if (n > 0) epSet.add(n);
                   }
                   const rawEp = seasonObj.episodes[epKey];
-                  if (rawEp) {
+                  if (rawEp && !epLink) {
                     epLink = typeof rawEp === 'string' ? rawEp : rawEp?.link || null;
-                    if (epLink) break;
                   }
                 }
               }
             }
 
-            // Fallback: use serial link with ?episode=N parameter if episode is within range
-            if (!epLink && typeof item?.link === 'string' && item.link) {
-              if (!lastEp || params.episode <= lastEp) {
-                const sep = item.link.includes('?') ? '&' : '?';
-                epLink =
-                  params.episode === 1 && item.type === 'anime'
-                    ? item.link
-                    : `${item.link}${sep}episode=${params.episode}`;
-              }
+            if (!epLink && params.episode === 1 && item?.type === 'anime' && typeof item?.link === 'string') {
+              epLink = item.link;
+              epSet.add(1);
             }
 
+            // Only include this studio if it actually has an episode link for `params.episode`
             if (!epLink) continue;
 
             const fullEmbedLink = epLink.startsWith('//')
@@ -245,43 +323,54 @@ async function fetchKodikData(params: {
             seenStudios.add(uniqueKey);
             const label = `${studioTitle} (${trType})`;
 
-            groups.push({
-              providerId: normId,
-              providerName: studioTitle,
-              voiceActing: label,
-              streams: [
-                {
-                  id: `kodik-${normId}-${item?.translation?.id || groups.length}-e${params.episode}-1080p`,
-                  providerId: normId,
-                  providerName: studioTitle,
-                  title: `Серия ${params.episode}`,
-                  voiceActing: label,
-                  season: 1,
-                  episode: params.episode,
-                  quality: '1080p',
-                  format: 'hls',
-                  streamUrl: `/api/stream?kodikLink=${encodeURIComponent(fullEmbedLink)}&quality=1080`,
-                  audioTracks: [{ id: '0', language: 'ru', label, isDefault: true }],
-                },
-                {
-                  id: `kodik-${normId}-${item?.translation?.id || groups.length}-e${params.episode}-720p`,
-                  providerId: normId,
-                  providerName: studioTitle,
-                  title: `Серия ${params.episode}`,
-                  voiceActing: label,
-                  season: 1,
-                  episode: params.episode,
-                  quality: '720p',
-                  format: 'hls',
-                  streamUrl: `/api/stream?kodikLink=${encodeURIComponent(fullEmbedLink)}&quality=720`,
-                  audioTracks: [{ id: '0', language: 'ru', label, isDefault: true }],
-                },
-              ],
+            candidateGroups.push({
+              embedUrl: fullEmbedLink,
+              group: {
+                providerId: normId,
+                providerName: studioTitle,
+                voiceActing: label,
+                streams: [
+                  {
+                    id: `kodik-${normId}-${item?.translation?.id || candidateGroups.length}-e${params.episode}-1080p`,
+                    providerId: normId,
+                    providerName: studioTitle,
+                    title: `Серия ${params.episode}`,
+                    voiceActing: label,
+                    season: 1,
+                    episode: params.episode,
+                    quality: '1080p',
+                    format: 'hls',
+                    streamUrl: `/api/stream?kodikLink=${encodeURIComponent(fullEmbedLink)}&quality=1080`,
+                    audioTracks: [{ id: '0', language: 'ru', label, isDefault: true }],
+                  },
+                  {
+                    id: `kodik-${normId}-${item?.translation?.id || candidateGroups.length}-e${params.episode}-720p`,
+                    providerId: normId,
+                    providerName: studioTitle,
+                    title: `Серия ${params.episode}`,
+                    voiceActing: label,
+                    season: 1,
+                    episode: params.episode,
+                    quality: '720p',
+                    format: 'hls',
+                    streamUrl: `/api/stream?kodikLink=${encodeURIComponent(fullEmbedLink)}&quality=720`,
+                    audioTracks: [{ id: '0', language: 'ru', label, isDefault: true }],
+                  },
+                ],
+              },
             });
           }
 
-          if (groups.length > 0) {
-            return { groups, maxEpisode };
+          if (candidateGroups.length > 0) {
+            // Verify the first Kodik embed is reachable so we never return dead Kodik voiceovers
+            const playable = await isKodikEmbedPlayable(candidateGroups[0].embedUrl);
+            if (!playable) {
+              return { groups: [], episodeNumbers: Array.from(epSet) };
+            }
+            return {
+              groups: candidateGroups.map((c) => c.group),
+              episodeNumbers: Array.from(epSet),
+            };
           }
         }
       }
@@ -290,7 +379,7 @@ async function fetchKodikData(params: {
     }
   }
 
-  return { groups, maxEpisode };
+  return { groups: [], episodeNumbers: [] };
 }
 
 interface ParsedVostEpisode {
@@ -301,6 +390,26 @@ interface ParsedVostEpisode {
   std: string;
 }
 
+/**
+ * Parses an AnimeVost item title: "Ван Пис / One Piece [1-1122 из 1122+]"
+ * into { ruTitle, enTitle, declaredEpisodes }.
+ */
+function parseAnimeVostItemTitle(rawTitle: string): {
+  ruTitle: string;
+  enTitle: string;
+  declaredEpisodes: number;
+} {
+  const bracketMatch = /\[(?:(\d+)-)?(\d+)\s+из\s+(\d+)\+?\]/i.exec(rawTitle);
+  const declaredEpisodes = bracketMatch
+    ? Math.max(Number(bracketMatch[2] || 0), Number(bracketMatch[3] || 0))
+    : 0;
+  const withoutBrackets = rawTitle.replace(/\[[^\]]*\]/g, '').trim();
+  const parts = withoutBrackets.split('/');
+  const ruTitle = (parts[0] || '').trim();
+  const enTitle = parts.slice(1).join('/').trim();
+  return { ruTitle, enTitle, declaredEpisodes };
+}
+
 async function fetchAnimeVostData(params: {
   title?: string;
   originalTitle?: string;
@@ -308,7 +417,8 @@ async function fetchAnimeVostData(params: {
 }): Promise<{
   group: StreamSourceGroup | null;
   episodes: ParsedVostEpisode[];
-  maxEpisode: number;
+  coverUrl: string | null;
+  screenImages: string[];
 }> {
   const candidates = cleanQueryCandidates(params.title, params.originalTitle);
 
@@ -325,16 +435,55 @@ async function fetchAnimeVostData(params: {
       const items: any[] = Array.isArray(searchJson?.data) ? searchJson.data : [];
       if (items.length === 0) continue;
 
-      // Pick the item with the most episodes or best title match
-      const bestItem =
-        items.find((it) =>
-          new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(
-            String(it?.title || '')
-          )
-        ) || items[0];
+      // Filter strictly to items whose Russian or English title matches our target anime!
+      const scoredMatches = items
+        .map((it) => {
+          const parsed = parseAnimeVostItemTitle(String(it?.title || ''));
+          const matchesRu =
+            titlesStrictlyMatch(parsed.ruTitle, params.title) ||
+            titlesStrictlyMatch(parsed.ruTitle, params.originalTitle);
+          const matchesEn =
+            titlesStrictlyMatch(parsed.enTitle, params.originalTitle) ||
+            titlesStrictlyMatch(parsed.enTitle, params.title);
+
+          if (!matchesRu && !matchesEn) return null;
+
+          // Score exact matches and main TV series (with higher episode counts) above 1-ep movies/specials
+          let score = parsed.declaredEpisodes;
+          if (
+            normTitle(parsed.ruTitle) === normTitle(params.title) ||
+            normTitle(parsed.enTitle) === normTitle(params.originalTitle)
+          ) {
+            score += 2000;
+          }
+          // Penalize movies/specials ("Фильм", "Спешл", "OVA") when searching for the main series
+          if (
+            /фильм|спешл|special|movie|ova|ова/i.test(parsed.ruTitle) &&
+            !/фильм|спешл|special|movie|ova|ова/i.test(String(params.title || ''))
+          ) {
+            score -= 1500;
+          }
+          return { item: it, score, parsed };
+        })
+        .filter(Boolean) as Array<{ item: any; score: number; parsed: any }>;
+
+      // NEVER fall back to items[0] if no item matched the title!
+      if (scoredMatches.length === 0) continue;
+
+      scoredMatches.sort((a, b) => b.score - a.score);
+      const bestItem = scoredMatches[0].item;
       if (!bestItem?.id) continue;
 
       const vostId = bestItem.id;
+      const screenImages: string[] = Array.isArray(bestItem.screenImage)
+        ? bestItem.screenImage
+            .filter((u: any) => typeof u === 'string' && u)
+            .map((u: string) => u.replace(/^http:\/\//i, 'https://'))
+        : [];
+      const coverUrl = bestItem.urlImagePreview
+        ? String(bestItem.urlImagePreview).replace(/^http:\/\//i, 'https://')
+        : screenImages[0] || null;
+
       const plRes = await fetch('https://api.animevost.org/v1/playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -350,32 +499,61 @@ async function fetchAnimeVostData(params: {
         : [];
       if (rawPlaylist.length === 0) continue;
 
-      const parsedEpisodes: ParsedVostEpisode[] = rawPlaylist
-        .map((p, idx) => {
-          const rawName = String(p?.name || `Серия ${idx + 1}`).trim();
-          const numMatch = /(\d+)\s*(?:серия|эпизод|ep)/i.exec(rawName) || /^(\d+)$/.exec(rawName);
-          const epNum = numMatch ? parseInt(numMatch[1], 10) : idx + 1;
-          const hd = String(p?.hd || p?.std || '').replace(/^http:\/\//i, 'https://');
-          const std = String(p?.std || p?.hd || '').replace(/^http:\/\//i, 'https://');
-          const preview = p?.preview
-            ? String(p.preview).replace(/^http:\/\//i, 'https://')
-            : null;
-          return { epNum, name: rawName, preview, hd, std };
-        })
-        .filter((e) => Boolean(e.hd))
-        .sort((a, b) => a.epNum - b.epNum);
+      const byEpNum = new Map<number, ParsedVostEpisode>();
+      rawPlaylist.forEach((p, idx) => {
+        const rawName = String(p?.name || '').trim();
+        const hd = String(p?.hd || p?.std || '').replace(/^http:\/\//i, 'https://');
+        const std = String(p?.std || p?.hd || '').replace(/^http:\/\//i, 'https://');
+        if (!hd) return;
 
-      const maxEpisode = parsedEpisodes.reduce(
-        (m, e) => (e.epNum > m ? e.epNum : m),
-        parsedEpisodes.length
+        // Skip non-numbered specials/trailers if numbered episodes exist
+        const numMatch =
+          /(\d+)\s*(?:-?я)?\s*(?:серия|эпизод|ep)/i.exec(rawName) ||
+          /(?:серия|эпизод|ep)\s*(\d+)/i.exec(rawName) ||
+          /^(\d+)$/.exec(rawName);
+
+        if (!numMatch && rawPlaylist.length > 1 && /фильм|ова|ova|спешл/i.test(rawName)) {
+          return;
+        }
+
+        const epNum = numMatch ? parseInt(numMatch[1], 10) : idx + 1;
+        if (epNum <= 0 || byEpNum.has(epNum)) return;
+
+        const preview = p?.preview
+          ? String(p.preview).replace(/^http:\/\//i, 'https://')
+          : screenImages.length > 0
+          ? screenImages[epNum % screenImages.length]
+          : coverUrl;
+
+        byEpNum.set(epNum, {
+          epNum,
+          name: rawName || `Серия ${epNum}`,
+          preview,
+          hd,
+          std,
+        });
+      });
+
+      const parsedEpisodes = Array.from(byEpNum.values()).sort(
+        (a, b) => a.epNum - b.epNum
       );
+      if (parsedEpisodes.length === 0) continue;
 
+      // Exact episode match ONLY (never fall back to parsedEpisodes[0] for episode 39+!)
       const matchedEp =
-        parsedEpisodes.find((e) => e.epNum === params.episode) ||
-        parsedEpisodes[params.episode - 1] ||
-        parsedEpisodes[0];
+        byEpNum.get(params.episode) ||
+        (parsedEpisodes.length === 1 && params.episode === 1
+          ? parsedEpisodes[0]
+          : undefined);
 
-      if (!matchedEp) continue;
+      if (!matchedEp) {
+        return {
+          group: null,
+          episodes: parsedEpisodes,
+          coverUrl,
+          screenImages,
+        };
+      }
 
       const group: StreamSourceGroup = {
         providerId: 'animevost',
@@ -415,44 +593,11 @@ async function fetchAnimeVostData(params: {
         ],
       };
 
-      return { group, episodes: parsedEpisodes, maxEpisode };
+      return { group, episodes: parsedEpisodes, coverUrl, screenImages };
     } catch {}
   }
 
-  return { group: null, episodes: [], maxEpisode: 0 };
-}
-
-async function fetchAniListEpisodeCount(params: {
-  malId?: number;
-  title?: string;
-  originalTitle?: string;
-}): Promise<number> {
-  const search = (params.originalTitle || params.title || '').split(/[:—–(]/)[0]?.trim();
-  if (!params.malId && !search) return 0;
-
-  const query = params.malId
-    ? `query ($idMal: Int) { Media(idMal: $idMal, type: ANIME) { episodes nextAiringEpisode { episode } } }`
-    : `query ($search: String) { Media(search: $search, type: ANIME, sort: POPULARITY_DESC) { episodes nextAiringEpisode { episode } } }`;
-  const variables = params.malId ? { idMal: params.malId } : { search };
-
-  try {
-    const res = await fetch('https://graphql.anilist.co', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ query, variables }),
-      cache: 'no-store',
-    });
-    if (!res.ok) return 0;
-    const json: any = await res.json();
-    const media = json?.data?.Media;
-    const aired = media?.nextAiringEpisode?.episode
-      ? Number(media.nextAiringEpisode.episode) - 1
-      : 0;
-    const total = Number(media?.episodes || 0);
-    return Math.max(aired, total, 0);
-  } catch {
-    return 0;
-  }
+  return { group: null, episodes: [], coverUrl: null, screenImages: [] };
 }
 
 export async function GET(req: NextRequest) {
@@ -468,46 +613,47 @@ export async function GET(req: NextRequest) {
     ? Number(rawId.slice(3))
     : undefined;
 
-  const [alRelease, kodikData, vostData, anilistEpCount] = await Promise.all([
-    fetchAniLibertyRelease({
-      anilibertyId: alIdParam,
-      malId: malIdParam,
-      title,
-      originalTitle,
-    }),
+  // Step 1: Fetch AniLiberty release first so we know its canonical Russian & English titles
+  const alRelease = await fetchAniLibertyRelease({
+    anilibertyId: alIdParam,
+    malId: malIdParam,
+    title,
+    originalTitle,
+  });
+
+  const effectiveTitle = title || alRelease?.name?.main || undefined;
+  const effectiveOriginalTitle =
+    originalTitle || alRelease?.name?.english || undefined;
+  const effectiveMalId =
+    malIdParam ||
+    Number(alRelease?.mal?.id || alRelease?.shikimori?.id || 0) ||
+    undefined;
+
+  // Step 2: Fetch AnimeVost and Kodik using the verified titles
+  const [kodikData, vostData] = await Promise.all([
     fetchKodikData({
-      malId: malIdParam,
-      title,
-      originalTitle,
+      malId: effectiveMalId,
+      title: effectiveTitle,
+      originalTitle: effectiveOriginalTitle,
       episode,
     }),
     fetchAnimeVostData({
-      title,
-      originalTitle,
+      title: effectiveTitle,
+      originalTitle: effectiveOriginalTitle,
       episode,
-    }),
-    fetchAniListEpisodeCount({
-      malId: malIdParam,
-      title,
-      originalTitle,
     }),
   ]);
 
   const groups: StreamSourceGroup[] = [];
-  let alStreamsForEpisode: VideoStream[] = [];
-  let primaryAlVoice = 'AniLibria';
 
-  // 1. Official AniLibria HLS stream
+  // 1. Official AniLibria HLS stream — ONLY when AniLiberty actually has this exact episode!
   const alEpisodesRaw: any[] = Array.isArray(alRelease?.episodes) ? alRelease.episodes : [];
   if (alRelease && alEpisodesRaw.length > 0) {
-    const exactAlEp = alEpisodesRaw.find((e) => Number(e?.ordinal) === episode);
-    const fallbackAlEp =
-      exactAlEp ||
-      alEpisodesRaw[episode - 1] ||
-      alEpisodesRaw[alEpisodesRaw.length - 1] ||
-      alEpisodesRaw[0];
+    const exactAlEp =
+      alEpisodesRaw.find((e) => Number(e?.ordinal) === episode) ||
+      (alEpisodesRaw.length === 1 && episode === 1 ? alEpisodesRaw[0] : null);
 
-    if (fallbackAlEp) {
+    if (exactAlEp) {
       const team = Array.isArray(alRelease.members)
         ? alRelease.members
             .filter(
@@ -517,7 +663,7 @@ export async function GET(req: NextRequest) {
             )
             .map((m: any) => String(m.nickname))
         : [];
-      primaryAlVoice =
+      const primaryAlVoice =
         team.length > 0 ? `AniLibria (${team.slice(0, 3).join(', ')})` : 'AniLibria';
 
       const hdLevels: Array<[string, '1080p' | '720p']> = [
@@ -525,7 +671,7 @@ export async function GET(req: NextRequest) {
         ['hls_720', '720p'],
       ];
       const activeLevels: Array<[string, '1080p' | '720p']> = hdLevels.some(
-        ([f]) => typeof fallbackAlEp[f] === 'string' && fallbackAlEp[f]
+        ([f]) => typeof exactAlEp[f] === 'string' && exactAlEp[f]
       )
         ? hdLevels
         : [
@@ -534,35 +680,34 @@ export async function GET(req: NextRequest) {
             ['hls_480', '720p'],
           ];
 
-      alStreamsForEpisode = activeLevels
-        .filter(([f]) => typeof fallbackAlEp[f] === 'string' && fallbackAlEp[f])
+      const alStreams: VideoStream[] = activeLevels
+        .filter(([f]) => typeof exactAlEp[f] === 'string' && exactAlEp[f])
         .map(([f, quality]) => ({
           id: `al-${alRelease.id}-e${episode}-aniliberty-${quality}`,
           providerId: 'aniliberty',
           providerName: 'AniLibria',
-          title: exactAlEp?.name || `Серия ${episode}`,
+          title: exactAlEp.name || `Серия ${episode}`,
           voiceActing: primaryAlVoice,
           season: 1,
           episode,
           quality,
           format: 'hls' as const,
-          streamUrl: String(fallbackAlEp[f]).replace(/^http:\/\//i, 'https://'),
+          streamUrl: String(exactAlEp[f]).replace(/^http:\/\//i, 'https://'),
           audioTracks: [{ id: '0', language: 'ru', label: primaryAlVoice, isDefault: true }],
         }));
 
-      // If exact episode exists in AniLiberty (or if AnimeVost doesn't have it), put AniLibria first
-      if (exactAlEp && alStreamsForEpisode.length > 0) {
+      if (alStreams.length > 0) {
         groups.push({
           providerId: 'aniliberty',
           providerName: 'AniLibria',
           voiceActing: primaryAlVoice,
-          streams: alStreamsForEpisode,
+          streams: alStreams,
         });
       }
     }
   }
 
-  // 2. Real distinct voiceovers from Kodik
+  // 2. Real verified working voiceovers from Kodik for this exact episode
   for (const kg of kodikData.groups) {
     if (
       kg.providerId === 'aniliberty' &&
@@ -573,95 +718,22 @@ export async function GET(req: NextRequest) {
     groups.push(kg);
   }
 
-  // 3. Direct AnimeVost voiceover stream (especially crucial for episodes 1..1122 of One Piece!)
+  // 3. Direct AnimeVost voiceover stream for this exact episode
   if (vostData.group && !groups.some((g) => g.providerId === 'animevost')) {
-    // If AniLiberty didn't have this specific episode number (e.g. One Piece ep 1..1088), put AnimeVost first!
-    if (groups.length === 0) {
-      groups.unshift(vostData.group);
-    } else {
-      groups.push(vostData.group);
-    }
+    groups.push(vostData.group);
   }
 
-  // If AniLibria wasn't added yet (e.g. episode number was outside AniLiberty's slice), add it now
-  if (
-    alStreamsForEpisode.length > 0 &&
-    !groups.some((g) => g.providerId === 'aniliberty')
-  ) {
-    groups.push({
-      providerId: 'aniliberty',
-      providerName: 'AniLibria',
-      voiceActing: primaryAlVoice,
-      streams: alStreamsForEpisode,
-    });
-  }
-
-  // 4. Ensure full roster of popular Russian voiceover studios is always available
-  const POPULAR_ROSTER = [
-    { id: 'aniliberty', name: 'AniLibria', label: primaryAlVoice },
-    { id: 'studioband', name: 'Студийная Банда', label: 'Студийная Банда (Дубляж)' },
-    { id: 'anidub', name: 'AniDUB', label: 'AniDUB (Многоголосый)' },
-    { id: 'dreamcast', name: 'Dream Cast', label: 'Dream Cast (Многоголосый)' },
-    { id: 'shiza', name: 'SHIZA Project', label: 'SHIZA Project (Многоголосый)' },
-    { id: 'jamclub', name: 'Jam Club', label: 'Jam Club (Авторский)' },
-    { id: 'animevost', name: 'AnimeVost', label: 'AnimeVost (Двухголосый)' },
-    { id: 'anistar', name: 'Anistar', label: 'Anistar (Быстрая озвучка)' },
-    { id: '2x2', name: '2x2', label: '2x2 (ТВ Дубляж)' },
-    { id: 'subtitles', name: 'Субтитры', label: 'Оригинал + Русские субтитры' },
-  ];
-
-  // Collect distinct base stream sets so fallback studio entries alternate real distinct audio streams
-  const distinctStreamSets: VideoStream[][] = [];
-  if (vostData.group?.streams?.length) distinctStreamSets.push(vostData.group.streams);
-  if (alStreamsForEpisode.length) distinctStreamSets.push(alStreamsForEpisode);
-  for (const kg of kodikData.groups) {
-    if (kg.streams.length) distinctStreamSets.push(kg.streams);
-  }
-
-  if (distinctStreamSets.length > 0) {
-    let setIdx = 0;
-    for (const studio of POPULAR_ROSTER) {
-      const alreadyExists = groups.some(
-        (g) =>
-          g.providerId === studio.id ||
-          g.providerName.toLowerCase() === studio.name.toLowerCase()
-      );
-      if (alreadyExists) continue;
-
-      const templateStreams =
-        distinctStreamSets[setIdx % distinctStreamSets.length];
-      setIdx++;
-
-      groups.push({
-        providerId: studio.id,
-        providerName: studio.name,
-        voiceActing: studio.label,
-        streams: templateStreams.map((ts) => ({
-          ...ts,
-          id: `roster-${studio.id}-e${episode}-${ts.quality}`,
-          providerId: studio.id,
-          providerName: studio.name,
-          voiceActing: studio.label,
-          audioTracks: [{ id: '0', language: 'ru', label: studio.label, isDefault: true }],
-        })),
-      });
-    }
-  }
-
-  // 5. Build complete merged Episodes list (1..maxTotalEpisodes) so anime like One Piece show all 1120+ episodes!
-  const alMaxOrdinal = alEpisodesRaw.reduce(
-    (m, e) => Math.max(m, Number(e?.ordinal) || 0),
-    alEpisodesRaw.length
-  );
-  const alTotalDeclared = Number(alRelease?.episodes_total || 0);
-  const totalEpisodes = Math.max(
-    alMaxOrdinal,
-    alTotalDeclared,
-    vostData.maxEpisode,
-    kodikData.maxEpisode,
-    anilistEpCount,
-    alEpisodesRaw.length
-  );
+  // 4. Build union of all real playable episodes (from AniLiberty + AnimeVost + Kodik) with guaranteed cover images
+  const alPosterRel =
+    alRelease?.background_covers?.[0]?.src ||
+    alRelease?.poster?.src ||
+    alRelease?.poster?.preview;
+  const alFallbackCover = alPosterRel
+    ? /^https?:\/\//i.test(alPosterRel)
+      ? alPosterRel
+      : `${ANILIBERTY_BASE}${alPosterRel.startsWith('/') ? alPosterRel : `/${alPosterRel}`}`
+    : null;
+  const fallbackCover = alFallbackCover || vostData.coverUrl || null;
 
   const alEpMap = new Map<number, any>();
   for (const e of alEpisodesRaw) {
@@ -673,35 +745,43 @@ export async function GET(req: NextRequest) {
     if (ve.epNum > 0) vostEpMap.set(ve.epNum, ve);
   }
 
-  const mergedEpisodes: Episode[] = [];
-  if (totalEpisodes > 0) {
-    for (let epNum = 1; epNum <= totalEpisodes; epNum++) {
-      const alEp = alEpMap.get(epNum);
-      const vostEp = vostEpMap.get(epNum);
-      const alPreview = alEp?.preview?.src || alEp?.preview?.preview;
-      const stillPath = alPreview
-        ? /^https?:\/\//i.test(alPreview)
-          ? alPreview
-          : `${ANILIBERTY_BASE}${alPreview.startsWith('/') ? alPreview : `/${alPreview}`}`
-        : vostEp?.preview || null;
+  const allEpNumbersSet = new Set<number>();
+  Array.from(alEpMap.keys()).forEach((k) => allEpNumbersSet.add(k));
+  Array.from(vostEpMap.keys()).forEach((k) => allEpNumbersSet.add(k));
+  kodikData.episodeNumbers.forEach((k) => allEpNumbersSet.add(k));
 
-      mergedEpisodes.push({
-        id: String(alEp?.id || `ep-${epNum}`),
-        seasonNumber: 1,
-        episodeNumber: epNum,
-        name: alEp?.name || vostEp?.name || `Серия ${epNum}`,
-        stillPath,
-        durationMinutes: alEp?.duration
-          ? Math.max(1, Math.round(Number(alEp.duration) / 60))
-          : 24,
-        airDate: alEp?.updated_at ? String(alEp.updated_at).slice(0, 10) : undefined,
-      });
-    }
-  }
+  const sortedEpNumbers = Array.from(allEpNumbersSet).sort((a, b) => a - b);
+
+  const mergedEpisodes: Episode[] = sortedEpNumbers.map((epNum) => {
+    const alEp = alEpMap.get(epNum);
+    const vostEp = vostEpMap.get(epNum);
+    const alPreview = alEp?.preview?.src || alEp?.preview?.preview;
+    const stillPath = alPreview
+      ? /^https?:\/\//i.test(alPreview)
+        ? alPreview
+        : `${ANILIBERTY_BASE}${alPreview.startsWith('/') ? alPreview : `/${alPreview}`}`
+      : vostEp?.preview ||
+        (vostData.screenImages.length > 0
+          ? vostData.screenImages[epNum % vostData.screenImages.length]
+          : null) ||
+        fallbackCover;
+
+    return {
+      id: String(alEp?.id || `ep-${epNum}`),
+      seasonNumber: 1,
+      episodeNumber: epNum,
+      name: alEp?.name || vostEp?.name || `Серия ${epNum}`,
+      stillPath,
+      durationMinutes: alEp?.duration
+        ? Math.max(1, Math.round(Number(alEp.duration) / 60))
+        : 24,
+      airDate: alEp?.updated_at ? String(alEp.updated_at).slice(0, 10) : undefined,
+    };
+  });
 
   return NextResponse.json({
     groups,
-    totalEpisodes,
+    totalEpisodes: mergedEpisodes.length,
     episodes: mergedEpisodes,
   });
 }

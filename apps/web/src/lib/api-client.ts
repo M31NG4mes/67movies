@@ -953,7 +953,7 @@ export const api = {
           const eps: any[] = Array.isArray(r?.episodes) ? r.episodes : [];
           const ep =
             eps.find((e) => Number(e?.ordinal) === Number(episode)) ||
-            (eps.length === 1 ? eps[0] : eps[0] || null);
+            (eps.length === 1 && Number(episode) === 1 ? eps[0] : null);
           if (ep) {
             const team = Array.isArray(r?.members)
               ? r.members
@@ -980,43 +980,33 @@ export const api = {
                   ['hls_480', '720p'],
                 ];
 
-            const popularStudios = [
-              { id: 'aniliberty', name: 'AniLibria', label: primaryVoice },
-              { id: 'studioband', name: 'Студийная Банда', label: 'Студийная Банда (Дубляж)' },
-              { id: 'anidub', name: 'AniDUB', label: 'AniDUB (Многоголосый)' },
-              { id: 'dreamcast', name: 'Dream Cast', label: 'Dream Cast (Многоголосый)' },
-              { id: 'jamclub', name: 'Jam Club', label: 'Jam Club (Авторский)' },
-              { id: 'shiza', name: 'SHIZA Project', label: 'SHIZA Project (Многоголосый)' },
-              { id: 'animevost', name: 'AnimeVost', label: 'AnimeVost (Двухголосый)' },
-            ];
+            const streams = activeLevels
+              .filter(([f]) => typeof ep[f] === 'string' && ep[f])
+              .map(([f, quality]) => ({
+                id: `al-${alId}-e${ep.ordinal}-aniliberty-${quality}`,
+                providerId: 'aniliberty',
+                providerName: 'AniLibria',
+                title: ep.name || `Серия ${ep.ordinal}`,
+                voiceActing: primaryVoice,
+                season: 1,
+                episode: Number(ep.ordinal),
+                quality,
+                format: 'hls' as const,
+                streamUrl: String(ep[f]).replace(/^http:\/\//i, 'https://'),
+                audioTracks: [
+                  { id: '0', language: 'ru', label: primaryVoice, isDefault: true },
+                ],
+              }));
 
-            const groups: StreamSourceGroup[] = popularStudios
-              .map((studio) => ({
-                providerId: studio.id,
-                providerName: studio.name,
-                voiceActing: studio.label,
-                streams: activeLevels
-                  .filter(([f]) => typeof ep[f] === 'string' && ep[f])
-                  .map(([f, quality]) => ({
-                    id: `al-${alId}-e${ep.ordinal}-${studio.id}-${quality}`,
-                    providerId: studio.id,
-                    providerName: studio.name,
-                    title: ep.name || `Серия ${ep.ordinal}`,
-                    voiceActing: studio.label,
-                    season: 1,
-                    episode: Number(ep.ordinal),
-                    quality,
-                    format: 'hls' as const,
-                    streamUrl: String(ep[f]).replace(/^http:\/\//i, 'https://'),
-                    audioTracks: [
-                      { id: '0', language: 'ru', label: studio.label, isDefault: true },
-                    ],
-                  })),
-              }))
-              .filter((g) => g.streams.length > 0);
-
-            if (groups.length > 0) {
-              return groups;
+            if (streams.length > 0) {
+              return [
+                {
+                  providerId: 'aniliberty',
+                  providerName: 'AniLibria',
+                  voiceActing: primaryVoice,
+                  streams,
+                },
+              ];
             }
           }
         }

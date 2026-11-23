@@ -177,31 +177,46 @@ export function EpisodePicker({
         {visibleEpisodes.map((ep) => {
           const isSelected =
             ep.seasonNumber === activeSeason && ep.episodeNumber === activeEpisode;
+          const coverSrc = ep.stillPath || currentSeason.posterPath || null;
           return (
             <button
               key={`${ep.id}-${ep.episodeNumber}`}
               type="button"
               data-nav-item="true"
               onClick={() => onSelectEpisode(ep.seasonNumber, ep.episodeNumber)}
-              className={`flex items-start space-x-3 p-3 rounded-xl border text-left transition-all ${
+              className={`group flex items-start space-x-3 p-3 rounded-xl border text-left transition-all ${
                 isSelected
                   ? 'bg-cinema-card border-brand-main shadow-brand-glow'
                   : 'bg-cinema-surface border-cinema-border/60 hover:bg-cinema-card hover:border-cinema-border'
               }`}
             >
-              <div className="relative w-24 h-16 rounded-lg overflow-hidden bg-cinema-dark flex-shrink-0 flex items-center justify-center">
-                {ep.stillPath ? (
+              <div className="relative w-24 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-[#231F3A] via-[#171625] to-[#0D0D14] flex-shrink-0 flex items-center justify-center border border-white/10">
+                {coverSrc ? (
                   <img
-                    src={ep.stillPath}
+                    src={coverSrc}
                     alt={ep.name}
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const imgEl = e.currentTarget;
+                      if (
+                        currentSeason.posterPath &&
+                        imgEl.src !== currentSeason.posterPath
+                      ) {
+                        imgEl.src = currentSeason.posterPath;
+                      } else {
+                        imgEl.style.display = 'none';
+                      }
+                    }}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                ) : (
-                  <Play className="w-5 h-5 text-cinema-muted" />
-                )}
-                <span className="absolute bottom-1 right-1 px-1 py-0.2 bg-cinema-dark/80 rounded text-[9px] font-mono text-white">
+                ) : null}
+                <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
+                  <div className="w-7 h-7 rounded-full bg-black/60 border border-white/20 flex items-center justify-center">
+                    <Play className="w-3.5 h-3.5 text-white fill-white ml-0.5" />
+                  </div>
+                </div>
+                <span className="absolute bottom-1 right-1 px-1 py-0.2 bg-cinema-dark/85 rounded text-[9px] font-mono text-white">
                   {ep.durationMinutes || 24}м
                 </span>
               </div>
