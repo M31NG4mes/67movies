@@ -1,0 +1,422 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #09090D;
+  --foreground: #FFFFFF;
+  --brand-main: #8065FF;
+  --brand-light: #A18BFF;
+  --brand-glow: rgba(128, 101, 255, 0.5);
+  color-scheme: dark;
+}
+
+html[data-theme='light'] {
+  --background: #E4E6EE;
+  --foreground: #1B1D28;
+  color-scheme: light;
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+  user-select: text;
+  -webkit-user-select: text;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+::selection {
+  background-color: rgba(128, 101, 255, 0.35);
+  color: #FFFFFF;
+}
+
+input,
+textarea,
+select {
+  user-select: text;
+  -webkit-user-select: text;
+  background-color: #111119;
+  color: #FFFFFF;
+  caret-color: var(--brand-main);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #92929F;
+}
+
+/* =========================================================================
+   Smooth Cinema Animations
+   ========================================================================= */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes heroZoom {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes snowfall {
+  0% {
+    transform: translate3d(0, -10px, 0);
+  }
+  50% {
+    transform: translate3d(18px, 50vh, 0);
+  }
+  100% {
+    transform: translate3d(-12px, 105vh, 0);
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+.animate-snowfall {
+  animation: snowfall linear infinite;
+  will-change: transform;
+}
+
+.animate-twinkle {
+  animation: twinkle 2.4s ease-in-out infinite;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-heroZoom {
+  animation: heroZoom 9s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .animate-slideUp,
+  .animate-scaleIn,
+  .animate-heroZoom {
+    animation: none !important;
+  }
+}
+
+/* =========================================================================
+   Dynamic Accent Utilities (always synced with --brand-main / --brand-glow)
+   ========================================================================= */
+.brand-logo-badge {
+  background: linear-gradient(135deg, var(--brand-main), var(--brand-light));
+  box-shadow: 0 6px 22px -2px var(--brand-glow);
+}
+
+.brand-btn {
+  background-color: var(--brand-main);
+  box-shadow: 0 10px 26px -6px var(--brand-glow);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.2s ease,
+    box-shadow 0.25s ease;
+}
+
+.brand-btn:hover {
+  background-color: var(--brand-light);
+  box-shadow: 0 14px 32px -6px var(--brand-glow);
+  transform: translateY(-1px);
+}
+
+.brand-btn:active {
+  transform: scale(0.97);
+}
+
+.brand-card-hover {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.24s ease;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.brand-card-hover:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 0 0 2px var(--brand-main), 0 16px 32px -10px var(--brand-glow);
+}
+
+.bg-\[\#8065FF\],
+.bg-brand-main {
+  background-color: var(--brand-main) !important;
+}
+
+.hover\:bg-\[\#A18BFF\]:hover,
+.hover\:bg-brand-light:hover {
+  background-color: var(--brand-light) !important;
+}
+
+.text-\[\#8065FF\],
+.text-brand-main {
+  color: var(--brand-main) !important;
+}
+
+.text-\[\#A18BFF\],
+.text-brand-light {
+  color: var(--brand-light) !important;
+}
+
+.border-\[\#8065FF\],
+.border-brand-main {
+  border-color: var(--brand-main) !important;
+}
+
+.hover\:border-\[\#8065FF\]:hover,
+.focus\:border-\[\#8065FF\]:focus {
+  border-color: var(--brand-main) !important;
+}
+
+/* =========================================================================
+   Light Theme Overrides (calm, muted editorial stone palette — zero glare)
+   ========================================================================= */
+html[data-theme='light'] body,
+html[data-theme='light'] .bg-\[\#09090D\],
+html[data-theme='light'] .bg-cinema-dark {
+  background-color: #E4E6EE !important;
+  color: #1B1D28 !important;
+}
+
+html[data-theme='light'] .bg-\[\#111119\],
+html[data-theme='light'] .bg-cinema-surface {
+  background-color: #EEF0F5 !important;
+  color: #1B1D28 !important;
+  box-shadow: 0 4px 20px -6px rgba(15, 23, 42, 0.08);
+}
+
+/* Profile & Public Showcase Banner — adapts to dark & light themes */
+.profile-banner-bg {
+  background-image: radial-gradient(circle at 80% 20%, var(--brand-glow), transparent 55%),
+    linear-gradient(125deg, #1d1538 0%, #2b1b5a 48%, #111119 100%);
+  transition: background-image 0.35s ease;
+}
+
+.profile-banner-fade {
+  background: linear-gradient(
+    to top,
+    #111119 0%,
+    rgba(17, 17, 25, 0.45) 45%,
+    rgba(17, 17, 25, 0.05) 100%
+  );
+  transition: background 0.35s ease;
+}
+
+.profile-avatar-ring {
+  box-shadow: 0 0 0 4px #111119, 0 18px 34px -10px rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme='light'] .profile-banner-bg {
+  background-image: radial-gradient(circle at 82% 22%, rgba(128, 101, 255, 0.24), transparent 52%),
+    linear-gradient(125deg, #d5d9e8 0%, #dfdcf4 48%, #e6e8f0 100%);
+}
+
+html[data-theme='light'] .profile-banner-fade {
+  background: linear-gradient(
+    to top,
+    #eef0f5 0%,
+    rgba(238, 240, 245, 0.62) 42%,
+    rgba(238, 240, 245, 0.08) 100%
+  );
+}
+
+html[data-theme='light'] .profile-avatar-ring {
+  box-shadow: 0 0 0 4px #eef0f5, 0 14px 28px -10px rgba(15, 23, 42, 0.22);
+}
+
+html[data-theme='light'] .bg-\[\#181821\],
+html[data-theme='light'] .bg-cinema-card {
+  background-color: #DCE0EA !important;
+  color: #1B1D28 !important;
+}
+
+html[data-theme='light'] .border-\[\#292936\],
+html[data-theme='light'] .border-cinema-border {
+  border-color: #C9CEDB !important;
+}
+
+html[data-theme='light'] .text-white,
+html[data-theme='light'] .text-cinema-text {
+  color: #1B1D28 !important;
+}
+
+/* Keep crisp white text inside solid brand buttons, dark hero & card overlays */
+html[data-theme='light'] .bg-\[\#8065FF\],
+html[data-theme='light'] .bg-brand-main,
+html[data-theme='light'] .brand-btn,
+html[data-theme='light'] .brand-logo-badge,
+html[data-theme='light'] .bg-\[\#8065FF\] *,
+html[data-theme='light'] .bg-brand-main *,
+html[data-theme='light'] .brand-btn *,
+html[data-theme='light'] .hero-keep-white,
+html[data-theme='light'] .hero-keep-white * {
+  color: #FFFFFF !important;
+}
+
+html[data-theme='light'] .text-\[\#92929F\],
+html[data-theme='light'] .text-cinema-muted {
+  color: #55596D !important;
+}
+
+html[data-theme='light'] .brand-card-hover {
+  box-shadow: 0 0 0 1px rgba(27, 29, 40, 0.12), 0 6px 18px -6px rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme='light'] input,
+html[data-theme='light'] textarea,
+html[data-theme='light'] select {
+  background-color: #F5F6FA !important;
+  color: #1B1D28 !important;
+  border-color: #C5CBD9 !important;
+}
+
+html[data-theme='light'] aside {
+  background-color: #ECEEF4 !important;
+  border-color: #CFD4E2 !important;
+}
+
+/* Smooth Hero Vignettes (Dark Theme — identical misty melt as Light Theme) */
+.bg-hero-vignette-y {
+  background-image: linear-gradient(
+    180deg,
+    rgba(9, 9, 13, 0.35) 0%,
+    rgba(9, 9, 13, 0.08) 42%,
+    rgba(9, 9, 13, 0.65) 74%,
+    rgba(9, 9, 13, 0.94) 90%,
+    #09090D 100%
+  ) !important;
+}
+
+.bg-hero-vignette-x {
+  background-image: linear-gradient(
+    90deg,
+    rgba(9, 9, 13, 0.88) 0%,
+    rgba(9, 9, 13, 0.56) 36%,
+    rgba(9, 9, 13, 0.14) 66%,
+    rgba(9, 9, 13, 0) 100%
+  ) !important;
+}
+
+html[data-theme='light'] .bg-hero-vignette-y {
+  background-image: linear-gradient(
+    180deg,
+    rgba(15, 17, 26, 0.42) 0%,
+    rgba(15, 17, 26, 0.12) 45%,
+    rgba(228, 230, 238, 0.72) 84%,
+    #E4E6EE 100%
+  ) !important;
+}
+
+html[data-theme='light'] .bg-hero-vignette-x {
+  background-image: linear-gradient(
+    90deg,
+    rgba(15, 17, 26, 0.78) 0%,
+    rgba(15, 17, 26, 0.52) 38%,
+    rgba(15, 17, 26, 0.12) 68%,
+    rgba(15, 17, 26, 0) 100%
+  ) !important;
+}
+
+html[data-theme='light'] .rail-scroll-btn {
+  border-color: #C5CBD9 !important;
+  background-color: #EEF0F5 !important;
+  color: #1B1D28 !important;
+}
+
+html[data-theme='light'] .glass-nav {
+  background: linear-gradient(180deg, rgba(228, 230, 238, 0.92) 0%, rgba(228, 230, 238, 0) 100%);
+}
+
+html[data-theme='light'] .glass-nav-scrolled {
+  background: rgba(236, 238, 244, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid #CFD4E2;
+}
+
+/* Custom Cinema Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #292936;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-main);
+}
+
+/* Focus highlight */
+*:focus-visible {
+  outline: 2px solid var(--brand-main) !important;
+  outline-offset: 3px;
+  transition: all 0.15s ease-in-out;
+}
+
+/* Top transparent bar */
+.glass-nav {
+  background: linear-gradient(180deg, rgba(9, 9, 13, 0.84) 0%, rgba(9, 9, 13, 0) 100%);
+}
+
+.glass-nav-scrolled {
+  background: rgba(9, 9, 13, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(41, 41, 54, 0.75);
+}
