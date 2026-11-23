@@ -21,7 +21,6 @@ import {
   Youtube,
   FolderPlus,
   Award,
-  Bookmark,
 } from 'lucide-react';
 import { api } from '../../../lib/api-client';
 import { MediaItem, Season } from '@cinemaflow/types';
@@ -44,33 +43,11 @@ interface CommentItem {
   isLiked?: boolean;
 }
 
-function getNumericMediaId(media: MediaItem | null): number {
-  if (!media) return 0;
-  if (media.tmdbId && Number.isFinite(Number(media.tmdbId))) {
-    return Number(media.tmdbId);
-  }
-  const raw = String(media.id || '').trim();
-  if (/^\d+$/.test(raw)) return Number(raw);
-  const kp = /^kp-(\d+)$/i.exec(raw);
-  if (kp) return 1_000_000_000 + (Number(kp[1]) % 200_000_000);
-  const mal = /^mal-(\d+)$/i.exec(raw);
-  if (mal) return 1_200_000_000 + (Number(mal[1]) % 200_000_000);
-  const tvm = /^tvmaze-(\d+)$/i.exec(raw);
-  if (tvm) return 1_400_000_000 + (Number(tvm[1]) % 200_000_000);
-  const omdb = /^(?:omdb-)?tt(\d+)$/i.exec(raw);
-  if (omdb) return 1_600_000_000 + (Number(omdb[1]) % 200_000_000);
-  const al = /^al-(\d+)$/i.exec(raw);
-  if (al) return 1_800_000_000 + (Number(al[1]) % 200_000_000);
-  if (media.kinopoiskId) return 1_000_000_000 + (Number(media.kinopoiskId) % 200_000_000);
-  return 0;
-}
-
 export default function MovieDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const mediaId = String(params?.id || '');
-  const isAniLibertyId = /^al-\d+$/i.test(mediaId);
   const rawType = searchParams?.get('type');
   const mediaTypeParam = rawType === 'tv' ? 'tv' : rawType === 'movie' ? 'movie' : undefined;
 
@@ -80,10 +57,6 @@ export default function MovieDetailPage() {
   const [seasonData, setSeasonData] = useState<Season | null>(null);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('aniliberty');
-  const [availableVoices, setAvailableVoices] = useState<
-    Array<{ id: string; name: string; tag: string }>
-  >([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Favorites & User Rating State
@@ -144,19 +117,12 @@ export default function MovieDetailPage() {
         setMedia(currentData);
 
         if (currentData.type === 'tv') {
-          if (currentData.seasons?.[0]?.episodes?.length) {
-            setSeasonData(currentData.seasons[0]);
-          } else {
-            const seasonLookupId = currentData.anilibertyId
-              ? `al-${currentData.anilibertyId}`
-              : mediaId;
-            api.media
-              .getTvSeason(seasonLookupId, 1)
-              .then((s) => {
-                if (isMounted && s) setSeasonData(s);
-              })
-              .catch(() => {});
-          }
+          api.media
+            .getTvSeason(mediaId, 1)
+            .then((s) => {
+              if (isMounted && s) setSeasonData(s);
+            })
+            .catch(() => {});
         }
 
         setIsLoading(false);
@@ -173,23 +139,11 @@ export default function MovieDetailPage() {
     };
   }, [mediaId, mediaTypeParam]);
 
-  const {
-    watchlist,
-    favorites,
-    history,
-    hydrate: hydrateLibrary,
-    toggleWatchlist,
-    isInWatchlist,
-    toggleFavorite,
-    setFavoriteState,
-    isInFavorites,
-    addToHistory,
-  } = useLibraryStore();
+  const { watchlist, hydrate: hydrateLibrary, toggleWatchlist, addToHistory } = useLibraryStore();
   const authUser = useAuthStore((s) => s.user);
   const accessToken = useAuthStore((s) => s.accessToken);
   const ageVerified18 = usePreferencesStore((s) => s.ageVerified18);
   const setAgeVerified18 = usePreferencesStore((s) => s.setAgeVerified18);
-  const language = usePreferencesStore((s) => s.language);
 
   const [communityStats, setCommunityStats] = useState<{
     averageRating: number;
@@ -233,9 +187,8 @@ export default function MovieDetailPage() {
 
   const loadCommunityReviews = React.useCallback(async () => {
     if (!media) return;
-    const apiBase =
-    process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
-    const tmdbNum = getNumericMediaId(media);
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+    const tmdbNum = Number(media.tmdbId || media.id);
     if (!tmdbNum) return;
     const mediaType = media.type === 'tv' ? 'SERIES' : 'MOVIE';
     try {
@@ -252,6 +205,7 @@ export default function MovieDetailPage() {
             setUserRating(mine.rating);
             setModalRating(mine.rating);
             setModalReview(mine.review || '');
+            setModalFavorite(Boolean(mine.isFavorite));
           }
         }
       }
@@ -265,31 +219,15 @@ export default function MovieDetailPage() {
   }, [hydrateLibrary]);
 
   useEffect(() => {
-    if (!media) return;
-    const hist = history.find(
-      (h) =>
-        h.id === mediaId ||
-        (media.anilibertyId && h.id === `al-${media.anilibertyId}`) ||
-        (media.tmdbId && h.tmdbId === media.tmdbId)
-    );
-    if (hist?.episodeNumber) {
-      setSelectedEpisode(hist.episodeNumber);
-      if (hist.seasonNumber) setSelectedSeason(hist.seasonNumber);
-    }
-  }, [media?.id, history, mediaId]);
-
-  useEffect(() => {
     if (media && media.title) {
+      addToHistory(media);
       loadCommunityReviews();
 
       // Load trailers, OMDb, KinopoiskDev, and Jikan/MAL extras
-      const apiBase =
-    process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
       const tmdbId = String(media.tmdbId || media.id);
       const isAnime = Boolean(
-        media.genres?.some((g) =>
-          /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
-        ) ||
+        media.genres?.some((g) => g.id === 16) ||
           (media.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
       );
       const sp = new URLSearchParams({
@@ -307,86 +245,8 @@ export default function MovieDetailPage() {
           if (d) setExtras(d);
         })
         .catch(() => {});
-
-      // Ensure ANY anime (even opened via TMDB/MAL ID) resolves its AniLiberty release, episodes & voiceovers
-      const looksLikeAnime =
-        isAnime ||
-        /^al-\d+$/i.test(mediaId) ||
-        /^mal-\d+$/i.test(mediaId) ||
-        media.source === 'aniliberty' ||
-        media.source === 'jikan' ||
-        media.source === 'shikimori' ||
-        Boolean(media.anilibertyId || media.malId);
-
-      if (looksLikeAnime) {
-        const alMatch = /^al-(\d+)$/i.exec(mediaId);
-        api.media
-          .resolveAniLibertyRelease({
-            anilibertyId:
-              media.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined),
-            malId: media.malId,
-            title: media.title,
-            originalTitle: media.originalTitle,
-          })
-          .then((alRelease) => {
-            if (!alRelease) return;
-            const resolvedEpsCount = alRelease.seasons?.[0]?.episodes?.length || 0;
-            setMedia((prev) => {
-              if (!prev) return prev;
-              const prevEpsCount = prev.seasons?.[0]?.episodes?.length || 0;
-              return {
-                ...prev,
-                anilibertyId: alRelease.anilibertyId || prev.anilibertyId,
-                voiceovers: alRelease.voiceovers?.length ? alRelease.voiceovers : prev.voiceovers,
-                voiceTeamName: alRelease.voiceTeamName || prev.voiceTeamName,
-                episodesTotal: Math.max(
-                  resolvedEpsCount,
-                  alRelease.episodesTotal || 0,
-                  prev.episodesTotal || 0
-                ),
-                seasons:
-                  resolvedEpsCount >= prevEpsCount && alRelease.seasons?.length
-                    ? alRelease.seasons
-                    : prev.seasons,
-              };
-            });
-            if (resolvedEpsCount > 0) {
-              setSeasonData((prevS) =>
-                resolvedEpsCount >= (prevS?.episodes?.length || 0)
-                  ? alRelease.seasons![0]
-                  : prevS
-              );
-            }
-          })
-          .catch(() => {});
-
-        // Fetch verified working voiceovers for this anime so non-working studios are never shown
-        api.sources
-          .getAnimeStreams(mediaId, 1, {
-            anilibertyId:
-              media.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined),
-            malId: media.malId,
-            title: media.title,
-            originalTitle: media.originalTitle,
-          })
-          .then((groups) => {
-            if (!groups || groups.length === 0) return;
-            const voices = groups
-              .filter((g) => g.streams && g.streams.length > 0)
-              .map((g) => ({
-                id: g.providerId,
-                name: g.providerName,
-                tag: `${g.streams[0]?.quality || '1080p'} • ${g.voiceActing || g.providerName}`,
-              }));
-            setAvailableVoices(voices);
-            if (voices.length > 0 && !voices.some((v) => v.id === selectedVoiceId)) {
-              setSelectedVoiceId(voices[0].id);
-            }
-          })
-          .catch(() => {});
-      }
     }
-  }, [media?.id, loadCommunityReviews, mediaId]);
+  }, [media, addToHistory, loadCommunityReviews]);
 
   const openCollectionModal = async () => {
     setIsCollectionModalOpen(true);
@@ -419,7 +279,7 @@ export default function MovieDetailPage() {
         method: 'POST',
         body: JSON.stringify({
           content: sendNote.trim() || `Рекомендую посмотреть «${media.title}»!`,
-          movieTmdbId: getNumericMediaId(media) || 1,
+          movieTmdbId: Number(media.tmdbId || media.id) || 1,
           movieMediaType: media.type === 'tv' ? 'SERIES' : 'MOVIE',
           movieTitle: media.title,
           moviePosterPath: media.posterPath || media.backdropPath || undefined,
@@ -440,7 +300,7 @@ export default function MovieDetailPage() {
     const res = await authFetch(`/social/collections/${collectionId}/items`, {
       method: 'POST',
       body: JSON.stringify({
-        tmdbId: getNumericMediaId(media) || 1,
+        tmdbId: Number(media.tmdbId || media.id) || 1,
         mediaType: media.type === 'tv' ? 'SERIES' : 'MOVIE',
         title: media.title,
         posterPath: media.posterPath || media.backdropPath || undefined,
@@ -467,7 +327,7 @@ export default function MovieDetailPage() {
     }
   };
 
-  const saveRatingToServer = async (ratingVal: number, reviewText: string) => {
+  const saveRatingToServer = async (ratingVal: number, reviewText: string, favFlag: boolean) => {
     if (!media) return;
     setUserRating(ratingVal);
 
@@ -477,13 +337,13 @@ export default function MovieDetailPage() {
         await authFetch('/social/ratings', {
           method: 'POST',
           body: JSON.stringify({
-            tmdbId: getNumericMediaId(media) || 1,
+            tmdbId: Number(media.tmdbId || media.id) || 1,
             mediaType: media.type === 'tv' ? 'SERIES' : 'MOVIE',
             title: media.title,
             posterPath: media.posterPath || media.backdropPath || undefined,
             rating: ratingVal,
             review: reviewText.trim() || undefined,
-            isFavorite: false,
+            isFavorite: favFlag,
           }),
         });
         await loadCommunityReviews();
@@ -493,28 +353,9 @@ export default function MovieDetailPage() {
     }
   };
 
-  const handleInstantToggleFavorite = () => {
-    if (!media) return;
-    const added = toggleFavorite({ ...media, routeId: mediaId });
-    setCollectionToast(
-      added ? '❤️ Добавлено в «Любимые фильмы» в профиле' : 'Убрано из «Любимых фильмов»'
-    );
-    setTimeout(() => setCollectionToast(null), 3000);
-  };
-
-  const handleInstantToggleWatchlist = () => {
-    if (!media) return;
-    const added = toggleWatchlist({ ...media, routeId: mediaId });
-    setIsFavorite(added);
-    setCollectionToast(
-      added ? '🔖 Добавлено в «Мой вотчлист»' : 'Убрано из «Моего вотчлиста»'
-    );
-    setTimeout(() => setCollectionToast(null), 3000);
-  };
-
   const handleDeleteOwnReview = async () => {
     if (!media || !accessToken) return;
-    const tmdbNum = getNumericMediaId(media);
+    const tmdbNum = Number(media.tmdbId || media.id);
     const mediaType = media.type === 'tv' ? 'SERIES' : 'MOVIE';
     await authFetch(`/social/ratings/${tmdbNum}?mediaType=${mediaType}`, {
       method: 'DELETE',
@@ -535,75 +376,38 @@ export default function MovieDetailPage() {
       .catch(() => {});
   };
 
-  const anilibertyTargetId = isAniLibertyId
-    ? mediaId
-    : media?.anilibertyId
-    ? `al-${media.anilibertyId}`
-    : null;
-
-  const isAnimeMedia = Boolean(
-    anilibertyTargetId ||
-      /^mal-\d+$/i.test(mediaId) ||
-      media?.source === 'aniliberty' ||
-      media?.source === 'jikan' ||
-      media?.source === 'shikimori' ||
-      media?.malId ||
-      extras.anime ||
-      media?.genres?.some((g) =>
-        /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
-      ) ||
-      (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
-  );
-
-  const POPULAR_ANIME_VOICES = [
-    { id: 'aniliberty', name: 'AniLibria', tag: '1080p • Оригинал' },
-    { id: 'studioband', name: 'Студийная Банда', tag: '1080p • Дубляж' },
-    { id: 'anidub', name: 'AniDUB', tag: '1080p • Многоголосый' },
-    { id: 'dreamcast', name: 'Dream Cast', tag: '1080p • Многоголосый' },
-    { id: 'jamclub', name: 'Jam Club', tag: '1080p • Авторский' },
-    { id: 'shiza', name: 'SHIZA Project', tag: '1080p • Многоголосый' },
-    { id: 'animevost', name: 'AnimeVost', tag: '1080p • Двухголосый' },
-  ];
-
-  const buildAnimeWatchUrl = (seasonNum: number, episodeNum: number, voiceId = selectedVoiceId) => {
-    const watchId = anilibertyTargetId || mediaId;
-    const sp = new URLSearchParams({
-      season: String(seasonNum),
-      episode: String(episodeNum),
-      anime: '1',
-      voice: voiceId,
-    });
-    if (media?.title) sp.set('title', media.title);
-    if (media?.originalTitle) sp.set('originalTitle', media.originalTitle);
-    if (media?.malId) sp.set('malId', String(media.malId));
-    return `/watch/${encodeURIComponent(watchId)}?${sp.toString()}`;
-  };
-
   const handleEpisodeChange = (seasonNum: number, episodeNum: number) => {
     setSelectedSeason(seasonNum);
     setSelectedEpisode(episodeNum);
 
-    if (isAnimeMedia) {
-      if (media) {
-        addToHistory({
-          ...media,
-          routeId: mediaId,
-          seasonNumber: seasonNum,
-          episodeNumber: episodeNum,
-        });
-      }
-      router.push(buildAnimeWatchUrl(seasonNum, episodeNum));
+    const isAnimeEntry = Boolean(
+      mediaId.startsWith('al-') ||
+        media?.source === 'aniliberty' ||
+        media?.anilibertyId ||
+        (media?.genres?.some((g) => g.id === 16) &&
+          ((media as any)?.originalLanguage === 'ja' ||
+            /[\u3040-\u30ff\u4e00-\u9faf]/.test(media?.originalTitle || '') ||
+            (media as any)?.originCountry?.includes('JP')))
+    );
+
+    if (isAnimeEntry) {
+      const watchParams = new URLSearchParams({
+        type: media?.type === 'tv' ? 'tv' : 'movie',
+        season: String(seasonNum),
+        episode: String(episodeNum),
+        title: media?.title || '',
+        originalTitle: media?.originalTitle || '',
+      });
+      if (media?.anilibertyId) watchParams.set('anilibertyId', String(media.anilibertyId));
+      if (media?.malId) watchParams.set('malId', String(media.malId));
+      router.push(`/watch/${encodeURIComponent(mediaId)}?${watchParams.toString()}`);
       return;
     }
 
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
-    const kpParam = media?.kinopoiskId
-      ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
-      : '';
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
     const url = `${apiBase}/media/kinopoisk-redirect?tmdbId=${encodeURIComponent(
       String(media?.tmdbId || mediaId)
-    )}${kpParam}&type=${encodeURIComponent(media?.type || 'tv')}&title=${encodeURIComponent(
+    )}&type=${encodeURIComponent(media?.type || 'tv')}&title=${encodeURIComponent(
       media?.title || ''
     )}&year=${encodeURIComponent(String(media?.releaseYear || ''))}`;
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -613,7 +417,7 @@ export default function MovieDetailPage() {
     e.preventDefault();
     if (!newCommentText.trim()) return;
 
-    await saveRatingToServer(newCommentRating, newCommentText.trim());
+    await saveRatingToServer(newCommentRating, newCommentText.trim(), newCommentRating >= 8);
     setNewCommentText('');
   };
 
@@ -667,20 +471,11 @@ export default function MovieDetailPage() {
           </div>
           <div className="space-y-2">
             <h1 className="text-xl sm:text-2xl font-black text-white">
-              {language === 'en' ? 'Age Restriction 18+' : 'Возрастное ограничение 18+'}
+              Возрастное ограничение 18+
             </h1>
             <p className="text-xs sm:text-sm text-[#92929F] leading-relaxed">
-              {language === 'en' ? (
-                <>
-                  <strong className="text-white">“{media.title}”</strong> is intended for adult
-                  audiences (18+) only. Please confirm your age to continue.
-                </>
-              ) : (
-                <>
-                  Фильм <strong className="text-white">«{media.title}»</strong> предназначен только
-                  для зрителей старше 18 лет. Подтвердите свой возраст, чтобы продолжить.
-                </>
-              )}
+              Фильм <strong className="text-white">«{media.title}»</strong> предназначен только для
+              зрителей старше 18 лет. Подтвердите свой возраст, чтобы продолжить.
             </p>
           </div>
           <div className="flex flex-col gap-2.5 pt-2">
@@ -689,66 +484,45 @@ export default function MovieDetailPage() {
               onClick={() => setAgeVerified18(true)}
               className="w-full py-3.5 rounded-xl brand-btn text-white text-sm font-bold"
             >
-              {language === 'en'
-                ? 'I am 18 or older — Open Title'
-                : 'Мне есть 18 лет — Открыть фильм'}
+              Мне есть 18 лет — Открыть фильм
             </button>
             <button
               type="button"
               onClick={() => router.back()}
               className="w-full py-3 rounded-xl bg-[#181821] hover:bg-[#20202C] border border-[#292936] text-xs font-semibold text-[#92929F] hover:text-white transition-all"
             >
-              {language === 'en' ? '← Go Back' : '← Вернуться назад'}
+              ← Вернуться назад
             </button>
           </div>
         </div>
       </div>
     );
   }
-  const apiBase =
-    process.env.NEXT_PUBLIC_API_URL || 'https://six7movies-api.onrender.com/api';
-  const kpParam = media.kinopoiskId
-    ? `&kinopoiskId=${encodeURIComponent(String(media.kinopoiskId))}`
-    : '';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
   const kinopoiskUrl = `${apiBase}/media/kinopoisk-redirect?tmdbId=${encodeURIComponent(
     String(media.tmdbId || media.id)
-  )}${kpParam}&type=${encodeURIComponent(media.type || 'movie')}&title=${encodeURIComponent(
+  )}&type=${encodeURIComponent(media.type || 'movie')}&title=${encodeURIComponent(
     media.title || ''
   )}&year=${encodeURIComponent(String(media.releaseYear || ''))}`;
 
-  const allSeasons: Season[] = (
+  const allSeasons: Season[] =
     media.seasons?.map((s) => {
       if (s.seasonNumber === selectedSeason && seasonData?.episodes) {
         return { ...s, episodes: seasonData.episodes };
       }
       return s;
-    }) || (seasonData ? [seasonData] : [])
-  ).map((s) => ({
-    ...s,
-    posterPath: s.posterPath || media.backdropPath || media.posterPath || null,
-  }));
-
-  const proxyImageOnError = (rawUrl?: string | null) => (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    if (!rawUrl || img.dataset.proxied === '1') return;
-    img.dataset.proxied = '1';
-    img.src = `/api/image?url=${encodeURIComponent(rawUrl)}`;
-  };
+    }) || (seasonData ? [seasonData] : []);
 
   return (
     <div className="bg-cinema-dark min-h-screen text-cinema-text pb-24">
       {/* 1. Backdrop Hero Header with Vignettes */}
-      <div className="relative w-full h-[46vh] sm:h-[60vh] min-h-[340px] sm:min-h-[460px] max-h-[680px] overflow-hidden bg-cinema-dark">
-        <div className="absolute inset-0 transition-transform duration-1000 scale-105">
-          {(media.backdropPath || media.posterPath) && (
-            <img
-              src={media.backdropPath || media.posterPath || ''}
-              alt={media.title}
-              referrerPolicy="no-referrer"
-              onError={proxyImageOnError(media.backdropPath || media.posterPath)}
-              className="w-full h-full object-cover object-center"
-            />
-          )}
+      <div className="relative w-full h-[46vh] sm:h-[60vh] min-h-[340px] sm:min-h-[460px] max-h-[680px] overflow-hidden select-none">
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 scale-105"
+          style={{
+            backgroundImage: `url(${media.backdropPath || media.posterPath || ''})`,
+          }}
+        >
           {/* Gradients for text readability */}
           <div className="absolute inset-0 bg-hero-vignette-x w-full lg:w-4/5" />
           <div className="absolute inset-0 bg-hero-vignette-y" />
@@ -774,20 +548,11 @@ export default function MovieDetailPage() {
           {/* Left: Poster Card */}
           <div className="w-40 sm:w-56 lg:w-72 flex-shrink-0 mx-auto md:mx-0 rounded-2xl overflow-hidden bg-cinema-card border border-cinema-border shadow-2xl relative group">
             <div className="aspect-[2/3] w-full relative">
-              {media.posterPath || media.backdropPath ? (
-                <img
-                  src={media.posterPath || media.backdropPath || ''}
-                  alt={media.title}
-                  referrerPolicy="no-referrer"
-                  onError={proxyImageOnError(media.posterPath || media.backdropPath)}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-[#14141F] text-[#92929F] p-4 text-center">
-                  <Film className="w-10 h-10 text-[#8065FF]/70 mb-2" />
-                  <span className="text-xs font-bold text-white/80">{media.title}</span>
-                </div>
-              )}
+              <img
+                src={media.posterPath || media.backdropPath || ''}
+                alt={media.title}
+                className="w-full h-full object-cover"
+              />
               <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-brand-light bg-cinema-dark/80 border border-brand-main/40 rounded backdrop-blur-md">
                 4K Ultra HD
               </span>
@@ -858,58 +623,6 @@ export default function MovieDetailPage() {
               )}
             </div>
 
-            {/* Mobile Primary Watch Button (right under poster/title, BEFORE description) */}
-            <div className="sm:hidden">
-              {isAnimeMedia ? (
-                <Link
-                  href={buildAnimeWatchUrl(selectedSeason, selectedEpisode)}
-                  onClick={() =>
-                    addToHistory({
-                      ...media,
-                      routeId: mediaId,
-                      seasonNumber: isTv ? selectedSeason : undefined,
-                      episodeNumber: isTv ? selectedEpisode : undefined,
-                    })
-                  }
-                  className="w-full flex items-center justify-center gap-3 px-6 py-3.5 brand-btn text-white font-bold rounded-xl text-sm shadow-lg"
-                >
-                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                  <span>
-                    {(() => {
-                      const hist = history.find(
-                        (h) =>
-                          h.id === mediaId ||
-                          (media.anilibertyId && h.id === `al-${media.anilibertyId}`) ||
-                          (media.tmdbId && h.tmdbId === media.tmdbId)
-                      );
-                      if (isTv && hist?.episodeNumber) {
-                        return `Продолжить (Серия ${hist.episodeNumber})`;
-                      }
-                      return isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть';
-                    })()}
-                  </span>
-                </Link>
-              ) : (
-                <a
-                  href={kinopoiskUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() =>
-                    addToHistory({
-                      ...media,
-                      routeId: mediaId,
-                      seasonNumber: isTv ? selectedSeason : undefined,
-                      episodeNumber: isTv ? selectedEpisode : undefined,
-                    })
-                  }
-                  className="w-full flex items-center justify-center gap-3 px-6 py-3.5 brand-btn text-white font-bold rounded-xl text-sm shadow-lg"
-                >
-                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                  <span>Смотреть</span>
-                </a>
-              )}
-            </div>
-
             {/* Synopsis / Description */}
             <div className="space-y-2">
               <h2 className="text-xs uppercase tracking-wider font-bold text-cinema-muted">
@@ -922,57 +635,54 @@ export default function MovieDetailPage() {
 
             {/* Primary Action Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              {/* Button: «Смотреть» -> built-in HLS player for ALL anime, Kinopoisk for movies/series (Desktop/Tablet) */}
-              {isAnimeMedia ? (
-                <Link
-                  href={buildAnimeWatchUrl(selectedSeason, selectedEpisode)}
-                  onClick={() =>
-                    addToHistory({
-                      ...media,
-                      routeId: mediaId,
-                      seasonNumber: isTv ? selectedSeason : undefined,
-                      episodeNumber: isTv ? selectedEpisode : undefined,
-                    })
-                  }
-                  data-nav-item="true"
-                  className="hidden sm:flex items-center justify-center gap-3 px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-base"
-                >
-                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                  <span>
-                    {(() => {
-                      const hist = history.find(
-                        (h) =>
-                          h.id === mediaId ||
-                          (media.anilibertyId && h.id === `al-${media.anilibertyId}`) ||
-                          (media.tmdbId && h.tmdbId === media.tmdbId)
-                      );
-                      if (isTv && hist?.episodeNumber) {
-                        return `Продолжить (Серия ${hist.episodeNumber})`;
-                      }
-                      return isTv ? `Смотреть серию ${selectedEpisode}` : 'Смотреть';
-                    })()}
-                  </span>
-                </Link>
-              ) : (
-                <a
-                  href={kinopoiskUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() =>
-                    addToHistory({
-                      ...media,
-                      routeId: mediaId,
-                      seasonNumber: isTv ? selectedSeason : undefined,
-                      episodeNumber: isTv ? selectedEpisode : undefined,
-                    })
-                  }
-                  data-nav-item="true"
-                  className="hidden sm:flex items-center justify-center gap-3 px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-base"
-                >
-                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                  <span>Смотреть</span>
-                </a>
-              )}
+              {(() => {
+                const isAnimeTitle = Boolean(
+                  mediaId.startsWith('al-') ||
+                    media.source === 'aniliberty' ||
+                    media.anilibertyId ||
+                    (media.genres?.some((g) => g.id === 16) &&
+                      ((media as any).originalLanguage === 'ja' ||
+                        /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle || '') ||
+                        (media as any).originCountry?.includes('JP')))
+                );
+
+                if (isAnimeTitle) {
+                  const wSp = new URLSearchParams({
+                    type: media.type === 'tv' ? 'tv' : 'movie',
+                    season: String(selectedSeason),
+                    episode: String(selectedEpisode),
+                    title: media.title || '',
+                    originalTitle: media.originalTitle || '',
+                  });
+                  if (media.anilibertyId) wSp.set('anilibertyId', String(media.anilibertyId));
+                  if (media.malId) wSp.set('malId', String(media.malId));
+                  const watchHref = `/watch/${encodeURIComponent(mediaId)}?${wSp.toString()}`;
+
+                  return (
+                    <Link
+                      href={watchHref}
+                      data-nav-item="true"
+                      className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
+                    >
+                      <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                      <span>Смотреть (AniLiberty)</span>
+                    </Link>
+                  );
+                }
+
+                return (
+                  <a
+                    href={kinopoiskUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-nav-item="true"
+                    className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 brand-btn text-white font-bold rounded-xl text-sm sm:text-base"
+                  >
+                    <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                    <span>Смотреть на Кинопоиске</span>
+                  </a>
+                );
+              })()}
 
               {/* Button: «Трейлер» (Official YouTube Trailer) */}
               {extras.trailers.length > 0 && (
@@ -986,104 +696,70 @@ export default function MovieDetailPage() {
                 </button>
               )}
 
-              {/* Button: «+ В подборку» (Icon-only) */}
+              {/* Button: «+ В подборку» (Letterboxd-style Lists) */}
               {accessToken && (
                 <button
                   type="button"
                   onClick={openCollectionModal}
-                  aria-label="В подборку"
-                  title="В подборку"
-                  className="flex items-center justify-center p-3.5 rounded-xl border border-cinema-border bg-cinema-card hover:bg-cinema-surface hover:border-[#8065FF] text-cinema-text transition-all"
+                  className="flex items-center gap-2 px-4 py-3.5 rounded-xl font-semibold border border-cinema-border bg-cinema-card hover:bg-cinema-surface hover:border-[#8065FF] text-cinema-text transition-all text-sm"
                 >
-                  <FolderPlus className="w-5 h-5 text-[#A18BFF]" />
+                  <FolderPlus className="w-4 h-4 text-[#A18BFF]" />
+                  <span>В подборку</span>
                 </button>
               )}
 
-              {/* Button: «Отправить другу» (Icon-only) */}
+              {/* Button: «Отправить другу» (Direct Movie Share in Messenger) */}
               {accessToken && (
                 <button
                   type="button"
                   onClick={openSendFriendModal}
-                  aria-label="Отправить другу"
-                  title="Отправить другу"
-                  className="flex items-center justify-center p-3.5 rounded-xl border border-[#8065FF]/40 bg-[#8065FF]/15 hover:bg-[#8065FF]/25 hover:border-[#8065FF] text-[#A18BFF] transition-all"
+                  className="flex items-center gap-2 px-4 py-3.5 rounded-xl font-semibold border border-[#8065FF]/40 bg-[#8065FF]/15 hover:bg-[#8065FF]/25 hover:border-[#8065FF] text-[#A18BFF] transition-all text-sm"
                 >
-                  <Send className="w-5 h-5" />
+                  <Send className="w-4 h-4" />
+                  <span>Отправить другу</span>
                 </button>
               )}
 
-              {/* Button: «Оценить» (Icon-only) */}
+              {/* Button: «Оценить» */}
               <button
                 onClick={() => setIsRatingModalOpen(true)}
                 data-nav-item="true"
-                aria-label={userRating ? `Ваша оценка: ${userRating}/10` : 'Оценить'}
-                title={userRating ? `Ваша оценка: ${userRating}/10` : 'Оценить'}
-                className={`flex items-center justify-center p-3.5 rounded-xl border backdrop-blur-md transition-all ${
+                className={`flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold border backdrop-blur-md transition-all text-sm ${
                   userRating
                     ? 'bg-amber-400/20 border-amber-400/50 text-amber-300'
                     : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-text hover:border-brand-main/50'
                 }`}
               >
                 <Star
-                  className={`w-5 h-5 ${
+                  className={`w-4 h-4 ${
                     userRating ? 'fill-amber-400 text-amber-400' : 'text-amber-400'
                   }`}
                 />
+                <span>{userRating ? `Ваша оценка: ${userRating}/10` : 'Оценить'}</span>
               </button>
 
-              {/* Button: «❤️ В любимые» (Icon-only) */}
-              {(() => {
-                const isFavNow =
-                  favorites.length >= 0 &&
-                  isInFavorites({ ...media, routeId: mediaId });
-                return (
-                  <button
-                    type="button"
-                    onClick={handleInstantToggleFavorite}
-                    data-nav-item="true"
-                    aria-label={isFavNow ? 'В любимых' : 'В любимые'}
-                    title={isFavNow ? 'Убрать из любимых' : 'Добавить в любимые'}
-                    className={`flex items-center justify-center p-3.5 rounded-xl border backdrop-blur-md transition-all ${
-                      isFavNow
-                        ? 'bg-rose-500/20 border-rose-500 text-rose-300 shadow-[0_0_20px_rgba(244,63,94,0.25)]'
-                        : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-rose-300 hover:border-rose-500/50'
-                    }`}
-                  >
-                    <Heart
-                      className={`w-5 h-5 transition-transform ${
-                        isFavNow ? 'fill-rose-500 text-rose-500 scale-110' : ''
-                      }`}
-                    />
-                  </button>
-                );
-              })()}
-
-              {/* Button: «🔖 В вотчлист» (Icon-only) */}
-              {(() => {
-                const inWatchlistNow =
-                  watchlist.length >= 0 &&
-                  isInWatchlist({ ...media, routeId: mediaId });
-                return (
-                  <button
-                    type="button"
-                    onClick={handleInstantToggleWatchlist}
-                    data-nav-item="true"
-                    aria-label={inWatchlistNow ? 'В вотчлисте' : 'В вотчлист'}
-                    title={inWatchlistNow ? 'Убрать из вотчлиста' : 'Добавить в вотчлист'}
-                    className={`flex items-center justify-center p-3.5 rounded-xl border backdrop-blur-md transition-all ${
-                      inWatchlistNow
-                        ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF] shadow-[0_0_20px_rgba(128,101,255,0.25)]'
-                        : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white hover:border-brand-main/50'
-                    }`}
-                  >
-                    <Bookmark
-                      className={`w-5 h-5 ${
-                        inWatchlistNow ? 'fill-[#A18BFF] text-[#A18BFF]' : ''
-                      }`}
-                    />
-                  </button>
-                );
-              })()}
+              {/* Button: «В вотчлист» */}
+              <button
+                onClick={() => {
+                  const added = toggleWatchlist(media);
+                  setIsFavorite(added);
+                }}
+                data-nav-item="true"
+                aria-label="В вотчлист"
+                className={`flex items-center gap-2 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-sm font-semibold ${
+                  watchlist.some((w) => String(w.id) === String(media.tmdbId || media.id))
+                    ? 'bg-[#8065FF]/20 border-[#8065FF] text-[#A18BFF]'
+                    : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white hover:border-brand-main/50'
+                }`}
+              >
+                <Heart
+                  className={`w-5 h-5 ${
+                    watchlist.some((w) => String(w.id) === String(media.tmdbId || media.id))
+                      ? 'fill-[#A18BFF] text-[#A18BFF]'
+                      : ''
+                  }`}
+                />
+              </button>
             </div>
 
             {collectionToast && (
@@ -1134,6 +810,52 @@ export default function MovieDetailPage() {
                 )}
               </div>
             )}
+
+            {/* Official Streaming Alternatives (Иви, Okko, START, Wink, Premier) */}
+            <div className="pt-2 space-y-2">
+              <p className="text-[11px] uppercase tracking-wider font-bold text-cinema-muted">
+                Если нет на Кинопоиске — открыть на других платформах:
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  {
+                    name: 'Иви',
+                    url: `https://www.ivi.ru/search/?q=${encodeURIComponent(media.title)}`,
+                    badge: 'bg-rose-500/15 border-rose-500/35 text-rose-300 hover:bg-rose-500/25',
+                  },
+                  {
+                    name: 'Okko',
+                    url: `https://okko.tv/search/${encodeURIComponent(media.title)}`,
+                    badge: 'bg-violet-500/15 border-violet-500/35 text-violet-300 hover:bg-violet-500/25',
+                  },
+                  {
+                    name: 'START',
+                    url: `https://start.ru/search?q=${encodeURIComponent(media.title)}`,
+                    badge: 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25',
+                  },
+                  {
+                    name: 'Wink',
+                    url: `https://wink.ru/search?query=${encodeURIComponent(media.title)}`,
+                    badge: 'bg-orange-500/15 border-orange-500/35 text-orange-300 hover:bg-orange-500/25',
+                  },
+                  {
+                    name: 'Premier',
+                    url: `https://premier.one/search?query=${encodeURIComponent(media.title)}`,
+                    badge: 'bg-amber-500/15 border-amber-500/35 text-amber-300 hover:bg-amber-500/25',
+                  },
+                ].map((platform) => (
+                  <a
+                    key={platform.name}
+                    href={platform.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${platform.badge}`}
+                  >
+                    {platform.name} ↗
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1155,8 +877,6 @@ export default function MovieDetailPage() {
                       <img
                         src={person.profilePath}
                         alt={person.name}
-                        referrerPolicy="no-referrer"
-                        onError={proxyImageOnError(person.profilePath)}
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -1179,74 +899,6 @@ export default function MovieDetailPage() {
           </section>
         )}
 
-        {/* 3b. Voiceover Studio Selector & Cast (Anime - only shows verified working voiceovers) */}
-        {isAnimeMedia && (availableVoices.length > 0 || (media.voiceovers && media.voiceovers.length > 0)) && (
-          <section className="mt-14 pt-8 border-t border-cinema-border space-y-5">
-            {availableVoices.length > 0 && (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-xl sm:text-2xl font-bold text-cinema-text">
-                      Доступные озвучки ({availableVoices.length})
-                    </h2>
-                    <span className="px-3 py-1 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-bold text-[#A18BFF]">
-                      HD 720p / 1080p
-                    </span>
-                  </div>
-                  <span className="text-xs text-cinema-muted">
-                    Отображаются только рабочие озвучки для данного аниме
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                  {availableVoices.map((v, vIdx) => {
-                    const isSelected = selectedVoiceId === v.id;
-                    return (
-                      <button
-                        key={`${v.id}-${vIdx}`}
-                        type="button"
-                        onClick={() => setSelectedVoiceId(v.id)}
-                        className={`flex flex-col items-start p-3.5 rounded-2xl border text-left transition-all ${
-                          isSelected
-                            ? 'bg-[#8065FF]/20 border-[#8065FF] text-white shadow-[0_0_20px_rgba(128,101,255,0.2)]'
-                            : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <span className="text-sm font-bold text-white">{v.name}</span>
-                          {isSelected && <Check className="w-4 h-4 text-[#A18BFF]" />}
-                        </div>
-                        <span className="text-[11px] text-[#A18BFF]/80 mt-1 font-medium line-clamp-1">
-                          {v.tag}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {media.voiceovers && media.voiceovers.length > 0 && (
-              <div className="pt-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-cinema-muted mb-2.5">
-                  Участники озвучки и релиза:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {media.voiceovers.map((m, idx) => (
-                    <span
-                      key={`${m.name}-${idx}`}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cinema-card border border-cinema-border text-xs"
-                    >
-                      <span className="font-bold text-cinema-text">{m.name}</span>
-                      <span className="text-cinema-muted">{m.role}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
         {/* 4. Episodes Section (for TV Series) */}
         {isTv && allSeasons.length > 0 && (
           <section className="mt-12 pt-8 border-t border-cinema-border">
@@ -1261,8 +913,6 @@ export default function MovieDetailPage() {
               activeEpisode={selectedEpisode}
               onSelectSeason={handleSeasonChange}
               onSelectEpisode={handleEpisodeChange}
-              animeTitle={isAnimeMedia ? media.title : undefined}
-              animeOriginalTitle={isAnimeMedia ? media.originalTitle : undefined}
             />
           </section>
         )}
@@ -1457,6 +1107,7 @@ export default function MovieDetailPage() {
                     onMouseLeave={() => setHoverRating(0)}
                     onClick={() => {
                       setModalRating(star);
+                      if (star >= 8) setModalFavorite(true);
                     }}
                     className="p-1 transition-transform hover:scale-125 focus:outline-none"
                   >
@@ -1498,11 +1149,21 @@ export default function MovieDetailPage() {
               className="w-full rounded-xl bg-[#09090D] border border-[#292936] p-3 text-xs text-white placeholder-[#92929F] focus:outline-none focus:border-[#8065FF] resize-none"
             />
 
+            <label className="flex items-center gap-2.5 text-xs text-cinema-muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={modalFavorite}
+                onChange={(e) => setModalFavorite(e.target.checked)}
+                className="w-4 h-4 accent-[#8065FF]"
+              />
+              <span>Показать в «Любимых фильмах» в профиле для друзей</span>
+            </label>
+
             <button
               type="button"
               disabled={savingReview}
               onClick={async () => {
-                await saveRatingToServer(modalRating, modalReview);
+                await saveRatingToServer(modalRating, modalReview, modalFavorite);
                 setIsRatingModalOpen(false);
               }}
               className="w-full py-3 rounded-xl brand-btn text-white text-sm font-bold disabled:opacity-50"

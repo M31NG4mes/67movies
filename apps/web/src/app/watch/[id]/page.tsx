@@ -1,196 +1,141 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { api } from '../../../lib/api-client';
 import { VideoPlayer } from '../../../components/player/VideoPlayer';
-import { MediaItem, Season, StreamSourceGroup } from '@cinemaflow/types';
-import { usePlayerStore } from '../../../stores/player.store';
+import { MediaItem, MediaType, Season, StreamSourceGroup } from '@cinemaflow/types';
 
-export default function WatchPage() {
+function WatchContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const mediaId = String(params?.id || '');
-  const titleHint = searchParams?.get('title') || '';
-  const origTitleHint = searchParams?.get('originalTitle') || '';
-  const malIdHint = searchParams?.get('malId')
+  const typeParam = searchParams?.get('type');
+  const mediaTypeParam: MediaType | undefined =
+    typeParam === 'tv' ? 'tv' : typeParam === 'movie' ? 'movie' : undefined;
+  const titleParam = searchParams?.get('title') || undefined;
+  const originalTitleParam = searchParams?.get('originalTitle') || undefined;
+  const alIdParam = searchParams?.get('anilibertyId')
+    ? Number(searchParams.get('anilibertyId')) || undefined
+    : undefined;
+  const malIdParam = searchParams?.get('malId')
     ? Number(searchParams.get('malId')) || undefined
     : undefined;
-  const isAnimeParam = searchParams?.get('anime') === '1';
-  const voiceHint = searchParams?.get('voice') || 'aniliberty';
 
   const [media, setMedia] = useState<MediaItem | null>(null);
   const [sourceGroups, setSourceGroups] = useState<StreamSourceGroup[]>([]);
   const [seasonData, setSeasonData] = useState<Season | null>(null);
   const [currentSeason, setCurrentSeason] = useState<number>(
-    parseInt(searchParams?.get('season') || '1', 10)
+    parseInt(searchParams?.get('season') || '1', 10) || 1
   );
   const [currentEpisode, setCurrentEpisode] = useState<number>(
-    parseInt(searchParams?.get('episode') || '1', 10)
+    parseInt(searchParams?.get('episode') || '1', 10) || 1
   );
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // 1. Load Media details & episodes list once per mediaId
   useEffect(() => {
     if (!mediaId) return;
 
     let isMounted = true;
-    setIsInitialLoading(true);
+    setIsLoading(true);
 
     api.media
-      .getById(mediaId)
-      .catch(() => null)
+      .getById(mediaId, mediaTypeParam)
       .then(async (data) => {
         if (!isMounted) return;
+        setMedia(data);
 
-        const isAnimeItem = Boolean(
-          isAnimeParam ||
-            /^al-\d+$/i.test(mediaId) ||
-            /^mal-\d+$/i.test(mediaId) ||
+        const resolvedTitle = data?.title || titleParam || '67movies';
+        const resolvedOriginal = data?.originalTitle || originalTitleParam;
+        const resolvedAlId = data?.anilibertyId || alIdParam;
+        const resolvedMalId = data?.malId || malIdParam;
+
+        const isAnimeTitle = Boolean(
+          mediaId.startsWith('al-') ||
+            mediaId.startsWith('mal-') ||
             data?.source === 'aniliberty' ||
-            data?.source === 'jikan' ||
-            data?.source === 'shikimori' ||
-            data?.anilibertyId ||
-            data?.malId ||
-            data?.genres?.some((g) =>
-              /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
-            ) ||
-            (data?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(data.originalTitle))
+            resolvedAlId ||
+            (data?.genres?.some((g) => g.id === 16) &&
+              ((data as any)?.originalLanguage === 'ja' ||
+                /[\u3040-\u30ff\u4e00-\u9faf]/.test(resolvedOriginal || '') ||
+                (data as any)?.originCountry?.includes('JP')))
         );
 
-        let resolvedMedia = data;
-
-        if (isAnimeItem) {
-          const alMatch = /^al-(\d+)$/i.exec(mediaId);
-          const alRelease = await api.media
-            .resolveAniLibertyRelease({
-              anilibertyId:
-                resolvedMedia?.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined),
-              malId: resolvedMedia?.malId || malIdHint,
-              title: resolvedMedia?.title || titleHint,
-              originalTitle: resolvedMedia?.originalTitle || origTitleHint,
-            })
-            .catch(() => null);
-
-          if (alRelease) {
-            const newCount = alRelease.seasons?.[0]?.episodes?.length || 0;
-            const oldCount = resolvedMedia?.seasons?.[0]?.episodes?.length || 0;
-            resolvedMedia = resolvedMedia
-              ? {
-                  ...resolvedMedia,
-                  anilibertyId: alRelease.anilibertyId || resolvedMedia.anilibertyId,
-                  voiceovers: alRelease.voiceovers || resolvedMedia.voiceovers,
-                  episodesTotal: Math.max(
-                    newCount,
-                    alRelease.episodesTotal || 0,
-                    resolvedMedia.episodesTotal || 0
-                  ),
-                  seasons:
-                    newCount >= oldCount && alRelease.seasons?.length
-                      ? alRelease.seasons
-                      : resolvedMedia.seasons,
+        if (isAnimeTitle) {
+          if (data?.seasons && data.seasons.length > 0 && data.seasons[0].episodes?.length) {
+            setSeasonData(data.seasons[0]);
+          } else {
+            api.media
+              .resolveAniLibertyRelease({
+                anilibertyId: resolvedAlId,
+                malId: resolvedMalId,
+                title: resolvedTitle,
+                originalTitle: resolvedOriginal,
+              })
+              .then((rel: MediaItem | null) => {
+                if (isMounted && rel?.seasons?.[0]) {
+                  setSeasonData(rel.seasons[0]);
                 }
-              : alRelease;
+              })
+              .catch(() => {});
           }
+
+          const groups = await api.sources
+            .getAnimeStreams(mediaId, currentEpisode, {
+              title: resolvedTitle,
+              originalTitle: resolvedOriginal,
+              malId: resolvedMalId,
+              anilibertyId: resolvedAlId,
+            })
+            .catch(() => []);
+
+          if (isMounted) {
+            setSourceGroups(groups || []);
+            setIsLoading(false);
+          }
+          return;
         }
 
-        if (!isMounted) return;
-        setMedia(resolvedMedia);
-
-        if (resolvedMedia?.seasons?.[0]?.episodes?.length) {
-          setSeasonData(resolvedMedia.seasons[0]);
-        } else if (resolvedMedia?.type === 'tv') {
-          const seasonTargetId = resolvedMedia.anilibertyId
-            ? `al-${resolvedMedia.anilibertyId}`
-            : mediaId;
+        // Non-anime TV season metadata
+        if (data?.type === 'tv') {
           api.media
-            .getTvSeason(seasonTargetId, currentSeason)
+            .getTvSeason(mediaId, currentSeason)
             .then((s) => {
               if (isMounted && s) setSeasonData(s);
             })
             .catch(() => {});
         }
-      });
 
-    return () => {
-      isMounted = false;
-    };
-  }, [mediaId, isAnimeParam, titleHint, origTitleHint, malIdHint]);
-
-  // 2. Resolve HLS stream whenever episode / season / media changes (keeps VideoPlayer mounted so Fullscreen is preserved!)
-  useEffect(() => {
-    if (!mediaId) return;
-    let isMounted = true;
-    usePlayerStore.getState().setIsBuffering(true);
-
-    const isAnimeItem = Boolean(
-      isAnimeParam ||
-        /^al-\d+$/i.test(mediaId) ||
-        /^mal-\d+$/i.test(mediaId) ||
-        media?.source === 'aniliberty' ||
-        media?.source === 'jikan' ||
-        media?.source === 'shikimori' ||
-        media?.anilibertyId ||
-        media?.malId ||
-        media?.genres?.some((g) =>
-          /аниме|anime|сёнэн|сёнен|исекай|меха|сейнен/i.test(g.name)
-        ) ||
-        (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
-    );
-
-    const fetchStreams = async () => {
-      if (isAnimeItem) {
-        if (
-          !media?.title &&
-          !titleHint &&
-          !origTitleHint &&
-          !/^al-\d+$/i.test(mediaId) &&
-          !malIdHint
-        ) {
-          return [];
-        }
-        const customSeasonName =
-          currentSeason > 1 &&
-          seasonData?.name &&
-          !/^(сезон|season|эпизоды|episodes)\s*\d*$/i.test(seasonData.name.trim())
-            ? seasonData.name.trim()
-            : '';
-        const effectiveAnimeTitle = customSeasonName
-          ? `${media?.title || titleHint}: ${customSeasonName}`
-          : media?.title || titleHint;
-
-        return api.sources.getAnimeStreams(
-          media?.anilibertyId && !customSeasonName ? `al-${media.anilibertyId}` : mediaId,
-          currentEpisode,
-          {
-            anilibertyId: customSeasonName ? undefined : media?.anilibertyId,
-            malId: customSeasonName ? undefined : media?.malId || malIdHint,
-            title: effectiveAnimeTitle,
-            originalTitle: customSeasonName ? undefined : media?.originalTitle || origTitleHint,
+        // Direct movie/series streams resolver
+        try {
+          const sp = new URLSearchParams({
+            title: resolvedTitle,
+            type: data?.type || mediaTypeParam || 'movie',
+          });
+          if (resolvedOriginal) sp.set('originalTitle', resolvedOriginal);
+          if (data?.imdbId) sp.set('imdbId', data.imdbId);
+          if (data?.kinopoiskId) sp.set('kinopoiskId', String(data.kinopoiskId));
+          if (data?.releaseYear) sp.set('year', String(data.releaseYear));
+          if ((data?.type || mediaTypeParam) === 'tv') {
+            sp.set('season', String(currentSeason));
+            sp.set('episode', String(currentEpisode));
           }
-        );
-      }
-
-      return api.sources
-        .resolve({
-          title: media?.title || titleHint || 'Video',
-          type: media?.type || 'movie',
-          year: media?.releaseYear || 2024,
-          tmdbId: media?.tmdbId,
-          season: media?.type === 'tv' ? currentSeason : undefined,
-          episode: media?.type === 'tv' ? currentEpisode : undefined,
-        })
-        .catch(() => []);
-    };
-
-    fetchStreams()
-      .then((groups) => {
-        if (!isMounted) return;
-        setSourceGroups(groups || []);
-        setIsInitialLoading(false);
+          const res = await fetch(`/api/movie-streams?${sp.toString()}`, { cache: 'no-store' });
+          const json = res.ok ? await res.json() : { sourceGroups: [] };
+          if (isMounted) {
+            setSourceGroups(json?.sourceGroups || []);
+            setIsLoading(false);
+          }
+        } catch {
+          if (isMounted) {
+            setSourceGroups([]);
+            setIsLoading(false);
+          }
+        }
       })
-      .catch(() => {
-        if (isMounted) setIsInitialLoading(false);
+      .catch((err) => {
+        console.error('Failed to load video or sources:', err);
+        if (isMounted) setIsLoading(false);
       });
 
     return () => {
@@ -198,36 +143,26 @@ export default function WatchPage() {
     };
   }, [
     mediaId,
-    media?.anilibertyId,
-    media?.malId,
-    media?.title,
-    media?.originalTitle,
-    media?.type,
-    media?.releaseYear,
-    media?.tmdbId,
+    mediaTypeParam,
+    titleParam,
+    originalTitleParam,
+    alIdParam,
+    malIdParam,
     currentSeason,
     currentEpisode,
-    isAnimeParam,
-    titleHint,
-    origTitleHint,
-    malIdHint,
   ]);
 
   const handleSeasonChange = (seasonNum: number) => {
     setCurrentSeason(seasonNum);
     setCurrentEpisode(1);
-    const existingSeason = media?.seasons?.find((s) => s.seasonNumber === seasonNum);
-    if (existingSeason?.episodes?.length) {
-      setSeasonData(existingSeason);
-      return;
+    if (media?.type === 'tv' && !mediaId.startsWith('al-')) {
+      api.media
+        .getTvSeason(mediaId, seasonNum)
+        .then((s) => {
+          if (s) setSeasonData(s);
+        })
+        .catch(() => {});
     }
-    const seasonTargetId = media?.anilibertyId ? `al-${media.anilibertyId}` : mediaId;
-    api.media
-      .getTvSeason(seasonTargetId, seasonNum)
-      .then((s) => {
-        if (s) setSeasonData(s);
-      })
-      .catch(() => {});
   };
 
   const handleEpisodeChange = (seasonNum: number, episodeNum: number) => {
@@ -235,51 +170,12 @@ export default function WatchPage() {
     setCurrentEpisode(episodeNum);
   };
 
-  const allSeasons: Season[] = useMemo(() => {
-    return (
-      media?.seasons?.map((s) => {
-        if (s.seasonNumber === currentSeason && seasonData?.episodes) {
-          return { ...s, episodes: seasonData.episodes };
-        }
-        return s;
-      }) || (seasonData ? [seasonData] : [])
-    );
-  }, [media?.seasons, currentSeason, seasonData]);
-
-  // Compute sorted episodes list for current season so Prev / Next episode navigation works even with non-contiguous episode numbers
-  const episodesList = useMemo(() => {
-    const activeS =
-      allSeasons.find((s) => s.seasonNumber === currentSeason) || allSeasons[0];
-    if (activeS?.episodes && activeS.episodes.length > 0) {
-      return [...activeS.episodes].sort((a, b) => a.episodeNumber - b.episodeNumber);
-    }
-    const total = activeS?.episodeCount || media?.episodesTotal || 0;
-    if (total > 1) {
-      return Array.from({ length: total }, (_, idx) => ({
-        id: `ep-${idx + 1}`,
-        seasonNumber: currentSeason,
-        episodeNumber: idx + 1,
-        name: `Серия ${idx + 1}`,
-      }));
-    }
-    return [];
-  }, [allSeasons, currentSeason, media?.episodesTotal]);
-
-  const currentEpIndex = episodesList.findIndex(
-    (e) => Number(e.episodeNumber) === Number(currentEpisode)
-  );
-  const prevEp = currentEpIndex > 0 ? episodesList[currentEpIndex - 1] : null;
-  const nextEp =
-    currentEpIndex !== -1 && currentEpIndex < episodesList.length - 1
-      ? episodesList[currentEpIndex + 1]
-      : null;
-
-  if (isInitialLoading && sourceGroups.length === 0) {
+  if (isLoading) {
     return (
       <div className="w-screen h-screen bg-cinema-dark flex flex-col items-center justify-center space-y-4">
         <div className="w-12 h-12 border-4 border-brand-main border-t-transparent rounded-full animate-spin shadow-brand-glow" />
         <p className="text-sm font-medium text-cinema-muted">
-          Подключение к источникам и загрузка видеопотока...
+          Загрузка плеера и потоков AniLiberty...
         </p>
       </div>
     );
@@ -287,88 +183,53 @@ export default function WatchPage() {
 
   const isTv =
     media?.type === 'tv' ||
-    Boolean(seasonData?.episodes?.length) ||
-    episodesList.length > 0;
-  const isAnimeWatch = Boolean(
-    isAnimeParam ||
-      /^al-\d+$/i.test(mediaId) ||
-      /^mal-\d+$/i.test(mediaId) ||
-      media?.anilibertyId ||
-      media?.source === 'aniliberty' ||
-      media?.source === 'jikan' ||
-      media?.source === 'shikimori'
-  );
-  const currentEpData = episodesList.find((e) => e.episodeNumber === currentEpisode);
+    mediaId.startsWith('al-') ||
+    Boolean(seasonData?.episodes?.length);
+  const currentEpData = seasonData?.episodes?.find((e) => e.episodeNumber === currentEpisode);
   const displaySubtitle = isTv
-    ? isAnimeWatch
-      ? `Серия ${currentEpisode}${
-          currentEpData?.name && currentEpData.name !== `Серия ${currentEpisode}`
-            ? `: ${currentEpData.name}`
-            : ''
-        }${episodesList.length > 0 ? ` (из ${episodesList.length})` : ''}`
-      : `Сезон ${currentSeason}, Серия ${currentEpisode}${
-          currentEpData?.name ? `: ${currentEpData.name}` : ''
-        }`
-    : `${media?.releaseYear || ''} • ${media?.genres?.map((g) => g.name).join(', ') || ''}`;
+    ? `Сезон ${currentSeason}, Серия ${currentEpisode}${currentEpData?.name ? `: ${currentEpData.name}` : ''}`
+    : `${media?.releaseYear || ''} ${
+        media?.genres?.length ? `• ${media.genres.map((g) => g.name).join(', ')}` : ''
+      }`.trim();
 
-  // Preserve the user's currently active voiceover provider across episode changes
-  const activeVoiceId =
-    usePlayerStore.getState().activeStream?.providerId || voiceHint;
-  const preferredGroup =
-    sourceGroups.find((g) => g.providerId === activeVoiceId) ||
-    sourceGroups.find((g) => g.providerId === voiceHint) ||
-    sourceGroups[0];
-  const initialStream =
-    preferredGroup?.streams?.find((s) => s.quality === '1080p') ||
-    preferredGroup?.streams?.find((s) => s.quality === '720p') ||
-    preferredGroup?.streams?.[0];
+  const allSeasons: Season[] =
+    media?.seasons?.map((s) => {
+      if (s.seasonNumber === currentSeason && seasonData?.episodes) {
+        return { ...s, episodes: seasonData.episodes };
+      }
+      return s;
+    }) || (seasonData ? [seasonData] : []);
 
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative">
       <VideoPlayer
         mediaId={mediaId}
-        title={media?.title || titleHint || '67movies Stream'}
+        title={media?.title || titleParam || '67movies Stream'}
         subtitle={displaySubtitle}
-        posterPath={media?.posterPath || null}
+        posterPath={media?.backdropPath || media?.posterPath}
         mediaType={isTv ? 'tv' : 'movie'}
-        isAnime={isAnimeWatch}
-        malId={media?.malId || malIdHint}
-        originalTitle={media?.originalTitle || origTitleHint}
+        originalTitle={media?.originalTitle || originalTitleParam}
         sourceGroups={sourceGroups}
-        initialStream={initialStream}
         seasonNumber={isTv ? currentSeason : undefined}
         episodeNumber={isTv ? currentEpisode : undefined}
         seasons={allSeasons}
-        hasPrevEpisode={Boolean(prevEp)}
-        hasNextEpisode={Boolean(nextEp)}
-        nextEpisodeLabel={
-          nextEp ? `Серия ${nextEp.episodeNumber}${nextEp.name ? `: ${nextEp.name}` : ''}` : undefined
-        }
-        onPrevEpisode={
-          prevEp ? () => handleEpisodeChange(currentSeason, prevEp.episodeNumber) : undefined
-        }
-        onNextEpisode={
-          nextEp ? () => handleEpisodeChange(currentSeason, nextEp.episodeNumber) : undefined
-        }
         onSelectSeason={handleSeasonChange}
         onSelectEpisode={handleEpisodeChange}
       />
-
-      {/* No streams available for this episode */}
-      {!isInitialLoading && isAnimeWatch && sourceGroups.length === 0 && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 text-white p-6 text-center">
-          <p className="text-xl font-bold text-red-400 mb-2">Серия недоступна</p>
-          <p className="text-slate-300 mb-6 max-w-md">
-            Для этого аниме или выбранной серии пока нет HLS-потока в базе AniLiberty.
-          </p>
-          <button
-            onClick={() => window.history.back()}
-            className="px-6 py-2.5 brand-btn text-white font-semibold rounded-xl"
-          >
-            Назад
-          </button>
-        </div>
-      )}
     </div>
+  );
+}
+
+export default function WatchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="w-screen h-screen bg-cinema-dark flex items-center justify-center">
+          <div className="w-12 h-12 border-4 border-brand-main border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <WatchContent />
+    </Suspense>
   );
 }
