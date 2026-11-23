@@ -85,11 +85,14 @@ export class MediaController {
     @Query('category') category?: string,
     @Query('genreId') genreId?: string,
     @Query('genres') genres?: string,
-    @Query('sort') sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
+    @Query('sort')
+    sort: 'popularity' | 'rating' | 'date' | 'date_asc' | 'title_asc' | 'title_desc' | 'votes' = 'popularity',
     @Query('yearFrom') yearFrom?: string,
     @Query('yearTo') yearTo?: string,
     @Query('minRating') minRating?: string,
     @Query('lang') originalLanguage?: string,
+    @Query('countries') countries?: string,
+    @Query('runtime') runtime?: 'short' | 'medium' | 'long',
     @Query('q') q?: string,
     @Query('page') page = '1'
   ) {
@@ -100,6 +103,14 @@ export class MediaController {
           .flatMap((v) => String(v).split(','))
           .map((s) => parseInt(s.trim(), 10))
           .filter((n) => Number.isFinite(n) && n > 0)
+      )
+    );
+    const parsedCountries = Array.from(
+      new Set(
+        String(countries || '')
+          .split(',')
+          .map((s) => s.trim().toUpperCase())
+          .filter((s) => /^[A-Z]{2}$/.test(s))
       )
     );
     return this.mediaService.discoverByGenre(
@@ -114,6 +125,8 @@ export class MediaController {
         yearTo: yearTo ? parseInt(yearTo, 10) : undefined,
         minRating: minRating ? parseFloat(minRating) : undefined,
         originalLanguage: originalLanguage || undefined,
+        countries: parsedCountries.length > 0 ? parsedCountries : undefined,
+        runtime: runtime || undefined,
         query: q ? q.slice(0, 120) : undefined,
       }
     );

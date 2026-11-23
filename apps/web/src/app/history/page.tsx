@@ -24,7 +24,7 @@ export default function HistoryPage() {
             История просмотров
           </h1>
           <p className="text-sm text-[#92929F] mt-1">
-            Фильмы и сериалы, которые вы открывали и смотрели ({history.length})
+            Фильмы, сериалы и аниме, которые вы смотрели ({history.length})
           </p>
         </div>
 
@@ -51,7 +51,7 @@ export default function HistoryPage() {
           <Clock className="w-10 h-10 text-[#A18BFF] mx-auto mb-3 opacity-70" />
           <p className="text-lg font-bold text-white">История пока пуста</p>
           <p className="text-sm text-[#92929F] mt-2">
-            Открывайте фильмы и сериалы из каталога — они автоматически появятся здесь.
+            Включите просмотр любого фильма, сериала или аниме — прогресс и серия появятся здесь.
           </p>
           <Link
             href="/catalog"
@@ -62,43 +62,83 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4 animate-fadeIn">
-          {history.map((item) => (
-            <div
-              key={item.id}
-              className="group relative rounded-2xl p-1 brand-card-hover bg-[#111119]"
-            >
-              <Link href={`/movie/${item.id}?type=${item.type || 'movie'}`} className="block">
-                <div className="aspect-[2/3] rounded-xl overflow-hidden bg-[#181821] relative">
-                  {item.posterPath ? (
-                    <img
-                      src={item.posterPath}
-                      alt={item.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#92929F]">
-                      <Film className="w-8 h-8" />
-                    </div>
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/50 to-transparent flex flex-col justify-end p-2.5 hero-keep-white">
-                    <p className="text-xs font-bold text-white line-clamp-2">{item.title}</p>
-                    <p className="text-[10px] text-white/65 mt-0.5">
-                      {new Date(item.addedAt).toLocaleDateString('ru-RU')}
-                    </p>
-                  </div>
-                </div>
-              </Link>
+          {history.map((item) => {
+            const pct =
+              item.duration && item.duration > 0 && item.currentTime
+                ? Math.min(100, Math.max(4, Math.round((item.currentTime / item.duration) * 100)))
+                : 0;
+            const epBadge = item.episodeNumber
+              ? item.seasonNumber && item.seasonNumber > 1
+                ? `С${item.seasonNumber} • Серия ${item.episodeNumber}`
+                : `Серия ${item.episodeNumber}`
+              : null;
+            const timeLabel =
+              item.currentTime && item.currentTime > 0
+                ? `${Math.floor(item.currentTime / 60)}:${String(
+                    Math.floor(item.currentTime % 60)
+                  ).padStart(2, '0')}`
+                : null;
 
-              <button
-                type="button"
-                onClick={() => removeFromHistory(item.id)}
-                title="Удалить из истории"
-                className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/75 hover:bg-red-500/80 text-white backdrop-blur-md transition-colors"
+            return (
+              <div
+                key={item.id}
+                className="group relative rounded-2xl p-1 brand-card-hover bg-[#111119]"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
+                <Link href={`/movie/${item.id}?type=${item.type || 'movie'}`} className="block">
+                  <div className="aspect-[2/3] rounded-xl overflow-hidden bg-[#181821] relative">
+                    {item.posterPath ? (
+                      <img
+                        src={item.posterPath}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[#92929F]">
+                        <Film className="w-8 h-8" />
+                      </div>
+                    )}
+
+                    {/* Stopped Episode Badge */}
+                    {epBadge && (
+                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-[#8065FF]/90 text-white text-[10px] font-extrabold shadow-lg backdrop-blur-md">
+                        {epBadge}
+                      </div>
+                    )}
+
+                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/95 via-black/55 to-transparent flex flex-col justify-end p-2.5 hero-keep-white">
+                      <p className="text-xs font-bold text-white line-clamp-2">{item.title}</p>
+                      <p className="text-[10px] text-white/75 mt-0.5 truncate">
+                        {epBadge
+                          ? `Остановились: ${epBadge}${timeLabel ? ` (${timeLabel})` : ''}`
+                          : timeLabel
+                          ? `Остановились на ${timeLabel}`
+                          : new Date(item.addedAt).toLocaleDateString('ru-RU')}
+                      </p>
+                    </div>
+
+                    {/* Progress bar */}
+                    {pct > 0 && (
+                      <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20">
+                        <div
+                          className="h-full bg-[#8065FF]"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => removeFromHistory(item.id)}
+                  title="Удалить из истории"
+                  className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/75 hover:bg-red-500/80 text-white backdrop-blur-md transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

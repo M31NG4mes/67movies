@@ -15,6 +15,7 @@ import { TrackSelectorModal } from './TrackSelectorModal';
 import { SourceSelectorModal, QualitySelectorModal } from './SourceSelectorModal';
 import { EpisodePicker } from '../media/EpisodePicker';
 import { usePlayerStore } from '../../stores/player.store';
+import { useLibraryStore } from '../../stores/library.store';
 import { usePlayerHotkeys } from '../../hooks/use-hotkeys';
 import { usePlayerSync } from '../../hooks/use-player-sync';
 import { Season, StreamSourceGroup, VideoStream } from '@cinemaflow/types';
@@ -23,6 +24,8 @@ interface VideoPlayerProps {
   mediaId: string;
   title: string;
   subtitle?: string;
+  posterPath?: string | null;
+  mediaType?: 'movie' | 'tv';
   isAnime?: boolean;
   malId?: number;
   originalTitle?: string;
@@ -44,6 +47,8 @@ export function VideoPlayer({
   mediaId,
   title,
   subtitle,
+  posterPath,
+  mediaType,
   isAnime = false,
   malId,
   originalTitle,
@@ -77,6 +82,7 @@ export function VideoPlayer({
   const [failedVoiceKeys, setFailedVoiceKeys] = useState<string[]>([]);
   const [skipSegments, setSkipSegments] = useState<EpisodeSkipSegments>({ op: null, ed: null });
   const autoTriggeredSkipRef = useRef<Set<string>>(new Set());
+  const lastHistorySavedRef = useRef<{ time: number; ep?: number; season?: number }>({ time: 0 });
 
   // Zustand Store
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -491,6 +497,44 @@ export function VideoPlayer({
     },
     [setCurrentTime, showOsd]
   );
+
+  // Record to local watch history ONLY when user actually plays video (>= 3s) and track stopped episode
+  useEffect(() => {
+    if (!mediaId || !title || duration <= 0 || currentTime < 3) return;
+    const ep = episodeNumber || activeStream?.episode;
+    const season = seasonNumber || activeStream?.season;
+    const prev = lastHistorySavedRef.current;
+    const episodeChanged = prev.ep !== ep || prev.season !== season;
+
+    if (!episodeChanged && isPlaying && Math.abs(currentTime - prev.time) < 8) {
+      return;
+    }
+
+    lastHistorySavedRef.current = { time: currentTime, ep, season };
+    useLibraryStore.getState().addToHistory({
+      id: mediaId,
+      routeId: mediaId,
+      type: mediaType || (ep ? 'tv' : 'movie'),
+      title,
+      posterPath: posterPath || null,
+      seasonNumber: season,
+      episodeNumber: ep,
+      currentTime: Math.floor(currentTime),
+      duration: Math.floor(duration),
+    });
+  }, [
+    mediaId,
+    title,
+    posterPath,
+    mediaType,
+    seasonNumber,
+    episodeNumber,
+    activeStream?.episode,
+    activeStream?.season,
+    currentTime,
+    duration,
+    isPlaying,
+  ]);
 
   // Auto-Skip OP / ED when enabled in settings (once per segment per episode)
   useEffect(() => {

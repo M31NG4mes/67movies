@@ -9,6 +9,10 @@ export interface LibraryEntry {
   posterPath: string | null;
   releaseYear?: number;
   voteAverage?: number;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  currentTime?: number;
+  duration?: number;
   addedAt: string;
   aliases?: string[];
 }
@@ -21,6 +25,10 @@ type MediaInput = Partial<MediaItem> & {
   id: string | number;
   title: string;
   routeId?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  currentTime?: number;
+  duration?: number;
 };
 
 function getNumericId(item: MediaInput): number {
@@ -88,6 +96,10 @@ function toLibraryEntry(item: MediaInput): LibraryEntry {
     posterPath: item.posterPath || item.backdropPath || null,
     releaseYear: item.releaseYear,
     voteAverage: item.voteAverage,
+    seasonNumber: item.seasonNumber,
+    episodeNumber: item.episodeNumber,
+    currentTime: item.currentTime,
+    duration: item.duration,
     addedAt: new Date().toISOString(),
     aliases: buildAliases(item),
   };

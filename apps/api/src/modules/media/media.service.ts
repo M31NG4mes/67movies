@@ -298,7 +298,7 @@ export class MediaService {
     type: MediaType = 'movie',
     genreId?: number,
     page = 1,
-    sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
+    sort: 'popularity' | 'rating' | 'date' | 'date_asc' | 'title_asc' | 'title_desc' | 'votes' = 'popularity',
     extra?: {
       category?: string;
       genreIds?: number[];
@@ -306,6 +306,8 @@ export class MediaService {
       yearTo?: number;
       minRating?: number;
       originalLanguage?: string;
+      countries?: string[];
+      runtime?: 'short' | 'medium' | 'long';
       query?: string;
     },
   ): Promise<PaginatedResult<MediaItem>> {
@@ -313,13 +315,16 @@ export class MediaService {
     return this.cache.wrap(key, 300, async () => {
       const category = extra?.category || type;
 
+      const providerSort: 'popularity' | 'rating' | 'date' | 'votes' =
+        sort === 'rating' || sort === 'date' || sort === 'votes' ? sort : 'popularity';
+
       // «Аниме» tab: AniLiberty is the primary source (falls back to legacy path if unreachable)
       if (category === 'anime') {
         const anime = await this.aniLiberty.getCatalog({
           page,
           search: extra?.query,
           genreId,
-          sort,
+          sort: providerSort,
           yearFrom: extra?.yearFrom,
           yearTo: extra?.yearTo,
           minRating: extra?.minRating,
@@ -334,7 +339,7 @@ export class MediaService {
         category,
         genreId,
         page,
-        sort,
+        sort: providerSort,
         yearFrom: extra?.yearFrom,
         yearTo: extra?.yearTo,
         minRating: extra?.minRating,
@@ -351,11 +356,13 @@ export class MediaService {
 
       const [tmdbRes, kpItems, animeItems, tvMazeItems] = await Promise.all([
         this.tmdbService.discoverByGenre(type, genreId, page, sort, extra),
-        this.kinopoiskProvider.discover(providerOptions).catch(() => []),
-        shouldQueryAnime
+        extra?.countries?.length || extra?.runtime
+          ? Promise.resolve([])
+          : this.kinopoiskProvider.discover(providerOptions).catch(() => []),
+        shouldQueryAnime && !extra?.countries?.length && !extra?.runtime
           ? this.animeProvider.discover(providerOptions).catch(() => [])
           : Promise.resolve([]),
-        shouldQueryTvMaze
+        shouldQueryTvMaze && !extra?.countries?.length && !extra?.runtime
           ? this.tvMazeProvider.discover(providerOptions).catch(() => [])
           : Promise.resolve([]),
       ]);
@@ -368,11 +375,19 @@ export class MediaService {
           tvMazeItems,
         ],
         {
-          sort: sort === 'popularity' ? undefined : sort,
+          sort: providerSort === 'popularity' ? undefined : providerSort,
           maxItems: 48,
           requirePoster: true,
         },
       );
+
+      if (sort === 'date_asc') {
+        merged.sort((a, b) => (a.releaseYear || 9999) - (b.releaseYear || 9999));
+      } else if (sort === 'title_asc') {
+        merged.sort((a, b) => a.title.localeCompare(b.title, 'ru'));
+      } else if (sort === 'title_desc') {
+        merged.sort((a, b) => b.title.localeCompare(a.title, 'ru'));
+      }
 
       const extraCount = Math.max(0, merged.length - tmdbRes.items.length);
       return {

@@ -319,6 +319,8 @@ export default function WatchPage() {
         mediaId={mediaId}
         title={media?.title || titleHint || '67movies Stream'}
         subtitle={displaySubtitle}
+        posterPath={media?.posterPath || null}
+        mediaType={isTv ? 'tv' : 'movie'}
         isAnime={isAnimeWatch}
         malId={media?.malId || malIdHint}
         originalTitle={media?.originalTitle || origTitleHint}

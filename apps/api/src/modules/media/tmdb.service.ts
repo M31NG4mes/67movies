@@ -138,7 +138,7 @@ export class TmdbService {
     type: MediaType = 'movie',
     genreId?: number,
     page = 1,
-    sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
+    sort: 'popularity' | 'rating' | 'date' | 'date_asc' | 'title_asc' | 'title_desc' | 'votes' = 'popularity',
     extra?: {
       category?: string;
       genreIds?: number[];
@@ -146,6 +146,8 @@ export class TmdbService {
       yearTo?: number;
       minRating?: number;
       originalLanguage?: string;
+      countries?: string[];
+      runtime?: 'short' | 'medium' | 'long';
     }
   ): Promise<PaginatedResult<MediaItem>> {
     const category = extra?.category || type;
@@ -163,6 +165,18 @@ export class TmdbService {
         ? isTv
           ? 'first_air_date.desc'
           : 'primary_release_date.desc'
+        : sort === 'date_asc'
+        ? isTv
+          ? 'first_air_date.asc'
+          : 'primary_release_date.asc'
+        : sort === 'title_asc'
+        ? isTv
+          ? 'name.asc'
+          : 'title.asc'
+        : sort === 'title_desc'
+        ? isTv
+          ? 'name.desc'
+          : 'title.desc'
         : 'popularity.desc';
 
     const params: Record<string, any> = {
@@ -189,13 +203,27 @@ export class TmdbService {
       params.with_genres = genreList.join(',');
     }
 
-    // Category-implied original language
+    // Category-implied original language & country filter
     if (category === 'anime') {
       params.with_original_language = 'ja';
     } else if (category === 'dorama') {
       params.with_original_language = 'ko';
     } else if (extra?.originalLanguage) {
       params.with_original_language = extra.originalLanguage;
+    }
+
+    if (Array.isArray(extra?.countries) && extra.countries.length > 0) {
+      params.with_origin_country = extra.countries.join('|');
+    }
+
+    // Runtime filter (minutes)
+    if (extra?.runtime === 'short') {
+      params['with_runtime.lte'] = 90;
+    } else if (extra?.runtime === 'medium') {
+      params['with_runtime.gte'] = 90;
+      params['with_runtime.lte'] = 140;
+    } else if (extra?.runtime === 'long') {
+      params['with_runtime.gte'] = 140;
     }
 
     // Year range filters

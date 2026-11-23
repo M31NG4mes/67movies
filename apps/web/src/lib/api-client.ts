@@ -525,7 +525,7 @@ export const api = {
       type: MediaType = 'movie',
       genreId?: number,
       page = 1,
-      sort: 'popularity' | 'rating' | 'date' | 'votes' = 'popularity',
+      sort: 'popularity' | 'rating' | 'date' | 'date_asc' | 'title_asc' | 'title_desc' | 'votes' = 'popularity',
       extra?: {
         category?: string;
         genreIds?: number[];
@@ -533,6 +533,8 @@ export const api = {
         yearTo?: number;
         minRating?: number;
         lang?: string;
+        countries?: string[];
+        runtime?: 'short' | 'medium' | 'long';
         q?: string;
       }
     ) => {
@@ -561,6 +563,8 @@ export const api = {
         if (extra?.yearTo) sp.set('yearTo', String(extra.yearTo));
         if (extra?.minRating) sp.set('minRating', String(extra.minRating));
         if (extra?.lang) sp.set('lang', extra.lang);
+        if (extra?.countries?.length) sp.set('countries', extra.countries.join(','));
+        if (extra?.runtime) sp.set('runtime', extra.runtime);
         if (extra?.q) sp.set('q', extra.q);
         return await fetcher<PaginatedResult<MediaItem>>(`/media/discover?${sp.toString()}`);
       } catch (err) {
@@ -605,6 +609,9 @@ export const api = {
           rating: 'vote_average.desc',
           votes: 'vote_count.desc',
           date: resolvedType === 'tv' ? 'first_air_date.desc' : 'primary_release_date.desc',
+          date_asc: resolvedType === 'tv' ? 'first_air_date.asc' : 'primary_release_date.asc',
+          title_asc: resolvedType === 'tv' ? 'name.asc' : 'title.asc',
+          title_desc: resolvedType === 'tv' ? 'name.desc' : 'title.desc',
         };
         const params: Record<string, string> = {
           sort_by: sortByMap[sort] || 'popularity.desc',
@@ -634,11 +641,28 @@ export const api = {
           params[resolvedType === 'tv' ? 'first_air_date.lte' : 'primary_release_date.lte'] = `${extra.yearTo}-12-31`;
         }
         if (extra?.minRating) params['vote_average.gte'] = String(extra.minRating);
+        if (extra?.countries?.length) params.with_origin_country = extra.countries.join('|');
+        if (extra?.runtime === 'short') {
+          params['with_runtime.lte'] = '90';
+        } else if (extra?.runtime === 'medium') {
+          params['with_runtime.gte'] = '90';
+          params['with_runtime.lte'] = '140';
+        } else if (extra?.runtime === 'long') {
+          params['with_runtime.gte'] = '140';
+        }
 
         const tmdbRes: any = await fetchDirectTmdb(`/discover/${resolvedType}`, { ...params, page: String(page) });
         if (tmdbRes?.results) {
+          const mapped: MediaItem[] = tmdbRes.results.map((m: any) => mapTmdbToMedia(m, resolvedType));
+          if (sort === 'date_asc') {
+            mapped.sort((a, b) => (a.releaseYear || 9999) - (b.releaseYear || 9999));
+          } else if (sort === 'title_asc') {
+            mapped.sort((a, b) => a.title.localeCompare(b.title, 'ru'));
+          } else if (sort === 'title_desc') {
+            mapped.sort((a, b) => b.title.localeCompare(a.title, 'ru'));
+          }
           return {
-            items: tmdbRes.results.map((m: any) => mapTmdbToMedia(m, resolvedType)),
+            items: mapped,
             page: tmdbRes.page || page,
             totalPages: tmdbRes.total_pages || 1,
             totalItems: tmdbRes.total_results || tmdbRes.results.length,

@@ -307,6 +307,8 @@ function MessagesContent() {
     setLoadingList(false);
   }, [accessToken, selectedFriendId, selectedGroupId, initialFriendId]);
 
+  const threadSeqRef = useRef(0);
+
   const buildMessagesSig = (list: DirectMessageItem[]) => {
     if (list.length === 0) return '0';
     const last = list[list.length - 1];
@@ -316,17 +318,19 @@ function MessagesContent() {
   const loadThread = useCallback(
     async (friendId: string, silent = false) => {
       if (!accessToken) return;
+      const seq = ++threadSeqRef.current;
       if (!silent) setLoadingChat(true);
       const res = await authFetch(`/social/messages/${encodeURIComponent(friendId)}`, {
         cache: 'no-store',
       }).catch(() => null);
-      if (res?.ok) {
+      if (res?.ok && seq === threadSeqRef.current) {
         const data = await res.json();
         const incoming: DirectMessageItem[] = data.messages || [];
         setActiveFriend(data.friend || null);
-        setMessages((prev) =>
-          buildMessagesSig(prev) === buildMessagesSig(incoming) ? prev : incoming
-        );
+        setMessages((prev) => {
+          if (silent && incoming.length < prev.length) return prev;
+          return buildMessagesSig(prev) === buildMessagesSig(incoming) ? prev : incoming;
+        });
         setIsFriendTyping(Boolean(data.isFriendTyping));
       }
       if (!silent) setLoadingChat(false);
@@ -337,17 +341,19 @@ function MessagesContent() {
   const loadGroupThread = useCallback(
     async (groupId: string, silent = false) => {
       if (!accessToken) return;
+      const seq = ++threadSeqRef.current;
       if (!silent) setLoadingChat(true);
       const res = await authFetch(`/social/groups/${encodeURIComponent(groupId)}/messages`, {
         cache: 'no-store',
       }).catch(() => null);
-      if (res?.ok) {
+      if (res?.ok && seq === threadSeqRef.current) {
         const data = await res.json();
         const incoming: DirectMessageItem[] = data.messages || [];
         setActiveFriend(null);
-        setMessages((prev) =>
-          buildMessagesSig(prev) === buildMessagesSig(incoming) ? prev : incoming
-        );
+        setMessages((prev) => {
+          if (silent && incoming.length < prev.length) return prev;
+          return buildMessagesSig(prev) === buildMessagesSig(incoming) ? prev : incoming;
+        });
         setIsFriendTyping(false);
       }
       if (!silent) setLoadingChat(false);
@@ -1426,17 +1432,17 @@ function MessagesContent() {
                       return (
                         <div
                           key={msg.id}
-                          className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                          className={`flex flex-col w-full ${isMine ? 'items-end' : 'items-start'}`}
                         >
                           {groupSenderName && (
                             <span className="text-[11px] font-bold text-[#A18BFF] mb-1 px-1">
                               {groupSenderName}
                             </span>
                           )}
-                          {/* Message Bubble + 3-dots Action Button (visible on mobile, hover on desktop) */}
+                          {/* Message Bubble + 3-dots Action Button (aligned cleanly on left/right edges) */}
                           <div
-                            className={`flex items-end gap-1 max-w-full group ${
-                              isMine ? 'flex-row' : 'flex-row-reverse'
+                            className={`flex items-end gap-1.5 w-full group ${
+                              isMine ? 'justify-end' : 'justify-start'
                             }`}
                           >
                             <button
@@ -1448,7 +1454,9 @@ function MessagesContent() {
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 openContextMenuForMsg(msg, rect.left, rect.bottom + 6);
                               }}
-                              className="p-1.5 rounded-full text-[#92929F] hover:text-white hover:bg-white/10 opacity-75 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0 mb-1"
+                              className={`p-1.5 rounded-full text-[#92929F] hover:text-white hover:bg-white/10 opacity-75 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0 mb-1 ${
+                                isMine ? 'order-1' : 'order-2'
+                              }`}
                             >
                               <MoreVertical className="w-4 h-4" />
                             </button>
@@ -1502,10 +1510,10 @@ function MessagesContent() {
                                   longPressTimerRef.current = null;
                                 }
                               }}
-                              className={`min-w-0 overflow-hidden max-w-[80%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg select-none md:select-text ${
+                              className={`min-w-0 w-fit overflow-hidden max-w-[78%] sm:max-w-[68%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg select-none md:select-text ${
                                 isMine
-                                  ? 'bg-[#8065FF] text-white rounded-br-md'
-                                  : 'bg-[#181821] border border-[#292936] text-white rounded-bl-md'
+                                  ? 'order-2 bg-[#8065FF] text-white rounded-br-md'
+                                  : 'order-1 bg-[#181821] border border-[#292936] text-white rounded-bl-md'
                               }`}
                             >
                             {/* Quoted Reply Preview */}
