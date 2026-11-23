@@ -6,7 +6,7 @@ import { SkipForward, ShieldCheck, X } from 'lucide-react';
 import { HlsEngine } from '../../lib/hls-engine';
 import { PlayerControls } from './PlayerControls';
 import { TrackSelectorModal } from './TrackSelectorModal';
-import { SourceSelectorModal } from './SourceSelectorModal';
+import { SourceSelectorModal, QualitySelectorModal } from './SourceSelectorModal';
 import { EpisodePicker } from '../media/EpisodePicker';
 import { usePlayerStore } from '../../stores/player.store';
 import { usePlayerHotkeys } from '../../hooks/use-hotkeys';
@@ -74,9 +74,11 @@ export function VideoPlayer({
   const useSafeProxy = usePlayerStore((s) => s.useSafeProxy);
   const osdMessage = usePlayerStore((s) => s.osdMessage);
   const activeStream = usePlayerStore((s) => s.activeStream);
+  const activeQuality = usePlayerStore((s) => s.activeQuality);
   const isControlsVisible = usePlayerStore((s) => s.isControlsVisible);
   const isAudioSubsModalOpen = usePlayerStore((s) => s.isAudioSubsModalOpen);
   const isSourceModalOpen = usePlayerStore((s) => s.isSourceModalOpen);
+  const isQualityModalOpen = usePlayerStore((s) => s.isQualityModalOpen);
   const error = usePlayerStore((s) => s.error);
 
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
@@ -91,6 +93,7 @@ export function VideoPlayer({
   const setIsUsingProxy = usePlayerStore((s) => s.setIsUsingProxy);
   const showOsd = usePlayerStore((s) => s.showOsd);
   const setActiveStream = usePlayerStore((s) => s.setActiveStream);
+  const setActiveQuality = usePlayerStore((s) => s.setActiveQuality);
   const setAvailableQualities = usePlayerStore((s) => s.setAvailableQualities);
   const setAvailableAudioTracks = usePlayerStore((s) => s.setAvailableAudioTracks);
   const setActiveAudioTrackId = usePlayerStore((s) => s.setActiveAudioTrackId);
@@ -98,6 +101,7 @@ export function VideoPlayer({
   const setActiveSubtitleId = usePlayerStore((s) => s.setActiveSubtitleId);
   const openAudioSubsModal = usePlayerStore((s) => s.openAudioSubsModal);
   const openSourceModal = usePlayerStore((s) => s.openSourceModal);
+  const openQualityModal = usePlayerStore((s) => s.openQualityModal);
   const setError = usePlayerStore((s) => s.setError);
   const reset = usePlayerStore((s) => s.reset);
 
@@ -534,7 +538,11 @@ export function VideoPlayer({
       {/* Controls Overlay */}
       <div
         className={`transition-opacity duration-300 ${
-          isControlsVisible || isAudioSubsModalOpen || isSourceModalOpen || showEpisodesDrawer
+          isControlsVisible ||
+          isAudioSubsModalOpen ||
+          isSourceModalOpen ||
+          isQualityModalOpen ||
+          showEpisodesDrawer
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none'
         }`}
@@ -599,13 +607,35 @@ export function VideoPlayer({
         onSelectSubtitle={(id) => setActiveSubtitleId(id)}
       />
 
-      {/* Source & Voiceover Modal */}
+      {/* Separate Voiceover Selector Modal */}
       <SourceSelectorModal
         isOpen={isSourceModalOpen}
         onClose={() => openSourceModal(false)}
         sourceGroups={sourceGroups}
         activeStream={activeStream}
-        onSelectStream={(stream) => setActiveStream(stream)}
+        onSelectStream={(stream) => {
+          setActiveStream(stream);
+          setActiveQuality(stream.quality);
+          showOsd(`🎙️ ${stream.providerName}`);
+        }}
+      />
+
+      {/* Separate Quality Selector Modal */}
+      <QualitySelectorModal
+        isOpen={isQualityModalOpen}
+        onClose={() => openQualityModal(false)}
+        sourceGroups={sourceGroups}
+        activeStream={activeStream}
+        activeQuality={activeQuality}
+        onSelectStreamQuality={(stream, quality, height) => {
+          setActiveQuality(quality);
+          if (stream.id !== activeStream?.id) {
+            setActiveStream(stream);
+          } else {
+            hlsEngineRef.current?.setQuality(height);
+          }
+          showOsd(`✨ Качество: ${quality}`);
+        }}
       />
     </div>
   );

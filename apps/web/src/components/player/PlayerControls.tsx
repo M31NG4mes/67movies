@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Play,
   Pause,
@@ -14,10 +14,10 @@ import {
   Maximize,
   Minimize,
   Sliders,
-  Radio,
+  Mic,
+  Sparkles,
   ArrowLeft,
   ListVideo,
-  ShieldCheck,
   FastForward,
 } from 'lucide-react';
 import { TimelineScrubber } from './TimelineScrubber';
@@ -63,18 +63,17 @@ export function PlayerControls({
   const bufferedEnd = usePlayerStore((s) => s.bufferedEnd);
   const volume = usePlayerStore((s) => s.volume);
   const isMuted = usePlayerStore((s) => s.isMuted);
-  const audioBoost = usePlayerStore((s) => s.audioBoost);
   const setVolume = usePlayerStore((s) => s.setVolume);
   const toggleMute = usePlayerStore((s) => s.toggleMute);
   const isFullscreen = usePlayerStore((s) => s.isFullscreen);
-  const activeStream = usePlayerStore((s) => s.activeStream);
   const autoPlayNext = usePlayerStore((s) => s.autoPlayNext);
   const setAutoPlayNext = usePlayerStore((s) => s.setAutoPlayNext);
-  const isUsingProxy = usePlayerStore((s) => s.isUsingProxy);
-  const setUseSafeProxy = usePlayerStore((s) => s.setUseSafeProxy);
   const showOsd = usePlayerStore((s) => s.showOsd);
   const openAudioSubsModal = usePlayerStore((s) => s.openAudioSubsModal);
   const openSourceModal = usePlayerStore((s) => s.openSourceModal);
+  const openQualityModal = usePlayerStore((s) => s.openQualityModal);
+
+  const [isVolumeHovered, setIsVolumeHovered] = useState(false);
 
   const formatTime = (seconds: number) => {
     if (isNaN(seconds) || seconds < 0) return '00:00';
@@ -88,102 +87,35 @@ export function PlayerControls({
   };
 
   const effectiveVol = isMuted ? 0 : volume;
-  const volPercent = Math.round(effectiveVol * 100);
+  const showEpisodeButtons = hasPrevEpisode || hasNextEpisode || episodeCount > 1;
 
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute inset-0 flex flex-col justify-between p-4 sm:p-6 bg-gradient-to-t from-cinema-dark/95 via-cinema-dark/20 to-cinema-dark/85 pointer-events-auto transition-opacity duration-300"
+      className="absolute inset-0 flex flex-col justify-between p-4 sm:p-6 bg-gradient-to-t from-cinema-dark/95 via-cinema-dark/15 to-cinema-dark/80 pointer-events-auto transition-opacity duration-300"
     >
-      {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Top Header (Minimalist: only Back icon + Title/Subtitle) */}
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
           <button
             type="button"
             onClick={onBack}
-            aria-label="Назад к каталогу"
-            className="p-2.5 sm:p-3 text-white/90 hover:text-white bg-cinema-card/80 hover:bg-cinema-card border border-cinema-border rounded-full backdrop-blur-md transition-all flex-shrink-0"
+            aria-label="Назад"
+            title="Назад"
+            className="p-2.5 text-white/85 hover:text-white bg-white/10 hover:bg-white/20 rounded-full backdrop-blur-md transition-all flex-shrink-0"
           >
-            <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white drop-shadow-md truncate">
+            <h1 className="text-base sm:text-xl font-bold text-white drop-shadow-md truncate">
               {title}
             </h1>
             {subtitle && (
-              <p className="text-xs sm:text-sm font-medium text-cinema-muted drop-shadow truncate">
+              <p className="text-xs text-white/70 drop-shadow truncate">
                 {subtitle}
               </p>
             )}
           </div>
-        </div>
-
-        {/* Top-Right Quick Toggles: Auto-Next, Safe HTTPS Proxy, Voiceover/Quality Badge */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Auto-Next Toggle (shown when series/episodes exist) */}
-          {(hasPrevEpisode || hasNextEpisode || episodeCount > 1) && (
-            <button
-              type="button"
-              onClick={() => {
-                const nextState = !autoPlayNext;
-                setAutoPlayNext(nextState);
-                showOsd(
-                  nextState
-                    ? '⏭️ Автопереключение серий: ВКЛ'
-                    : '⏸️ Автопереключение серий: ВЫКЛ'
-                );
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full border backdrop-blur-md transition-all ${
-                autoPlayNext
-                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                  : 'bg-cinema-card/80 border-cinema-border text-cinema-muted hover:text-white'
-              }`}
-              title="Автоматически включать следующую серию после завершения текущей"
-            >
-              <FastForward className="w-3.5 h-3.5" />
-              <span>Автосерия: {autoPlayNext ? 'ВКЛ' : 'ВЫКЛ'}</span>
-            </button>
-          )}
-
-          {/* Edge HTTPS Safe Proxy Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              const nextProxy = !isUsingProxy;
-              setUseSafeProxy(nextProxy);
-              showOsd(
-                nextProxy
-                  ? '🛡️ Защищённый HTTPS-прокси включён (для Edge)'
-                  : '⚡ Прямой поток CDN включён'
-              );
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border backdrop-blur-md transition-all ${
-              isUsingProxy
-                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                : 'bg-cinema-card/80 border-cinema-border text-cinema-muted hover:text-white'
-            }`}
-            title="Если браузер Edge блокирует прямой CDN-поток, включите защищённый HTTPS-прокси"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">
-              {isUsingProxy ? 'Защита Edge: ВКЛ' : 'Защита Edge'}
-            </span>
-          </button>
-
-          {/* Active Voiceover & Quality Badge */}
-          {activeStream && (
-            <button
-              type="button"
-              onClick={() => openSourceModal(true)}
-              className="flex items-center space-x-2 px-3.5 py-1.5 text-xs font-semibold uppercase bg-cinema-card/80 hover:bg-cinema-card border border-cinema-border hover:border-brand-main text-white rounded-full backdrop-blur-md transition-all"
-            >
-              <Radio className="w-3.5 h-3.5 text-brand-main animate-pulse" />
-              <span className="max-w-[140px] sm:max-w-[220px] truncate">
-                {activeStream.voiceActing || activeStream.providerName}
-              </span>
-              <span className="text-brand-light font-bold">[{activeStream.quality}]</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -194,11 +126,11 @@ export function PlayerControls({
         className="flex-1 w-full flex items-center justify-center cursor-pointer"
       >
         {isBuffering && (
-          <div className="w-16 h-16 border-4 border-brand-main border-t-transparent rounded-full animate-spin shadow-brand-glow pointer-events-none" />
+          <div className="w-14 h-14 border-4 border-brand-main border-t-transparent rounded-full animate-spin shadow-brand-glow pointer-events-none" />
         )}
       </div>
 
-      {/* Bottom Controls */}
+      {/* Bottom Controls (Minimalist Icon-Only Bar) */}
       <div className="space-y-3">
         {/* Scrubber */}
         <TimelineScrubber
@@ -208,26 +140,36 @@ export function PlayerControls({
           onSeek={onSeek}
         />
 
-        {/* Buttons Row */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-white">
-          {/* Left Controls */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 md:gap-3">
-            {/* Previous Episode */}
-            {(hasPrevEpisode || hasNextEpisode || episodeCount > 1) && (
+        {/* Icon Buttons Row */}
+        <div className="flex items-center justify-between gap-2 text-white">
+          {/* Left Controls: [Prev Ep] [Rewind -10s] [Play/Pause] [Forward +10s] [Next Ep] [Hover Volume] [Time] */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* 1. Previous Episode */}
+            {showEpisodeButtons && (
               <button
                 type="button"
                 onClick={onPrevEpisode}
                 disabled={!hasPrevEpisode}
                 aria-label="Предыдущая серия"
                 title="Предыдущая серия (P или Shift + ←)"
-                className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-cinema-card/80 hover:bg-cinema-card border border-cinema-border text-white/90 hover:text-white disabled:opacity-35 disabled:pointer-events-none transition-all text-xs font-semibold"
+                className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
-                <SkipBack className="w-4 h-4" />
-                <span className="hidden lg:inline">Пред.</span>
+                <SkipBack className="w-5 h-5" />
               </button>
             )}
 
-            {/* Play/Pause */}
+            {/* 2. Rewind 10s (Left of Play/Pause) */}
+            <button
+              type="button"
+              onClick={() => onSkip(-10)}
+              aria-label="Перемотать назад 10 секунд"
+              title="Назад 10 сек (←)"
+              className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <RotateCcw className="w-5 h-5" />
+            </button>
+
+            {/* 3. Play / Pause (Center of transport buttons) */}
             <button
               type="button"
               onClick={onTogglePlay}
@@ -236,158 +178,178 @@ export function PlayerControls({
               className="p-3 text-white bg-brand-main hover:bg-brand-light rounded-full shadow-brand-glow transition-all transform hover:scale-105 active:scale-95"
             >
               {isPlaying ? (
-                <Pause className="w-5 h-5 sm:w-6 sm:h-6" />
+                <Pause className="w-5 h-5" />
               ) : (
-                <Play className="w-5 h-5 sm:w-6 sm:h-6 ml-0.5 fill-white" />
+                <Play className="w-5 h-5 ml-0.5 fill-white" />
               )}
             </button>
 
-            {/* Next Episode */}
-            {(hasPrevEpisode || hasNextEpisode || episodeCount > 1) && (
+            {/* 4. Forward 10s (Right of Play/Pause) */}
+            <button
+              type="button"
+              onClick={() => onSkip(10)}
+              aria-label="Перемотать вперед 10 секунд"
+              title="Вперёд 10 сек (→)"
+              className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <RotateCw className="w-5 h-5" />
+            </button>
+
+            {/* 5. Next Episode */}
+            {showEpisodeButtons && (
               <button
                 type="button"
                 onClick={onNextEpisode}
                 disabled={!hasNextEpisode}
                 aria-label="Следующая серия"
                 title="Следующая серия (N или Shift + →)"
-                className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-cinema-card/80 hover:bg-cinema-card border border-cinema-border text-white/90 hover:text-white disabled:opacity-35 disabled:pointer-events-none transition-all text-xs font-semibold"
+                className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
-                <span className="hidden lg:inline">След.</span>
-                <SkipForward className="w-4 h-4" />
+                <SkipForward className="w-5 h-5" />
               </button>
             )}
 
-            {/* Rewind 10s */}
-            <button
-              type="button"
-              onClick={() => onSkip(-10)}
-              aria-label="Перемотать назад 10 секунд"
-              title="Назад 10 сек (←)"
-              className="flex items-center gap-1 px-2 py-1.5 text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-xs font-bold"
+            {/* 6. Minimalist Volume (Speaker icon + hidden slider expanding on hover, no percentages) */}
+            <div
+              className="flex items-center"
+              onMouseEnter={() => setIsVolumeHovered(true)}
+              onMouseLeave={() => setIsVolumeHovered(false)}
             >
-              <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline">-10с</span>
-            </button>
-
-            {/* Forward 10s */}
-            <button
-              type="button"
-              onClick={() => onSkip(10)}
-              aria-label="Перемотать вперед 10 секунд"
-              title="Вперёд 10 сек (→)"
-              className="flex items-center gap-1 px-2 py-1.5 text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-xs font-bold"
-            >
-              <RotateCw className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline">+10с</span>
-            </button>
-
-            {/* Always-Visible Volume Slider & Mute */}
-            <div className="flex items-center gap-2 bg-cinema-card/75 border border-cinema-border/80 rounded-xl px-2.5 py-1.5">
               <button
                 type="button"
                 onClick={toggleMute}
                 aria-label={isMuted ? 'Включить звук' : 'Выключить звук'}
-                title="Вкл/Выкл звук (M или Колёсико мыши / Стрелки ↑↓)"
-                className="text-white/90 hover:text-white transition-colors"
+                title="Звук (M / Колёсико мыши / ↑↓)"
+                className="p-2 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
+                  <VolumeX className="w-5 h-5 text-red-400" />
                 ) : volume < 0.5 ? (
-                  <Volume1 className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <Volume1 className="w-5 h-5" />
                 ) : (
-                  <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <Volume2 className="w-5 h-5" />
                 )}
               </button>
 
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                aria-label="Громкость"
-                value={effectiveVol}
-                onChange={(e) => setVolume(parseFloat(e.target.value))}
-                className="w-16 sm:w-24 h-1.5 bg-cinema-border rounded-lg appearance-none cursor-pointer accent-brand-main"
-              />
-
-              <span className="text-[11px] font-mono font-bold text-white/90 min-w-[34px] text-right">
-                {volPercent}%
-              </span>
+              <div
+                className={`overflow-hidden transition-all duration-200 flex items-center ${
+                  isVolumeHovered ? 'w-20 ml-1.5 opacity-100' : 'w-0 ml-0 opacity-0'
+                }`}
+              >
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  aria-label="Громкость"
+                  value={effectiveVol}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-20 h-1 bg-white/25 rounded-lg appearance-none cursor-pointer accent-brand-main"
+                />
+              </div>
             </div>
 
-            {/* Timestamps */}
-            <div className="text-xs md:text-sm font-medium text-cinema-muted font-mono tracking-tight pl-1">
-              <span className="text-white">{formatTime(currentTime)}</span>
-              <span className="mx-1 text-cinema-muted/60">/</span>
+            {/* 7. Minimalist Timestamps */}
+            <div className="text-xs font-medium text-white/65 font-mono tracking-tight pl-1">
+              <span className="text-white/95">{formatTime(currentTime)}</span>
+              <span className="mx-1 text-white/40">/</span>
               <span>{formatTime(duration)}</span>
             </div>
           </div>
 
-          {/* Right Controls */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Episodes List Drawer Button */}
+          {/* Right Controls: Icon-Only [Auto-Next] [Episodes] [Voiceover] [Quality] [Audio Settings] [Fullscreen] */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Auto-Next Episode Icon Toggle */}
+            {showEpisodeButtons && (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextState = !autoPlayNext;
+                  setAutoPlayNext(nextState);
+                  showOsd(
+                    nextState
+                      ? '⏭️ Автопереключение серий: ВКЛ'
+                      : '⏸️ Автопереключение серий: ВЫКЛ'
+                  );
+                }}
+                aria-label="Автопереключение серий"
+                title={
+                  autoPlayNext
+                    ? 'Автопереключение серий: ВКЛ'
+                    : 'Автопереключение серий: ВЫКЛ'
+                }
+                className={`p-2.5 rounded-full transition-all ${
+                  autoPlayNext
+                    ? 'text-brand-light bg-brand-main/25 hover:bg-brand-main/35'
+                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <FastForward className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Episodes List Drawer Icon Button */}
             {episodeCount > 0 && onToggleEpisodesDrawer && (
               <button
                 type="button"
                 onClick={onToggleEpisodesDrawer}
                 aria-label="Список серий"
-                className={`flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold rounded-xl border transition-all ${
+                title={`Список серий (${episodeCount})`}
+                className={`p-2.5 rounded-full transition-all ${
                   showEpisodesDrawer
-                    ? 'bg-brand-main border-brand-main text-white shadow-brand-glow'
-                    : 'bg-cinema-card/80 hover:bg-cinema-card border-cinema-border text-white/90 hover:text-white'
+                    ? 'text-white bg-brand-main shadow-brand-glow'
+                    : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <ListVideo className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span>Серии ({episodeCount})</span>
+                <ListVideo className="w-5 h-5" />
               </button>
             )}
 
-            {/* Sound Settings, Boost & Speed button */}
+            {/* Separate Voiceover Selector Icon Button */}
+            <button
+              type="button"
+              onClick={() => openSourceModal(true)}
+              aria-label="Выбор озвучки"
+              title="Выбор озвучки"
+              className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <Mic className="w-5 h-5" />
+            </button>
+
+            {/* Separate Quality Selector Icon Button */}
+            <button
+              type="button"
+              onClick={() => openQualityModal(true)}
+              aria-label="Выбор качества"
+              title="Выбор качества"
+              className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <Sparkles className="w-5 h-5" />
+            </button>
+
+            {/* Sound Settings, Boost & Speed Icon Button */}
             <button
               type="button"
               onClick={() => openAudioSubsModal(true)}
               aria-label="Настройки звука и скорости"
-              title="Настройки звука, усиление громкости (до 200%), скорость и субтитры"
-              className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold text-white/90 hover:text-white bg-cinema-card/80 hover:bg-cinema-card border border-cinema-border rounded-xl transition-colors"
+              title="Настройки звука, усиление и скорость"
+              className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
             >
-              <Sliders className="w-4 h-4 sm:w-5 sm:h-5 text-brand-light" />
-              <span className="hidden md:inline">Звук</span>
-              {audioBoost > 1 && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
-                  x{audioBoost}
-                </span>
-              )}
+              <Sliders className="w-5 h-5" />
             </button>
 
-            {/* Sources / Voiceovers button */}
-            <button
-              type="button"
-              onClick={() => openSourceModal(true)}
-              aria-label="Выбор озвучки и качества"
-              className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold text-white/90 hover:text-white bg-cinema-card/80 hover:bg-cinema-card border border-cinema-border rounded-xl transition-colors"
-            >
-              <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-brand-main" />
-              <span className="hidden sm:inline">Озвучка</span>
-            </button>
-
-            {/* Fullscreen */}
+            {/* Fullscreen Icon Button */}
             <button
               type="button"
               onClick={onToggleFullscreen}
               aria-label="Полноэкранный режим"
-              title="Полноэкранный режим (F или двойной клик)"
-              className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold text-white bg-brand-main/20 hover:bg-brand-main border border-brand-main/50 rounded-xl transition-all"
+              title={isFullscreen ? 'Выйти из полного экрана (F)' : 'Полный экран (F)'}
+              className="p-2.5 text-white/85 hover:text-white hover:bg-white/10 rounded-full transition-all"
             >
               {isFullscreen ? (
-                <>
-                  <Minimize className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="hidden lg:inline">Обычный</span>
-                </>
+                <Minimize className="w-5 h-5" />
               ) : (
-                <>
-                  <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="hidden lg:inline">Полный экран</span>
-                </>
+                <Maximize className="w-5 h-5" />
               )}
             </button>
           </div>
