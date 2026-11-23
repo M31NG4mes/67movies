@@ -106,7 +106,7 @@ export function PlayerControls({
               className="flex items-center space-x-2 px-3.5 py-1.5 text-xs font-semibold uppercase bg-cinema-card/80 hover:bg-cinema-card border border-cinema-border hover:border-brand-main text-white rounded-full backdrop-blur-md transition-all"
             >
               <Radio className="w-3.5 h-3.5 text-brand-main animate-pulse" />
-              <span>{activeStream.providerName}</span>
+              <span>{activeStream.voiceActing || activeStream.providerName}</span>
               <span className="text-brand-light font-bold">[{activeStream.quality}]</span>
             </button>
           </div>
@@ -221,15 +221,15 @@ export function PlayerControls({
               <span className="hidden sm:inline">Аудио</span>
             </button>
 
-            {/* Sources button */}
+            {/* Sources / Voiceovers button */}
             <button
               onClick={() => openSourceModal(true)}
               data-nav-item="true"
-              aria-label="Выбор источника"
+              aria-label="Выбор озвучки и качества"
               className="flex items-center space-x-1.5 px-3 py-2 text-sm text-white/80 hover:text-white hover:bg-cinema-card border border-transparent hover:border-cinema-border rounded-lg transition-colors"
             >
               <Radio className="w-5 h-5" />
-              <span className="hidden sm:inline">Источники</span>
+              <span className="hidden sm:inline">Озвучка и качество</span>
             </button>
 
             {/* Fullscreen */}

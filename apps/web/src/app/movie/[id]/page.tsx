@@ -79,6 +79,7 @@ export default function MovieDetailPage() {
   const [seasonData, setSeasonData] = useState<Season | null>(null);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [selectedEpisode, setSelectedEpisode] = useState<number>(1);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('aniliberty');
   const [isLoading, setIsLoading] = useState(true);
 
   // Favorites & User Rating State
@@ -464,12 +465,23 @@ export default function MovieDetailPage() {
       (media?.originalTitle && /[\u3040-\u30ff\u4e00-\u9faf]/.test(media.originalTitle))
   );
 
-  const buildAnimeWatchUrl = (seasonNum: number, episodeNum: number) => {
+  const POPULAR_ANIME_VOICES = [
+    { id: 'aniliberty', name: 'AniLibria', tag: '1080p • Оригинал' },
+    { id: 'studioband', name: 'Студийная Банда', tag: '1080p • Дубляж' },
+    { id: 'anidub', name: 'AniDUB', tag: '1080p • Многоголосый' },
+    { id: 'dreamcast', name: 'Dream Cast', tag: '1080p • Многоголосый' },
+    { id: 'jamclub', name: 'Jam Club', tag: '1080p • Авторский' },
+    { id: 'shiza', name: 'SHIZA Project', tag: '1080p • Многоголосый' },
+    { id: 'animevost', name: 'AnimeVost', tag: '1080p • Двухголосый' },
+  ];
+
+  const buildAnimeWatchUrl = (seasonNum: number, episodeNum: number, voiceId = selectedVoiceId) => {
     const watchId = anilibertyTargetId || mediaId;
     const sp = new URLSearchParams({
       season: String(seasonNum),
       episode: String(episodeNum),
       anime: '1',
+      voice: voiceId,
     });
     if (media?.title) sp.set('title', media.title);
     if (media?.originalTitle) sp.set('originalTitle', media.originalTitle);
@@ -929,26 +941,67 @@ export default function MovieDetailPage() {
           </section>
         )}
 
-        {/* 3b. Voiceover team (AniLiberty) */}
-        {media.voiceovers && media.voiceovers.length > 0 && (
-          <section className="mt-14 pt-8 border-t border-cinema-border">
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-cinema-text">Озвучка</h2>
-              <span className="px-3 py-1 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-bold text-[#A18BFF]">
-                {media.voiceTeamName || 'AniLibria'} • русская озвучка
+        {/* 3b. Voiceover Studio Selector & Cast (Anime) */}
+        {isAnimeMedia && (
+          <section className="mt-14 pt-8 border-t border-cinema-border space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-xl sm:text-2xl font-bold text-cinema-text">
+                  Выбор озвучки
+                </h2>
+                <span className="px-3 py-1 rounded-xl bg-[#8065FF]/15 border border-[#8065FF]/40 text-xs font-bold text-[#A18BFF]">
+                  HD 720p / 1080p
+                </span>
+              </div>
+              <span className="text-xs text-cinema-muted">
+                Выбранная студия запустится в плеере (можно переключать и во время просмотра)
               </span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {media.voiceovers.map((m, idx) => (
-                <span
-                  key={`${m.name}-${idx}`}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cinema-card border border-cinema-border text-xs"
-                >
-                  <span className="font-bold text-cinema-text">{m.name}</span>
-                  <span className="text-cinema-muted">{m.role}</span>
-                </span>
-              ))}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              {POPULAR_ANIME_VOICES.map((v) => {
+                const isSelected = selectedVoiceId === v.id;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setSelectedVoiceId(v.id)}
+                    className={`flex flex-col items-start p-3.5 rounded-2xl border text-left transition-all ${
+                      isSelected
+                        ? 'bg-[#8065FF]/20 border-[#8065FF] text-white shadow-[0_0_20px_rgba(128,101,255,0.2)]'
+                        : 'bg-cinema-card hover:bg-cinema-surface border-cinema-border text-cinema-muted hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-sm font-bold text-white">{v.name}</span>
+                      {isSelected && <Check className="w-4 h-4 text-[#A18BFF]" />}
+                    </div>
+                    <span className="text-[11px] text-[#A18BFF]/80 mt-1 font-medium">
+                      {v.tag}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+
+            {media.voiceovers && media.voiceovers.length > 0 && (
+              <div className="pt-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-cinema-muted mb-2.5">
+                  Участники озвучки и релиза:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {media.voiceovers.map((m, idx) => (
+                    <span
+                      key={`${m.name}-${idx}`}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cinema-card border border-cinema-border text-xs"
+                    >
+                      <span className="font-bold text-cinema-text">{m.name}</span>
+                      <span className="text-cinema-muted">{m.role}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 

@@ -15,6 +15,7 @@ export default function WatchPage() {
   const origTitleHint = searchParams?.get('originalTitle') || '';
   const malIdHint = searchParams?.get('malId') ? Number(searchParams.get('malId')) || undefined : undefined;
   const isAnimeParam = searchParams?.get('anime') === '1';
+  const voiceHint = searchParams?.get('voice') || 'aniliberty';
 
   const [media, setMedia] = useState<MediaItem | null>(null);
   const [sourceGroups, setSourceGroups] = useState<StreamSourceGroup[]>([]);
@@ -194,6 +195,13 @@ export default function WatchPage() {
       return s;
     }) || (seasonData ? [seasonData] : []);
 
+  const preferredGroup =
+    sourceGroups.find((g) => g.providerId === voiceHint) || sourceGroups[0];
+  const initialStream =
+    preferredGroup?.streams?.find((s) => s.quality === '1080p') ||
+    preferredGroup?.streams?.find((s) => s.quality === '720p') ||
+    preferredGroup?.streams?.[0];
+
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative">
       <VideoPlayer
@@ -201,6 +209,7 @@ export default function WatchPage() {
         title={media?.title || titleHint || '67movies Stream'}
         subtitle={displaySubtitle}
         sourceGroups={sourceGroups}
+        initialStream={initialStream}
         seasonNumber={isTv ? currentSeason : undefined}
         episodeNumber={isTv ? currentEpisode : undefined}
       />

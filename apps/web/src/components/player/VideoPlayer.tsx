@@ -89,9 +89,18 @@ export function VideoPlayer({
     }
   }, [initialStream, sourceGroups, setActiveStream]);
 
-  // Stream loader
+  // Stream loader (preserves playback position when switching quality or voiceover on same episode)
+  const lastEpisodeRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!videoRef.current || !activeStream) return;
+
+    const resumeTime =
+      lastEpisodeRef.current !== undefined &&
+      lastEpisodeRef.current === activeStream.episode &&
+      videoRef.current.currentTime > 2
+        ? videoRef.current.currentTime
+        : 0;
+    lastEpisodeRef.current = activeStream.episode;
 
     reset();
     setIsBuffering(true);
@@ -110,7 +119,12 @@ export function VideoPlayer({
     hlsEngineRef.current = engine;
 
     engine.init(videoRef.current, activeStream.streamUrl, {
-      onQualitiesLoaded: (qualities) => setAvailableQualities(qualities),
+      onQualitiesLoaded: (qualities) => {
+        setAvailableQualities(qualities);
+        if (resumeTime > 0 && videoRef.current) {
+          videoRef.current.currentTime = resumeTime;
+        }
+      },
       onAudioTracksLoaded: (tracks) => setAvailableAudioTracks(tracks),
       onBuffering: (buffering) => setIsBuffering(buffering),
       onError: (err) => setError(err),

@@ -37,17 +37,30 @@ export class HlsEngine {
       });
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        // Filter to minimum 720p when HD levels exist
+        const hdLevels = data.levels.filter((l) => !l.height || l.height >= 720);
+        const effectiveLevels = hdLevels.length > 0 ? hdLevels : data.levels;
+
+        // Lock HLS ABR minimum level to 720p if available
+        const min720Idx = data.levels.findIndex((l) => l.height >= 720);
+        if (min720Idx !== -1) {
+          hls.autoLevelCapping = -1;
+          const highestIdx = data.levels.reduce(
+            (best, l, idx) => (l.height >= (data.levels[best]?.height || 0) ? idx : best),
+            min720Idx
+          );
+          hls.currentLevel = highestIdx;
+        }
+
         const qualities: PlayerQualityOption[] = [
           { quality: 'auto', height: 0 },
-          ...data.levels.map((level, idx) => {
+          ...effectiveLevels.map((level) => {
             const h = level.height;
             let q: VideoQuality = 'auto';
             if (h >= 2160) q = '2160p';
             else if (h >= 1440) q = '1440p';
             else if (h >= 1080) q = '1080p';
-            else if (h >= 720) q = '720p';
-            else if (h >= 480) q = '480p';
-            else q = '360p';
+            else q = '720p';
             return {
               quality: q,
               height: level.height,

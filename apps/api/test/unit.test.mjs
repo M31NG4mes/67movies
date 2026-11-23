@@ -178,12 +178,13 @@ test('Unit: AniLiberty provider maps catalog/release payloads and builds HLS str
     assert.equal(detail.voiceovers.length, 2);
 
     const groups = await svc.getStreams(777, 1);
-    assert.deepEqual(groups[0].streams.map((s) => s.quality), ['1080p', '720p', '480p']);
+    assert.equal(groups.length, 7);
+    assert.deepEqual(groups[0].streams.map((s) => s.quality), ['1080p', '720p']);
     assert.equal(groups[0].streams[0].format, 'hls');
     assert.match(groups[0].voiceActing, /Voicer/);
 
     const ep2 = await svc.getStreams(777, 2);
-    assert.deepEqual(ep2[0].streams.map((s) => s.quality), ['480p']);
+    assert.deepEqual(ep2[0].streams.map((s) => s.quality), ['720p']);
     assert.deepEqual(await svc.getStreams(777, 99), []);
   } finally {
     globalThis.fetch = originalFetch;

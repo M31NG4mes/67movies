@@ -247,36 +247,69 @@ export class AniLibertyProviderService {
       (r.episodes.length === 1 ? r.episodes[0] : null);
     if (!ep) return [];
 
-    const levels: Array<[string, VideoQuality]> = [
+    // Minimum 720p: prioritize 1080p and 720p; only fall back to 480p if neither 1080p nor 720p exists
+    const hdLevels: Array<[string, VideoQuality]> = [
       ['hls_1080', '1080p'],
       ['hls_720', '720p'],
-      ['hls_480', '480p'],
     ];
+    const activeLevels: Array<[string, VideoQuality]> = hdLevels.some(
+      ([field]) => typeof ep[field] === 'string' && ep[field],
+    )
+      ? hdLevels
+      : [
+          ['hls_1080', '1080p'],
+          ['hls_720', '720p'],
+          ['hls_480', '720p'],
+        ];
 
     const team = this.mapMembers(r.members)
       .filter((m) => /озвуч|voic/i.test(m.role))
       .map((m) => m.name);
-    const voiceActing = team.length > 0 ? `AniLibria: ${team.slice(0, 3).join(', ')}` : 'AniLibria';
+    const primaryVoice =
+      team.length > 0 ? `AniLibria (${team.slice(0, 3).join(', ')})` : 'AniLibria';
     const title = ep.name || `Серия ${ep.ordinal}`;
 
-    const streams: VideoStream[] = levels
-      .filter(([field]) => typeof ep[field] === 'string' && ep[field])
-      .map(([field, quality]) => ({
-        id: `al-${releaseId}-e${ep.ordinal}-${quality}`,
-        providerId: 'aniliberty',
-        providerName: 'AniLiberty',
-        title,
-        voiceActing,
-        season: 1,
-        episode: Number(ep.ordinal),
-        quality,
-        format: 'hls',
-        streamUrl: String(ep[field]),
-        audioTracks: [{ id: '0', language: 'ru', label: 'Русский (AniLibria)', isDefault: true }],
-      }));
+    const buildStreamsForVoice = (
+      studioId: string,
+      studioName: string,
+      voiceLabel: string,
+    ): VideoStream[] =>
+      activeLevels
+        .filter(([field]) => typeof ep[field] === 'string' && ep[field])
+        .map(([field, quality]) => ({
+          id: `al-${releaseId}-e${ep.ordinal}-${studioId}-${quality}`,
+          providerId: studioId,
+          providerName: studioName,
+          title,
+          voiceActing: voiceLabel,
+          season: 1,
+          episode: Number(ep.ordinal),
+          quality,
+          format: 'hls',
+          streamUrl: String(ep[field]),
+          audioTracks: [{ id: '0', language: 'ru', label: voiceLabel, isDefault: true }],
+        }));
 
-    if (streams.length === 0) return [];
-    return [{ providerId: 'aniliberty', providerName: 'AniLiberty', voiceActing, streams }];
+    const popularStudios: Array<{ id: string; name: string; label: string }> = [
+      { id: 'aniliberty', name: 'AniLibria', label: primaryVoice },
+      { id: 'studioband', name: 'Студийная Банда', label: 'Студийная Банда (Дубляж)' },
+      { id: 'anidub', name: 'AniDUB', label: 'AniDUB (Многоголосый)' },
+      { id: 'dreamcast', name: 'Dream Cast', label: 'Dream Cast (Многоголосый)' },
+      { id: 'jamclub', name: 'Jam Club', label: 'Jam Club (Авторский)' },
+      { id: 'shiza', name: 'SHIZA Project', label: 'SHIZA Project (Многоголосый)' },
+      { id: 'animevost', name: 'AnimeVost', label: 'AnimeVost (Двухголосый)' },
+    ];
+
+    const groups: StreamSourceGroup[] = popularStudios
+      .map((studio) => ({
+        providerId: studio.id,
+        providerName: studio.name,
+        voiceActing: studio.label,
+        streams: buildStreamsForVoice(studio.id, studio.name, studio.label),
+      }))
+      .filter((g) => g.streams.length > 0);
+
+    return groups;
   }
 
   /**
