@@ -15,6 +15,7 @@ import { AuthenticatedUser, CurrentUser } from '../auth/decorators/current-user.
 import { MediaTypeDto } from '../users/dto/users.dto';
 import {
   AddCollectionItemDto,
+  AddGroupMembersDto,
   CreateCollectionDto,
   CreateGroupDto,
   EditMessageDto,
@@ -221,6 +222,15 @@ export class SocialController {
     return this.socialService.toggleMessageReaction(user.userId, messageId, dto);
   }
 
+  @Delete('messages/conversation/:friendId')
+  @UseGuards(JwtAuthGuard)
+  clearDirectConversation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('friendId') friendId: string,
+  ) {
+    return this.socialService.clearDirectConversation(user.userId, friendId);
+  }
+
   @Delete('messages/:messageId')
   @UseGuards(JwtAuthGuard)
   deleteMessage(
@@ -247,6 +257,35 @@ export class SocialController {
     return this.socialService.createGroup(user.userId, dto);
   }
 
+  @Delete('groups/:groupId')
+  @UseGuards(JwtAuthGuard)
+  deleteGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.socialService.deleteGroup(user.userId, groupId);
+  }
+
+  @Post('groups/:groupId/members')
+  @UseGuards(JwtAuthGuard)
+  addGroupMembers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+    @Body() dto: AddGroupMembersDto,
+  ) {
+    return this.socialService.addGroupMembers(user.userId, groupId, dto);
+  }
+
+  @Delete('groups/:groupId/members/:memberId')
+  @UseGuards(JwtAuthGuard)
+  removeGroupMember(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.socialService.removeGroupMember(user.userId, groupId, memberId);
+  }
+
   @Get('groups/:groupId/messages')
   @UseGuards(JwtAuthGuard)
   getGroupMessages(
@@ -264,5 +303,14 @@ export class SocialController {
     @Body() dto: SendMessageDto,
   ) {
     return this.socialService.sendGroupMessage(user.userId, groupId, dto);
+  }
+
+  @Delete('groups/:groupId/messages')
+  @UseGuards(JwtAuthGuard)
+  clearGroupMessages(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId') groupId: string,
+  ) {
+    return this.socialService.clearGroupMessages(user.userId, groupId);
   }
 }

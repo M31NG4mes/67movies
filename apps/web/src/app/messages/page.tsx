@@ -24,6 +24,9 @@ import {
   Pencil,
   Trash2,
   Users,
+  UserMinus,
+  Settings,
+  LogOut,
 } from 'lucide-react';
 import { authFetch, useAuthStore } from '../../stores/auth.store';
 
@@ -778,10 +781,191 @@ function MessagesContent() {
     });
   };
 
+  const [isGroupManageOpen, setIsGroupManageOpen] = useState(false);
+  const [addMemberIds, setAddMemberIds] = useState<string[]>([]);
+  const [managingGroup, setManagingGroup] = useState(false);
+
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const openContextMenuForMsg = useCallback(
+    (msg: DirectMessageItem, clientX: number, clientY: number) => {
+      const menuW = 240;
+      const menuH = 215;
+      const clampedX = Math.min(
+        Math.max(8, clientX),
+        Math.max(8, window.innerWidth - menuW - 12)
+      );
+      const clampedY = Math.min(
+        Math.max(8, clientY),
+        Math.max(8, window.innerHeight - menuH - 12)
+      );
+      setContextMenu({ msg, x: clampedX, y: clampedY });
+    },
+    []
+  );
+
+  const handleClearDirectConversation = async () => {
+    if (!selectedFriendId || managingGroup) return;
+    if (!window.confirm('Удалить всю переписку с этим другом?')) return;
+    setManagingGroup(true);
+    try {
+      const res = await authFetch(
+        `/social/messages/conversation/${encodeURIComponent(selectedFriendId)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        setMessages([]);
+        await loadConversations();
+        showChatToast('Переписка удалена');
+      } else {
+        showChatToast('Не удалось удалить переписку');
+      }
+    } catch {
+      showChatToast('Ошибка сети при удалении');
+    } finally {
+      setManagingGroup(false);
+    }
+  };
+
+  const handleClearGroupMessages = async () => {
+    if (!selectedGroupId || managingGroup) return;
+    if (!window.confirm('Удалить всю переписку в этой группе?')) return;
+    setManagingGroup(true);
+    try {
+      const res = await authFetch(
+        `/social/groups/${encodeURIComponent(selectedGroupId)}/messages`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        setMessages([]);
+        await loadConversations();
+        setIsGroupManageOpen(false);
+        showChatToast('Переписка группы очищена');
+      } else {
+        const d = await res.json().catch(() => null);
+        showChatToast(d?.message || 'Не удалось очистить переписку');
+      }
+    } catch {
+      showChatToast('Ошибка сети');
+    } finally {
+      setManagingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroupId || managingGroup) return;
+    if (!window.confirm('Удалить группу навсегда? Все сообщения будут удалены.')) return;
+    setManagingGroup(true);
+    try {
+      const res = await authFetch(
+        `/social/groups/${encodeURIComponent(selectedGroupId)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        setGroups((prev) => prev.filter((g) => g.id !== selectedGroupId));
+        setSelectedGroupId(null);
+        setMessages([]);
+        setIsGroupManageOpen(false);
+        showChatToast('Группа удалена');
+      } else {
+        const d = await res.json().catch(() => null);
+        showChatToast(d?.message || 'Не удалось удалить группу');
+      }
+    } catch {
+      showChatToast('Ошибка сети');
+    } finally {
+      setManagingGroup(false);
+    }
+  };
+
+  const handleAddGroupMembers = async () => {
+    if (!selectedGroupId || addMemberIds.length === 0 || managingGroup) return;
+    setManagingGroup(true);
+    try {
+      const res = await authFetch(
+        `/social/groups/${encodeURIComponent(selectedGroupId)}/members`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memberIds: addMemberIds }),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === selectedGroupId
+              ? { ...g, members: data.members || g.members, memberCount: data.memberCount ?? g.memberCount }
+              : g
+          )
+        );
+        setAddMemberIds([]);
+        showChatToast('Участники добавлены');
+      } else {
+        const d = await res.json().catch(() => null);
+        showChatToast(d?.message || 'Не удалось добавить участников');
+      }
+    } catch {
+      showChatToast('Ошибка сети');
+    } finally {
+      setManagingGroup(false);
+    }
+  };
+
+  const handleRemoveGroupMember = async (memberId: string) => {
+    if (!selectedGroupId || managingGroup) return;
+    const isSelf = memberId === user?.id;
+    if (
+      !window.confirm(
+        isSelf ? 'Покинуть эту группу?' : 'Удалить участника из группы?'
+      )
+    ) {
+      return;
+    }
+    setManagingGroup(true);
+    try {
+      const res = await authFetch(
+        `/social/groups/${encodeURIComponent(selectedGroupId)}/members/${encodeURIComponent(memberId)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (isSelf) {
+          setGroups((prev) => prev.filter((g) => g.id !== selectedGroupId));
+          setSelectedGroupId(null);
+          setMessages([]);
+          setIsGroupManageOpen(false);
+          showChatToast('Вы вышли из группы');
+        } else {
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.id === selectedGroupId
+                ? {
+                    ...g,
+                    members: data.members || g.members,
+                    memberCount: data.memberCount ?? g.memberCount,
+                  }
+                : g
+            )
+          );
+          showChatToast('Участник удалён');
+        }
+      } else {
+        const d = await res.json().catch(() => null);
+        showChatToast(d?.message || 'Не удалось выполнить действие');
+      }
+    } catch {
+      showChatToast('Ошибка сети');
+    } finally {
+      setManagingGroup(false);
+    }
+  };
+
   if (!hydrated || !user) return null;
 
   return (
-    <div className="max-w-[1360px] mx-auto px-3 sm:px-6 lg:px-8 pt-16 md:pt-14 pb-4 md:pb-8 h-[100dvh] bg-[#09090D] flex flex-col overflow-hidden">
+    <div className="w-full max-w-[1360px] mx-auto px-3 sm:px-6 lg:px-8 pt-16 md:pt-14 pb-4 md:pb-8 h-[100dvh] bg-[#09090D] flex flex-col overflow-hidden">
       <input
         ref={photoInputRef}
         type="file"
@@ -807,7 +991,7 @@ function MessagesContent() {
       {/* Compact Header */}
       <div
         className={`${
-          selectedFriendId ? 'hidden md:flex' : 'flex'
+          selectedFriendId || selectedGroupId ? 'hidden md:flex' : 'flex'
         } items-center justify-between gap-3 pb-3 mb-3 border-b border-[#292936] shrink-0`}
       >
         <div>
@@ -1138,14 +1322,40 @@ function MessagesContent() {
                   )}
                 </div>
 
-                {activeFriend && !selectedGroupId && (
-                  <Link
-                    href={`/user/${activeFriend.id}`}
+                {selectedGroupId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddMemberIds([]);
+                      setIsGroupManageOpen(true);
+                    }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#181821] hover:bg-[#8065FF]/20 border border-[#292936] hover:border-[#8065FF] text-xs font-semibold text-[#A18BFF] transition-all shrink-0"
                   >
-                    <span>Профиль</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </Link>
+                    <Settings className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Управление</span>
+                  </button>
+                ) : (
+                  activeFriend && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleClearDirectConversation}
+                        disabled={managingGroup}
+                        title="Удалить переписку"
+                        aria-label="Удалить переписку"
+                        className="p-2 rounded-xl bg-[#181821] hover:bg-rose-500/15 border border-[#292936] hover:border-rose-500/40 text-[#92929F] hover:text-rose-400 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <Link
+                        href={`/user/${activeFriend.id}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#181821] hover:bg-[#8065FF]/20 border border-[#292936] hover:border-[#8065FF] text-xs font-semibold text-[#A18BFF] transition-all"
+                      >
+                        <span>Профиль</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  )
                 )}
               </div>
 
@@ -1195,24 +1405,57 @@ function MessagesContent() {
                               {groupSenderName}
                             </span>
                           )}
-                          {/* Message Bubble (right-click opens Reactions / Reply / Edit / Copy menu) */}
+                          {/* Message Bubble (right-click on desktop or long-press on mobile opens Reactions / Reply / Edit / Copy / Delete menu) */}
                           <div
+                            style={{ WebkitTouchCallout: 'none' }}
                             onContextMenu={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              const menuW = 240;
-                              const menuH = 195;
-                              const clampedX = Math.min(
-                                Math.max(8, e.clientX),
-                                Math.max(8, window.innerWidth - menuW - 12)
-                              );
-                              const clampedY = Math.min(
-                                Math.max(8, e.clientY),
-                                Math.max(8, window.innerHeight - menuH - 12)
-                              );
-                              setContextMenu({ msg, x: clampedX, y: clampedY });
+                              openContextMenuForMsg(msg, e.clientX, e.clientY);
                             }}
-                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg ${
+                            onTouchStart={(e) => {
+                              const touch = e.touches[0];
+                              if (!touch) return;
+                              const cx = touch.clientX;
+                              const cy = touch.clientY;
+                              touchStartPosRef.current = { x: cx, y: cy };
+                              if (longPressTimerRef.current) {
+                                clearTimeout(longPressTimerRef.current);
+                              }
+                              longPressTimerRef.current = setTimeout(() => {
+                                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                                  navigator.vibrate(18);
+                                }
+                                openContextMenuForMsg(msg, cx, cy);
+                              }, 420);
+                            }}
+                            onTouchMove={(e) => {
+                              const touch = e.touches[0];
+                              const start = touchStartPosRef.current;
+                              if (!touch || !start) return;
+                              if (
+                                Math.abs(touch.clientX - start.x) > 10 ||
+                                Math.abs(touch.clientY - start.y) > 10
+                              ) {
+                                if (longPressTimerRef.current) {
+                                  clearTimeout(longPressTimerRef.current);
+                                  longPressTimerRef.current = null;
+                                }
+                              }
+                            }}
+                            onTouchEnd={() => {
+                              if (longPressTimerRef.current) {
+                                clearTimeout(longPressTimerRef.current);
+                                longPressTimerRef.current = null;
+                              }
+                            }}
+                            onTouchCancel={() => {
+                              if (longPressTimerRef.current) {
+                                clearTimeout(longPressTimerRef.current);
+                                longPressTimerRef.current = null;
+                              }
+                            }}
+                            className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-lg select-none md:select-text ${
                               isMine
                                 ? 'bg-[#8065FF] text-white rounded-br-md'
                                 : 'bg-[#181821] border border-[#292936] text-white rounded-bl-md'
@@ -2069,6 +2312,209 @@ function MessagesContent() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Group Management Modal (Members, Add/Remove, Clear History, Delete/Leave Group) */}
+      <AnimatePresence>
+        {isGroupManageOpen && selectedGroupId && (() => {
+          const activeGroup = groups.find((g) => g.id === selectedGroupId);
+          if (!activeGroup) return null;
+          const isOwner = activeGroup.ownerId === user.id;
+          const memberIdsSet = new Set((activeGroup.members || []).map((m) => m.id));
+          const availableFriendsToAdd = conversations.filter(
+            (c) => !memberIdsSet.has(c.friend.id)
+          );
+
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsGroupManageOpen(false)}
+              className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-3 sm:p-4"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 12 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md rounded-3xl bg-[#111119] border border-[#292936] p-5 space-y-4 shadow-2xl max-h-[85dvh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-black text-white flex items-center gap-2 truncate">
+                      <Users className="w-4 h-4 text-[#A18BFF] shrink-0" />
+                      <span className="truncate">{activeGroup.name}</span>
+                    </h3>
+                    <p className="text-[11px] text-[#92929F]">
+                      Участников: {activeGroup.memberCount}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsGroupManageOpen(false)}
+                    className="p-1.5 rounded-xl text-[#92929F] hover:text-white hover:bg-white/10"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Current Members */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#92929F]">
+                    Участники группы
+                  </p>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {(activeGroup.members || []).map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[#181821] border border-[#292936]"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#111119] flex items-center justify-center shrink-0">
+                            {m.avatarUrl ? (
+                              <img
+                                src={m.avatarUrl}
+                                alt={m.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-xs font-black text-[#A18BFF] uppercase">
+                                {m.name.slice(0, 1)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">
+                              {m.name}
+                            </p>
+                            {m.id === activeGroup.ownerId && (
+                              <span className="text-[10px] font-semibold text-[#A18BFF]">
+                                Создатель
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {isOwner && m.id !== activeGroup.ownerId && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGroupMember(m.id)}
+                            disabled={managingGroup}
+                            title="Удалить из группы"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-semibold transition-colors shrink-0"
+                          >
+                            <UserMinus className="w-3.5 h-3.5" />
+                            <span>Удалить</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Add Friends to Group (Owner only) */}
+                {isOwner && (
+                  <div className="space-y-2 pt-2 border-t border-[#292936]">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#92929F]">
+                      Добавить друзей
+                    </p>
+                    {availableFriendsToAdd.length === 0 ? (
+                      <p className="text-xs text-[#92929F]">
+                        Все ваши друзья уже в этой группе.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                          {availableFriendsToAdd.map((c) => {
+                            const checked = addMemberIds.includes(c.friend.id);
+                            return (
+                              <button
+                                key={c.friend.id}
+                                type="button"
+                                onClick={() =>
+                                  setAddMemberIds((prev) =>
+                                    checked
+                                      ? prev.filter((id) => id !== c.friend.id)
+                                      : [...prev, c.friend.id]
+                                  )
+                                }
+                                className={`w-full flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
+                                  checked
+                                    ? 'bg-[#8065FF]/15 border-[#8065FF]/60'
+                                    : 'bg-[#181821] border-[#292936] hover:border-white/20'
+                                }`}
+                              >
+                                <span className="text-xs font-bold text-white truncate">
+                                  {c.friend.name}
+                                </span>
+                                <span
+                                  className={`w-5 h-5 rounded-md flex items-center justify-center border ${
+                                    checked
+                                      ? 'bg-[#8065FF] border-[#8065FF] text-white'
+                                      : 'border-[#292936]'
+                                  }`}
+                                >
+                                  {checked && <Check className="w-3 h-3" />}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {addMemberIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleAddGroupMembers}
+                            disabled={managingGroup}
+                            className="w-full py-2.5 rounded-xl brand-btn text-white text-xs font-bold transition-all disabled:opacity-50"
+                          >
+                            Добавить выбранных ({addMemberIds.length})
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Danger Actions */}
+                <div className="pt-2 border-t border-[#292936] space-y-2">
+                  {isOwner ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleClearGroupMessages}
+                        disabled={managingGroup}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-200 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Удалить переписку группы</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteGroup}
+                        disabled={managingGroup}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-xs font-bold text-rose-400 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Удалить группу</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveGroupMember(user.id)}
+                      disabled={managingGroup}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-xs font-bold text-rose-400 transition-all"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Покинуть группу</span>
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

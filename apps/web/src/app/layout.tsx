@@ -29,8 +29,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ru" className="dark">
-      <body className="bg-[#09090D] text-white min-h-screen flex flex-col antialiased selection:bg-[#8065FF] selection:text-white overflow-x-hidden">
+    <html lang="ru" className="dark overflow-x-hidden max-w-full">
+      <body className="bg-[#09090D] text-white min-h-screen w-full max-w-full flex flex-col antialiased selection:bg-[#8065FF] selection:text-white overflow-x-hidden">
         <ThemeInitializer />
         <NewYearOverlay />
         <AuthGate>

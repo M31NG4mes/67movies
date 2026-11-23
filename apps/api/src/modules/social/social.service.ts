@@ -14,6 +14,7 @@ import { UsersService } from '../users/users.service';
 import { MediaTypeDto } from '../users/dto/users.dto';
 import {
   AddCollectionItemDto,
+  AddGroupMembersDto,
   CreateCollectionDto,
   CreateGroupDto,
   EditMessageDto,
@@ -1394,5 +1395,187 @@ export class SocialService {
 
     this.memGroupMessages.set(msgId, payload);
     return payload;
+  }
+
+  async clearDirectConversation(userId: string, friendId: string) {
+    const dmModel = (this.db as any)?.directMessage;
+    if (dmModel) {
+      await dmModel.deleteMany({
+        where: {
+          OR: [
+            { senderId: userId, receiverId: friendId },
+            { senderId: friendId, receiverId: userId },
+          ],
+        },
+      });
+      return { cleared: true, friendId };
+    }
+
+    for (const [id, msg] of this.memMessages.entries()) {
+      if (
+        (msg.senderId === userId && msg.receiverId === friendId) ||
+        (msg.senderId === friendId && msg.receiverId === userId)
+      ) {
+        this.memMessages.delete(id);
+      }
+    }
+    this.persistSocial();
+    return { cleared: true, friendId };
+  }
+
+  async deleteGroup(userId: string, groupId: string) {
+    if (this.db) {
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT owner_id FROM chat_groups WHERE id = $1 LIMIT 1`,
+        groupId,
+      );
+      if (!rows?.length) throw new NotFoundException('Группа не найдена');
+      if (rows[0].owner_id !== userId) {
+        throw new ForbiddenException('Только создатель может удалить группу');
+      }
+      await (this.db as any).$executeRawUnsafe(`DELETE FROM chat_groups WHERE id = $1`, groupId);
+      return { deleted: true, groupId };
+    }
+
+    const grp = this.memGroups.get(groupId);
+    if (!grp) throw new NotFoundException('Группа не найдена');
+    if (grp.ownerId !== userId) {
+      throw new ForbiddenException('Только создатель может удалить группу');
+    }
+    this.memGroups.delete(groupId);
+    for (const [mid, m] of this.memGroupMessages.entries()) {
+      if (m.groupId === groupId) this.memGroupMessages.delete(mid);
+    }
+    return { deleted: true, groupId };
+  }
+
+  async addGroupMembers(userId: string, groupId: string, dto: AddGroupMembersDto) {
+    const friendsList = await this.getFriendsOverview(userId);
+    const allowedFriendIds = new Set(
+      (friendsList.friends || []).map((f: any) => f.user?.id || f.friend?.id).filter(Boolean),
+    );
+    const toAdd = Array.from(
+      new Set((dto.memberIds || []).filter((id) => id && id !== userId && allowedFriendIds.has(id))),
+    );
+    if (toAdd.length === 0) {
+      throw new BadRequestException('Выберите друзей для добавления в группу');
+    }
+
+    const now = new Date();
+    if (this.db) {
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT owner_id FROM chat_groups WHERE id = $1 LIMIT 1`,
+        groupId,
+      );
+      if (!rows?.length) throw new NotFoundException('Группа не найдена');
+      if (rows[0].owner_id !== userId) {
+        throw new ForbiddenException('Только создатель может добавлять участников');
+      }
+      for (const memberId of toAdd) {
+        await (this.db as any).$executeRawUnsafe(
+          `INSERT INTO chat_group_members (group_id, user_id, role, joined_at)
+           VALUES ($1, $2, 'member', $3)
+           ON CONFLICT (group_id, user_id) DO NOTHING`,
+          groupId,
+          memberId,
+          now,
+        );
+      }
+      const memberRows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT user_id FROM chat_group_members WHERE group_id = $1`,
+        groupId,
+      );
+      const members = (
+        await Promise.all((memberRows || []).map((r) => this.enrichUser(r.user_id)))
+      ).filter(Boolean);
+      return { groupId, memberCount: members.length, members };
+    }
+
+    const grp = this.memGroups.get(groupId);
+    if (!grp) throw new NotFoundException('Группа не найдена');
+    if (grp.ownerId !== userId) {
+      throw new ForbiddenException('Только создатель может добавлять участников');
+    }
+    grp.memberIds = Array.from(new Set([...grp.memberIds, ...toAdd]));
+    const members = (await Promise.all(grp.memberIds.map((id: string) => this.enrichUser(id)))).filter(
+      Boolean,
+    );
+    return { groupId, memberCount: members.length, members };
+  }
+
+  async removeGroupMember(userId: string, groupId: string, memberId: string) {
+    if (this.db) {
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT owner_id FROM chat_groups WHERE id = $1 LIMIT 1`,
+        groupId,
+      );
+      if (!rows?.length) throw new NotFoundException('Группа не найдена');
+      const ownerId = rows[0].owner_id;
+      if (userId !== ownerId && userId !== memberId) {
+        throw new ForbiddenException('Только создатель может удалять участников');
+      }
+      if (memberId === ownerId) {
+        throw new BadRequestException('Создатель не может удалить себя — удалите группу');
+      }
+      await (this.db as any).$executeRawUnsafe(
+        `DELETE FROM chat_group_members WHERE group_id = $1 AND user_id = $2`,
+        groupId,
+        memberId,
+      );
+      const memberRows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT user_id FROM chat_group_members WHERE group_id = $1`,
+        groupId,
+      );
+      const members = (
+        await Promise.all((memberRows || []).map((r) => this.enrichUser(r.user_id)))
+      ).filter(Boolean);
+      return { groupId, removedMemberId: memberId, memberCount: members.length, members };
+    }
+
+    const grp = this.memGroups.get(groupId);
+    if (!grp) throw new NotFoundException('Группа не найдена');
+    if (userId !== grp.ownerId && userId !== memberId) {
+      throw new ForbiddenException('Только создатель может удалять участников');
+    }
+    if (memberId === grp.ownerId) {
+      throw new BadRequestException('Создатель не может удалить себя — удалите группу');
+    }
+    grp.memberIds = grp.memberIds.filter((id: string) => id !== memberId);
+    const members = (await Promise.all(grp.memberIds.map((id: string) => this.enrichUser(id)))).filter(
+      Boolean,
+    );
+    return { groupId, removedMemberId: memberId, memberCount: members.length, members };
+  }
+
+  async clearGroupMessages(userId: string, groupId: string) {
+    if (this.db) {
+      await this.ensureGroupTables();
+      const rows: any[] = await (this.db as any).$queryRawUnsafe(
+        `SELECT owner_id FROM chat_groups WHERE id = $1 LIMIT 1`,
+        groupId,
+      );
+      if (!rows?.length) throw new NotFoundException('Группа не найдена');
+      if (rows[0].owner_id !== userId) {
+        throw new ForbiddenException('Только создатель может очистить переписку группы');
+      }
+      await (this.db as any).$executeRawUnsafe(
+        `DELETE FROM chat_group_messages WHERE group_id = $1`,
+        groupId,
+      );
+      return { cleared: true, groupId };
+    }
+
+    const grp = this.memGroups.get(groupId);
+    if (!grp) throw new NotFoundException('Группа не найдена');
+    if (grp.ownerId !== userId) {
+      throw new ForbiddenException('Только создатель может очистить переписку группы');
+    }
+    for (const [mid, m] of this.memGroupMessages.entries()) {
+      if (m.groupId === groupId) this.memGroupMessages.delete(mid);
+    }
+    return { cleared: true, groupId };
   }
 }

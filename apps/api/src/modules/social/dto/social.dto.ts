@@ -167,3 +167,9 @@ export class CreateGroupDto {
   @IsString({ each: true })
   memberIds: string[];
 }
+
+export class AddGroupMembersDto {
+  @IsArray()
+  @IsString({ each: true })
+  memberIds: string[];
+}
