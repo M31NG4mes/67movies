@@ -210,11 +210,20 @@ async function fetchKodikData(params: {
         for (const item of results) {
           const itemShikiId = Number(item?.shikimori_id || 0);
           const idMatches = Boolean(params.malId && itemShikiId === params.malId);
+          const otherTitles = String(item?.other_title || '')
+            .split('/')
+            .map((t) => t.trim())
+            .filter(Boolean);
           const titleMatches =
             titlesStrictlyMatch(item?.title, params.title) ||
             titlesStrictlyMatch(item?.title_orig, params.originalTitle) ||
             titlesStrictlyMatch(item?.title, params.originalTitle) ||
-            titlesStrictlyMatch(item?.title_orig, params.title);
+            titlesStrictlyMatch(item?.title_orig, params.title) ||
+            otherTitles.some(
+              (ot) =>
+                titlesStrictlyMatch(ot, params.title) ||
+                titlesStrictlyMatch(ot, params.originalTitle)
+            );
 
           if (!idMatches && !titleMatches) continue;
 

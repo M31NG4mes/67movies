@@ -38,20 +38,6 @@ import {
   usePreferencesStore,
 } from '../../stores/preferences.store';
 
-const PRESET_BANNERS = [
-  'https://image.tmdb.org/t/p/w1280/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg',
-  'https://image.tmdb.org/t/p/w1280/rAiYTfKGqDCRIIqo664sY9XZIvQ.jpg',
-  'https://image.tmdb.org/t/p/w1280/fm6KqXpk3M2HVveHwCrBSSBaO0V.jpg',
-  'https://image.tmdb.org/t/p/w1280/rkB4LyZHo1NHXFEDHl9vSD9r1lI.jpg',
-];
-
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=200&q=80',
-];
-
 type ProfileTab = 'overview' | 'friends' | 'settings' | 'security';
 
 export default function ProfilePage() {
@@ -448,15 +434,6 @@ export default function ProfilePage() {
               <ImageIcon className="w-3.5 h-3.5 text-[#A18BFF]" />
               <span className="hidden sm:inline">Загрузить баннер</span>
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                setShowMediaPicker(showMediaPicker === 'banner' ? null : 'banner')
-              }
-              className="px-3 py-2 rounded-xl bg-black/65 hover:bg-black/85 backdrop-blur-md border border-white/15 text-xs font-semibold text-[#A18BFF] transition-all"
-            >
-              Галерея
-            </button>
           </div>
         </div>
 
@@ -501,16 +478,6 @@ export default function ProfilePage() {
                     className="text-xs font-semibold text-[#A18BFF] hover:underline"
                   >
                     Сменить аватар
-                  </button>
-                  <span className="text-[#292936]">•</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowMediaPicker(showMediaPicker === 'avatar' ? null : 'avatar')
-                    }
-                    className="text-xs font-semibold text-[#92929F] hover:text-white transition-colors"
-                  >
-                    Готовые аватары
                   </button>
                 </div>
               </div>
@@ -585,44 +552,6 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-
-        {/* Quick Preset Picker for Avatar or Banner */}
-        {showMediaPicker && (
-          <div className="px-6 pb-6 pt-3 border-t border-[#292936]">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-[#92929F]">
-                {showMediaPicker === 'banner'
-                  ? 'Выберите готовый кинобаннер:'
-                  : 'Выберите готовый аватар:'}
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowMediaPicker(null)}
-                className="text-xs text-[#92929F] hover:text-white"
-              >
-                Закрыть
-              </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {(showMediaPicker === 'banner' ? PRESET_BANNERS : PRESET_AVATARS).map((url) => (
-                <button
-                  key={url}
-                  type="button"
-                  onClick={() =>
-                    updateActiveProfileMedia(
-                      showMediaPicker === 'banner' ? { bannerUrl: url } : { avatarUrl: url }
-                    )
-                  }
-                  className={`overflow-hidden rounded-xl border border-[#292936] hover:border-[#8065FF] transition-all ${
-                    showMediaPicker === 'banner' ? 'aspect-video' : 'aspect-square'
-                  }`}
-                >
-                  <img src={url} alt="Preset" className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Status Toast */}

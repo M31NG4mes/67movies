@@ -140,6 +140,15 @@ export default function WatchPage() {
 
     const fetchStreams = async () => {
       if (isAnimeItem) {
+        if (
+          !media?.title &&
+          !titleHint &&
+          !origTitleHint &&
+          !/^al-\d+$/i.test(mediaId) &&
+          !malIdHint
+        ) {
+          return [];
+        }
         return api.sources.getAnimeStreams(
           media?.anilibertyId ? `al-${media.anilibertyId}` : mediaId,
           currentEpisode,
