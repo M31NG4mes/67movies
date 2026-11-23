@@ -810,7 +810,75 @@ export const api = {
       originalTitle?: string;
     }): Promise<MediaItem | null> => {
       const raw = await findDirectAniLibertyReleaseRaw(params);
-      return raw ? mapDirectAniLibertyRelease(raw, true) : null;
+      const mapped = raw ? mapDirectAniLibertyRelease(raw, true) : null;
+
+      if (typeof window !== 'undefined') {
+        try {
+          const sp = new URLSearchParams({
+            id: params.anilibertyId ? `al-${params.anilibertyId}` : '',
+            episode: '1',
+          });
+          if (params.title || mapped?.title) sp.set('title', String(params.title || mapped?.title));
+          if (params.originalTitle || mapped?.originalTitle) {
+            sp.set('originalTitle', String(params.originalTitle || mapped?.originalTitle));
+          }
+          if (params.malId || mapped?.malId) sp.set('malId', String(params.malId || mapped?.malId));
+          if (params.anilibertyId || mapped?.anilibertyId) {
+            sp.set('anilibertyId', String(params.anilibertyId || mapped?.anilibertyId));
+          }
+
+          const res = await fetch(`/api/anime-streams?${sp.toString()}`, { cache: 'no-store' });
+          if (res.ok) {
+            const json: any = await res.json();
+            const fullEps = Array.isArray(json?.episodes) ? json.episodes : [];
+            if (fullEps.length > 0) {
+              const existingCount = mapped?.seasons?.[0]?.episodes?.length || 0;
+              if (mapped && fullEps.length > existingCount) {
+                mapped.episodesTotal = fullEps.length;
+                mapped.seasons = [
+                  {
+                    id: `al-${mapped.anilibertyId || 'anime'}-s1`,
+                    seasonNumber: 1,
+                    name: 'Эпизоды',
+                    posterPath: mapped.posterPath,
+                    episodeCount: fullEps.length,
+                    episodes: fullEps,
+                  },
+                ];
+              } else if (!mapped) {
+                return {
+                  id: params.anilibertyId ? `al-${params.anilibertyId}` : `mal-${params.malId || 0}`,
+                  anilibertyId: params.anilibertyId,
+                  malId: params.malId,
+                  source: 'aniliberty',
+                  type: 'tv',
+                  title: params.title || params.originalTitle || 'Аниме',
+                  originalTitle: params.originalTitle,
+                  overview: '',
+                  posterPath: null,
+                  backdropPath: null,
+                  releaseYear: 2024,
+                  voteAverage: 0,
+                  genres: [{ id: 16, name: 'Аниме' }],
+                  episodesTotal: fullEps.length,
+                  seasons: [
+                    {
+                      id: 'anime-s1',
+                      seasonNumber: 1,
+                      name: 'Эпизоды',
+                      posterPath: null,
+                      episodeCount: fullEps.length,
+                      episodes: fullEps,
+                    },
+                  ],
+                };
+              }
+            }
+          }
+        } catch {}
+      }
+
+      return mapped;
     },
   },
 

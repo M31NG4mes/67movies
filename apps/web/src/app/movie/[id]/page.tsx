@@ -299,28 +299,44 @@ export default function MovieDetailPage() {
         media.source === 'shikimori' ||
         Boolean(media.anilibertyId || media.malId);
 
-      if (looksLikeAnime && (!media.anilibertyId || !media.seasons?.[0]?.episodes?.length)) {
+      if (looksLikeAnime) {
+        const alMatch = /^al-(\d+)$/i.exec(mediaId);
         api.media
           .resolveAniLibertyRelease({
-            anilibertyId: media.anilibertyId,
+            anilibertyId:
+              media.anilibertyId || (alMatch ? Number(alMatch[1]) : undefined),
             malId: media.malId,
             title: media.title,
             originalTitle: media.originalTitle,
           })
           .then((alRelease) => {
             if (!alRelease) return;
+            const resolvedEpsCount = alRelease.seasons?.[0]?.episodes?.length || 0;
             setMedia((prev) => {
               if (!prev) return prev;
+              const prevEpsCount = prev.seasons?.[0]?.episodes?.length || 0;
               return {
                 ...prev,
                 anilibertyId: alRelease.anilibertyId || prev.anilibertyId,
                 voiceovers: alRelease.voiceovers?.length ? alRelease.voiceovers : prev.voiceovers,
                 voiceTeamName: alRelease.voiceTeamName || prev.voiceTeamName,
-                seasons: alRelease.seasons?.length ? alRelease.seasons : prev.seasons,
+                episodesTotal: Math.max(
+                  resolvedEpsCount,
+                  alRelease.episodesTotal || 0,
+                  prev.episodesTotal || 0
+                ),
+                seasons:
+                  resolvedEpsCount >= prevEpsCount && alRelease.seasons?.length
+                    ? alRelease.seasons
+                    : prev.seasons,
               };
             });
-            if (alRelease.seasons?.[0]?.episodes?.length) {
-              setSeasonData(alRelease.seasons[0]);
+            if (resolvedEpsCount > 0) {
+              setSeasonData((prevS) =>
+                resolvedEpsCount >= (prevS?.episodes?.length || 0)
+                  ? alRelease.seasons![0]
+                  : prevS
+              );
             }
           })
           .catch(() => {});

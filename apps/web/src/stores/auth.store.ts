@@ -254,22 +254,19 @@ function readFromStorage(): {
   }
 }
 
-const initialStored = typeof window !== 'undefined' ? readFromStorage() : null;
-
 export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: initialStored?.user ?? null,
-  accessToken: initialStored?.accessToken ?? null,
-  refreshToken: initialStored?.refreshToken ?? null,
-  profiles: initialStored?.profiles ?? [],
-  activeProfileId: initialStored?.activeProfileId ?? null,
-  rememberDevice: initialStored?.rememberDevice ?? true,
-  hydrated: typeof window !== 'undefined',
+  user: null,
+  accessToken: null,
+  refreshToken: null,
+  profiles: [],
+  activeProfileId: null,
+  rememberDevice: true,
+  hydrated: false,
 
   hydrate: () => {
     if (typeof window === 'undefined') return;
     const current = get();
-    if (current.accessToken && current.user) {
-      if (!current.hydrated) set({ hydrated: true });
+    if (current.hydrated && current.accessToken && current.user) {
       return;
     }
     const stored = readFromStorage();

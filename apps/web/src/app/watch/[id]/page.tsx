@@ -60,10 +60,7 @@ export default function WatchPage() {
 
         let resolvedMedia = data;
 
-        if (
-          isAnimeItem &&
-          (!resolvedMedia?.anilibertyId || !resolvedMedia?.seasons?.[0]?.episodes?.length)
-        ) {
+        if (isAnimeItem) {
           const alMatch = /^al-(\d+)$/i.exec(mediaId);
           const alRelease = await api.media
             .resolveAniLibertyRelease({
@@ -76,12 +73,22 @@ export default function WatchPage() {
             .catch(() => null);
 
           if (alRelease) {
+            const newCount = alRelease.seasons?.[0]?.episodes?.length || 0;
+            const oldCount = resolvedMedia?.seasons?.[0]?.episodes?.length || 0;
             resolvedMedia = resolvedMedia
               ? {
                   ...resolvedMedia,
                   anilibertyId: alRelease.anilibertyId || resolvedMedia.anilibertyId,
                   voiceovers: alRelease.voiceovers || resolvedMedia.voiceovers,
-                  seasons: alRelease.seasons?.length ? alRelease.seasons : resolvedMedia.seasons,
+                  episodesTotal: Math.max(
+                    newCount,
+                    alRelease.episodesTotal || 0,
+                    resolvedMedia.episodesTotal || 0
+                  ),
+                  seasons:
+                    newCount >= oldCount && alRelease.seasons?.length
+                      ? alRelease.seasons
+                      : resolvedMedia.seasons,
                 }
               : alRelease;
           }

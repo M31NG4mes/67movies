@@ -150,15 +150,11 @@ interface LibraryStore {
   clearHistory: () => void;
 }
 
-const initialWatchlist = typeof window !== 'undefined' ? readList(WATCHLIST_KEY) : [];
-const initialFavorites = typeof window !== 'undefined' ? readList(FAVORITES_KEY) : [];
-const initialHistory = typeof window !== 'undefined' ? readList(HISTORY_KEY) : [];
-
 export const useLibraryStore = create<LibraryStore>((set, get) => ({
-  watchlist: initialWatchlist,
-  favorites: initialFavorites,
-  history: initialHistory,
-  hydrated: typeof window !== 'undefined',
+  watchlist: [],
+  favorites: [],
+  history: [],
+  hydrated: false,
 
   hydrate: () => {
     if (typeof window === 'undefined') return;
